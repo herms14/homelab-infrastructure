@@ -1,0 +1,19 @@
+# Proxmox Terraform Configuration Example
+# Copy this file to terraform.tfvars and fill in your actual values
+
+# Proxmox API Configuration
+proxmox_api_url          = "https://YOUR_PROXMOX_IP:8006/api2/json"
+proxmox_api_token_id     = "YOUR_USER@pve!YOUR_TOKEN_NAME"
+proxmox_api_token_secret = "YOUR-TOKEN-SECRET-HERE"
+proxmox_tls_insecure     = true  # Set to false if using valid SSL cert
+
+# Infrastructure Defaults
+default_storage    = "local-lvm"        # Options: local-lvm, your-storage-name
+default_node       = "node01"           # Your primary Proxmox node for VMs
+lxc_node          = "node02"           # Your Proxmox node for LXC containers
+default_vlan       = 20                 # VLAN tag for default network
+default_gateway    = "192.168.20.1"    # Your network gateway
+default_nameserver = "192.168.20.1"    # Your DNS server
+
+# SSH Configuration
+ssh_public_key = "ssh-ed25519 AAAAC3... your-key-here user@host"  # Your SSH public key

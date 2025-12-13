@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(terraform providers:*)",
+      "Bash(terraform apply:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
