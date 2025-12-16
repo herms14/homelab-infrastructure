@@ -1,0 +1,188 @@
+---
+################################################################################
+# Kubernetes Components Installation Playbook
+################################################################################
+# This playbook installs Kubernetes components on all nodes:
+# 1. Adds Kubernetes apt repository
+# 2. Installs kubeadm, kubelet, and kubectl
+# 3. Holds packages to prevent automatic updates (cluster upgrades must be controlled)
+#
+# Package versions are managed via inventory variables (k8s_version)
+# This playbook is idempotent and can be run multiple times safely.
+################################################################################
+
+- name: Install Kubernetes Components on All Nodes
+  hosts: k8s_all
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    ############################################################################
+    # KUBERNETES APT REPOSITORY
+    ############################################################################
+    # Add official Kubernetes package repository from pkgs.k8s.io
+    # This ensures we get official, signed packages
+    ############################################################################
+
+    - name: Create directory for apt keyrings
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Download Kubernetes GPG key
+      get_url:
+        url: https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key
+        dest: /tmp/kubernetes-apt-keyring.key
+        mode: '0644'
+
+    - name: Add Kubernetes GPG key to keyring
+      shell: |
+        cat /tmp/kubernetes-apt-keyring.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+        chmod a+r /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      args:
+        creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+    - name: Add Kubernetes apt repository
+      apt_repository:
+        repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /"
+        state: present
+        filename: kubernetes
+
+    - name: Update apt cache after adding Kubernetes repository
+      apt:
+        update_cache: yes
+
+    ############################################################################
+    # PACKAGE INSTALLATION
+    ############################################################################
+    # Install three core Kubernetes components:
+    # - kubelet: Node agent that runs on each node, manages pods and containers
+    # - kubeadm: Tool to bootstrap and manage Kubernetes clusters
+    # - kubectl: Command-line tool for interacting with Kubernetes API
+    ############################################################################
+
+    - name: Install Kubernetes packages
+      apt:
+        name:
+          - "kubelet={{ k8s_version }}"
+          - "kubeadm={{ k8s_version }}"
+          - "kubectl={{ k8s_version }}"
+        state: present
+        allow_downgrade: yes
+      register: k8s_install
+
+    - name: Verify Kubernetes packages are installed
+      command: "dpkg -l {{ item }}"
+      loop:
+        - kubelet
+        - kubeadm
+        - kubectl
+      register: k8s_packages
+      changed_when: false
+      failed_when: k8s_packages.rc != 0
+
+    ############################################################################
+    # PACKAGE VERSION HOLD
+    ############################################################################
+    # Mark packages as held to prevent automatic updates via apt
+    # This is critical because:
+    # - Kubernetes upgrades must be performed in a controlled manner
+    # - Control plane and worker nodes must be upgraded in specific order
+    # - Kubelet/kubeadm/kubectl versions must stay in sync
+    # - Unexpected upgrades can break the cluster
+    ############################################################################
+
+    - name: Hold Kubernetes packages to prevent automatic updates
+      dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop:
+        - kubelet
+        - kubeadm
+        - kubectl
+
+    - name: Verify packages are held
+      command: apt-mark showhold
+      register: held_packages
+      changed_when: false
+      failed_when: >
+        'kubelet' not in held_packages.stdout or
+        'kubeadm' not in held_packages.stdout or
+        'kubectl' not in held_packages.stdout
+
+    ############################################################################
+    # SERVICE CONFIGURATION
+    ############################################################################
+    # Enable kubelet service (will start after kubeadm init/join)
+    # kubelet must be enabled but won't fully start until node joins cluster
+    ############################################################################
+
+    - name: Enable kubelet service
+      systemd:
+        name: kubelet
+        enabled: yes
+        daemon_reload: yes
+
+    - name: Check kubelet service status
+      command: systemctl is-enabled kubelet
+      register: kubelet_enabled
+      changed_when: false
+      failed_when: kubelet_enabled.stdout != "enabled"
+
+    ############################################################################
+    # VERSION VERIFICATION
+    ############################################################################
+    # Verify installed versions of all Kubernetes components
+    # Ensures consistency across all nodes
+    ############################################################################
+
+    - name: Get kubeadm version
+      command: kubeadm version -o short
+      register: kubeadm_version
+      changed_when: false
+
+    - name: Get kubelet version
+      command: kubelet --version
+      register: kubelet_version
+      changed_when: false
+
+    - name: Get kubectl version
+      command: kubectl version --client -o yaml
+      register: kubectl_version
+      changed_when: false
+
+    ############################################################################
+    # INSTALLATION SUMMARY
+    ############################################################################
+
+    - name: Display installation summary
+      debug:
+        msg:
+          - "=============================================="
+          - "Kubernetes Components Installed Successfully"
+          - "=============================================="
+          - "Node: {{ inventory_hostname }}"
+          - "IP: {{ ansible_host }}"
+          - ""
+          - "Installed versions:"
+          - "  kubeadm: {{ kubeadm_version.stdout }}"
+          - "  kubelet: {{ kubelet_version.stdout }}"
+          - "  kubectl: {{ kubectl_version.stdout_lines[0] }}"
+          - ""
+          - "✓ Kubernetes apt repository added"
+          - "✓ kubeadm, kubelet, kubectl installed"
+          - "✓ Packages held to prevent automatic updates"
+          - "✓ kubelet service enabled"
+          - ""
+          - "Node is ready for cluster initialization!"
+
+################################################################################
+# POST-INSTALLATION NOTES
+################################################################################
+# After this playbook completes:
+# 1. All nodes have Kubernetes components installed
+# 2. Packages are held at specified version
+# 3. kubelet is enabled but not yet running (waiting for cluster join)
+# 4. Ready to run 03-k8s-init-cluster.yml on primary control plane
+################################################################################

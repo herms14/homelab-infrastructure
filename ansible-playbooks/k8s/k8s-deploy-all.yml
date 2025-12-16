@@ -1,0 +1,242 @@
+---
+################################################################################
+# Kubernetes Cluster Complete Deployment Playbook
+################################################################################
+# This master playbook orchestrates the complete Kubernetes cluster deployment
+# by running all individual playbooks in the correct sequence.
+#
+# Deployment sequence:
+# 1. Prerequisites - System preparation (swap, kernel modules, containerd)
+# 2. Install - Kubernetes components installation (kubeadm, kubelet, kubectl)
+# 3. Init - Cluster initialization on primary control plane
+# 4. CNI - Calico network plugin installation
+# 5. Join - Join additional control planes and all worker nodes
+#
+# Prerequisites:
+# - All nodes must be accessible via SSH
+# - Ansible inventory must be configured (inventory.ini)
+# - Nodes must have Ubuntu 24.04 or compatible OS
+# - Network connectivity between all nodes
+#
+# Usage:
+#   ansible-playbook -i inventory.ini k8s-deploy-all.yml
+#
+# Estimated time: 30-45 minutes depending on network speed and node performance
+################################################################################
+
+- name: "Stage 1/5: Configure Prerequisites on All Nodes"
+  import_playbook: 01-k8s-prerequisites.yml
+  tags:
+    - prerequisites
+    - stage1
+
+- name: Display Stage 1 Completion
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Stage 1 complete
+      debug:
+        msg:
+          - "=============================================="
+          - "Stage 1/5 Complete: Prerequisites"
+          - "=============================================="
+          - "✓ Swap disabled on all nodes"
+          - "✓ Kernel modules loaded"
+          - "✓ Sysctl parameters configured"
+          - "✓ Containerd installed and configured"
+          - ""
+          - "Proceeding to Stage 2: Kubernetes Installation"
+          - "=============================================="
+
+    - name: Pause between stages (5 seconds)
+      pause:
+        seconds: 5
+
+################################################################################
+
+- name: "Stage 2/5: Install Kubernetes Components on All Nodes"
+  import_playbook: 02-k8s-install.yml
+  tags:
+    - install
+    - stage2
+
+- name: Display Stage 2 Completion
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Stage 2 complete
+      debug:
+        msg:
+          - "=============================================="
+          - "Stage 2/5 Complete: Kubernetes Installation"
+          - "=============================================="
+          - "✓ Kubernetes apt repository added"
+          - "✓ kubeadm, kubelet, kubectl installed"
+          - "✓ Packages held to prevent auto-updates"
+          - "✓ kubelet service enabled"
+          - ""
+          - "Proceeding to Stage 3: Cluster Initialization"
+          - "=============================================="
+
+    - name: Pause between stages (5 seconds)
+      pause:
+        seconds: 5
+
+################################################################################
+
+- name: "Stage 3/5: Initialize Kubernetes Cluster"
+  import_playbook: 03-k8s-init-cluster.yml
+  tags:
+    - init
+    - stage3
+
+- name: Display Stage 3 Completion
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Stage 3 complete
+      debug:
+        msg:
+          - "=============================================="
+          - "Stage 3/5 Complete: Cluster Initialization"
+          - "=============================================="
+          - "✓ Cluster initialized on primary control plane"
+          - "✓ Kubeconfig configured for admin user"
+          - "✓ Join commands generated"
+          - "✓ Join commands saved to /tmp/"
+          - ""
+          - "⚠️  Nodes will show 'NotReady' until CNI is installed"
+          - ""
+          - "Proceeding to Stage 4: CNI Installation"
+          - "=============================================="
+
+    - name: Pause between stages (10 seconds)
+      pause:
+        seconds: 10
+
+################################################################################
+
+- name: "Stage 4/5: Install Calico CNI"
+  import_playbook: 04-k8s-install-cni.yml
+  tags:
+    - cni
+    - stage4
+
+- name: Display Stage 4 Completion
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Stage 4 complete
+      debug:
+        msg:
+          - "=============================================="
+          - "Stage 4/5 Complete: CNI Installation"
+          - "=============================================="
+          - "✓ Calico CNI installed"
+          - "✓ Calico pods running on all nodes"
+          - "✓ Pod networking functional"
+          - "✓ Nodes transitioning to 'Ready' status"
+          - ""
+          - "Proceeding to Stage 5: Join Nodes"
+          - "=============================================="
+
+    - name: Pause between stages (15 seconds)
+      pause:
+        seconds: 15
+
+################################################################################
+
+- name: "Stage 5/5: Join Additional Control Planes and Worker Nodes"
+  import_playbook: 05-k8s-join-nodes.yml
+  tags:
+    - join
+    - stage5
+
+################################################################################
+# FINAL SUMMARY
+################################################################################
+
+- name: Display Complete Deployment Summary
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Final deployment summary
+      debug:
+        msg:
+          - ""
+          - "=============================================="
+          - "KUBERNETES CLUSTER DEPLOYMENT COMPLETE"
+          - "=============================================="
+          - ""
+          - "Cluster Configuration:"
+          - "  Control Plane Nodes: 3"
+          - "    - k8s-controller01 (192.168.20.32)"
+          - "    - k8s-controller02 (192.168.20.33)"
+          - "    - k8s-controller03 (192.168.20.34)"
+          - ""
+          - "  Worker Nodes: 6"
+          - "    - k8s-worker01 (192.168.20.40)"
+          - "    - k8s-worker02 (192.168.20.41)"
+          - "    - k8s-worker03 (192.168.20.42)"
+          - "    - k8s-worker04 (192.168.20.43)"
+          - "    - k8s-worker05 (192.168.20.44)"
+          - "    - k8s-worker06 (192.168.20.45)"
+          - ""
+          - "Cluster Features:"
+          - "  ✓ High Availability Control Plane (3 nodes)"
+          - "  ✓ Calico CNI for pod networking"
+          - "  ✓ containerd container runtime"
+          - "  ✓ Pod Network CIDR: 10.244.0.0/16"
+          - "  ✓ Service CIDR: 10.96.0.0/12"
+          - ""
+          - "Access the cluster:"
+          - "  1. SSH to any control plane node"
+          - "     ssh hermes-admin@192.168.20.32"
+          - ""
+          - "  2. Run kubectl commands"
+          - "     kubectl get nodes"
+          - "     kubectl get pods -A"
+          - "     kubectl cluster-info"
+          - ""
+          - "Next Steps:"
+          - "  1. Deploy ingress controller (Traefik/nginx)"
+          - "  2. Configure storage classes"
+          - "  3. Install metrics-server for resource monitoring"
+          - "  4. Deploy monitoring stack (Prometheus/Grafana)"
+          - "  5. Deploy your applications"
+          - ""
+          - "Useful Commands:"
+          - "  kubectl get nodes -o wide"
+          - "  kubectl get pods -A"
+          - "  kubectl get svc -A"
+          - "  kubectl describe node <node-name>"
+          - ""
+          - "Cluster is ready for production workloads!"
+          - "=============================================="
+
+################################################################################
+# RUNNING INDIVIDUAL STAGES
+################################################################################
+# You can run individual stages using tags:
+#
+# Stage 1 only (Prerequisites):
+#   ansible-playbook -i inventory.ini k8s-deploy-all.yml --tags prerequisites
+#
+# Stage 2 only (Install):
+#   ansible-playbook -i inventory.ini k8s-deploy-all.yml --tags install
+#
+# Stage 3 only (Init):
+#   ansible-playbook -i inventory.ini k8s-deploy-all.yml --tags init
+#
+# Stage 4 only (CNI):
+#   ansible-playbook -i inventory.ini k8s-deploy-all.yml --tags cni
+#
+# Stage 5 only (Join):
+#   ansible-playbook -i inventory.ini k8s-deploy-all.yml --tags join
+#
+# Multiple stages:
+#   ansible-playbook -i inventory.ini k8s-deploy-all.yml --tags "stage1,stage2"
+#
+# Skip stages:
+#   ansible-playbook -i inventory.ini k8s-deploy-all.yml --skip-tags "stage1,stage2"
+################################################################################

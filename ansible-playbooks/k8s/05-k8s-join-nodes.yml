@@ -1,0 +1,400 @@
+---
+################################################################################
+# Kubernetes Node Join Playbook
+################################################################################
+# This playbook joins nodes to the Kubernetes cluster:
+# 1. Joins additional control plane nodes (controller02, controller03)
+# 2. Joins all worker nodes (worker01-06)
+# 3. Verifies nodes joined successfully
+#
+# This playbook should be run AFTER:
+# - 01-k8s-prerequisites.yml (on all nodes)
+# - 02-k8s-install.yml (on all nodes)
+# - 03-k8s-init-cluster.yml (on primary control plane)
+# - 04-k8s-install-cni.yml (on primary control plane)
+#
+# This playbook is idempotent - will skip nodes already in cluster
+################################################################################
+
+- name: Join Additional Control Plane Nodes to Cluster
+  hosts: k8s_control_plane
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    ############################################################################
+    # PRE-JOIN CHECKS FOR CONTROL PLANE
+    ############################################################################
+    # Check if this node is already part of the cluster
+    ############################################################################
+
+    - name: Skip primary control plane (already initialized)
+      meta: end_host
+      when: is_primary_control_plane | default(false) | bool
+
+    - name: Check if node is already joined to cluster
+      stat:
+        path: /etc/kubernetes/kubelet.conf
+      register: node_joined
+
+    - name: Display node join status
+      debug:
+        msg: "Node {{ inventory_hostname }} is {{ 'already joined' if node_joined.stat.exists else 'not joined' }}"
+
+    ############################################################################
+    # FETCH CONTROL PLANE JOIN COMMAND
+    ############################################################################
+    # Get join command from primary control plane or local file
+    ############################################################################
+
+    - name: Check if join command exists locally
+      stat:
+        path: /tmp/kubeadm-join-control-plane.sh
+      register: local_join_command
+      delegate_to: localhost
+      become: no
+
+    - name: Read control plane join command from local file
+      slurp:
+        src: /tmp/kubeadm-join-control-plane.sh
+      register: join_command_content
+      delegate_to: localhost
+      become: no
+      when:
+        - not node_joined.stat.exists
+        - local_join_command.stat.exists
+
+    - name: Set join command variable
+      set_fact:
+        control_plane_join_cmd: "{{ join_command_content.content | b64decode | trim }}"
+      when:
+        - not node_joined.stat.exists
+        - local_join_command.stat.exists
+
+    - name: Fail if join command not found
+      fail:
+        msg: |
+          Control plane join command not found!
+          Please run 03-k8s-init-cluster.yml first to generate join commands.
+          Expected location: /tmp/kubeadm-join-control-plane.sh
+      when:
+        - not node_joined.stat.exists
+        - not local_join_command.stat.exists
+
+    ############################################################################
+    # JOIN ADDITIONAL CONTROL PLANE NODES
+    ############################################################################
+    # Execute join command on additional control plane nodes
+    ############################################################################
+
+    - name: Join additional control plane node to cluster
+      shell: "{{ control_plane_join_cmd }}"
+      register: control_plane_join_result
+      when:
+        - not node_joined.stat.exists
+        - not is_primary_control_plane | default(false) | bool
+      timeout: 600
+
+    - name: Display control plane join output
+      debug:
+        var: control_plane_join_result.stdout_lines
+      when:
+        - control_plane_join_result is changed
+
+    ############################################################################
+    # CONFIGURE KUBECTL FOR CONTROL PLANE NODES
+    ############################################################################
+    # Set up kubeconfig for admin user on all control plane nodes
+    ############################################################################
+
+    - name: Create .kube directory for root user
+      file:
+        path: /root/.kube
+        state: directory
+        mode: '0755'
+      when: control_plane_join_result is changed
+
+    - name: Copy admin.conf to root user's kubeconfig
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /root/.kube/config
+        remote_src: yes
+        owner: root
+        group: root
+        mode: '0600'
+      when: control_plane_join_result is changed
+
+    - name: Create .kube directory for admin user
+      file:
+        path: "/home/{{ ansible_user }}/.kube"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+      when: control_plane_join_result is changed
+
+    - name: Copy admin.conf to admin user's kubeconfig
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: "/home/{{ ansible_user }}/.kube/config"
+        remote_src: yes
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0600'
+      when: control_plane_join_result is changed
+
+    - name: Wait for kubelet to start on control plane
+      systemd:
+        name: kubelet
+        state: started
+      when: control_plane_join_result is changed
+
+################################################################################
+# JOIN WORKER NODES
+################################################################################
+
+- name: Join Worker Nodes to Cluster
+  hosts: k8s_workers
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    ############################################################################
+    # PRE-JOIN CHECKS FOR WORKERS
+    ############################################################################
+    # Check if this worker is already part of the cluster
+    ############################################################################
+
+    - name: Check if worker is already joined to cluster
+      stat:
+        path: /etc/kubernetes/kubelet.conf
+      register: worker_joined
+
+    - name: Display worker join status
+      debug:
+        msg: "Worker {{ inventory_hostname }} is {{ 'already joined' if worker_joined.stat.exists else 'not joined' }}"
+
+    ############################################################################
+    # FETCH WORKER JOIN COMMAND
+    ############################################################################
+    # Get join command from primary control plane or local file
+    ############################################################################
+
+    - name: Check if worker join command exists locally
+      stat:
+        path: /tmp/kubeadm-join-worker.sh
+      register: local_worker_join_command
+      delegate_to: localhost
+      become: no
+
+    - name: Read worker join command from local file
+      slurp:
+        src: /tmp/kubeadm-join-worker.sh
+      register: worker_join_command_content
+      delegate_to: localhost
+      become: no
+      when:
+        - not worker_joined.stat.exists
+        - local_worker_join_command.stat.exists
+
+    - name: Set worker join command variable
+      set_fact:
+        worker_join_cmd: "{{ worker_join_command_content.content | b64decode | trim }}"
+      when:
+        - not worker_joined.stat.exists
+        - local_worker_join_command.stat.exists
+
+    - name: Fail if worker join command not found
+      fail:
+        msg: |
+          Worker join command not found!
+          Please run 03-k8s-init-cluster.yml first to generate join commands.
+          Expected location: /tmp/kubeadm-join-worker.sh
+      when:
+        - not worker_joined.stat.exists
+        - not local_worker_join_command.stat.exists
+
+    ############################################################################
+    # JOIN WORKER NODES
+    ############################################################################
+    # Execute join command on worker nodes
+    ############################################################################
+
+    - name: Join worker node to cluster
+      shell: "{{ worker_join_cmd }}"
+      register: worker_join_result
+      when: not worker_joined.stat.exists
+      timeout: 600
+
+    - name: Display worker join output
+      debug:
+        var: worker_join_result.stdout_lines
+      when: worker_join_result is changed
+
+    - name: Wait for kubelet to start on worker
+      systemd:
+        name: kubelet
+        state: started
+      when: worker_join_result is changed
+
+################################################################################
+# VERIFY CLUSTER STATUS
+################################################################################
+
+- name: Verify All Nodes Joined Successfully
+  hosts: k8s_control_plane[0]  # Run verification on primary control plane
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    ############################################################################
+    # WAIT FOR NODES TO BE READY
+    ############################################################################
+    # Give nodes time to register and become ready
+    ############################################################################
+
+    - name: Wait for all nodes to register with cluster
+      shell: kubectl get nodes --no-headers | wc -l
+      register: node_count
+      until: node_count.stdout | int >= 9  # 3 control planes + 6 workers
+      retries: 30
+      delay: 10
+      become_user: "{{ ansible_user }}"
+
+    - name: Wait for all nodes to be Ready
+      command: kubectl wait --for=condition=Ready nodes --all --timeout=600s
+      register: nodes_ready
+      become_user: "{{ ansible_user }}"
+
+    ############################################################################
+    # VERIFY CLUSTER HEALTH
+    ############################################################################
+    # Check cluster components and node status
+    ############################################################################
+
+    - name: Get all nodes status
+      command: kubectl get nodes -o wide
+      register: all_nodes_status
+      changed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Get system pods status
+      command: kubectl get pods -n kube-system -o wide
+      register: system_pods_status
+      changed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Check for NotReady nodes
+      shell: kubectl get nodes | grep -i notready || echo "All nodes Ready"
+      register: notready_nodes
+      changed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Check for non-running system pods
+      shell: kubectl get pods -n kube-system --field-selector=status.phase!=Running,status.phase!=Succeeded || echo "All pods running"
+      register: nonrunning_pods
+      changed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Get cluster info
+      command: kubectl cluster-info
+      register: cluster_info
+      changed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Count control plane nodes
+      shell: kubectl get nodes --selector=node-role.kubernetes.io/control-plane --no-headers | wc -l
+      register: control_plane_count
+      changed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Count worker nodes
+      shell: kubectl get nodes --selector='!node-role.kubernetes.io/control-plane' --no-headers | wc -l
+      register: worker_count
+      changed_when: false
+      become_user: "{{ ansible_user }}"
+
+    ############################################################################
+    # VERIFY CLUSTER SUMMARY
+    ############################################################################
+
+    - name: Display cluster join summary
+      debug:
+        msg:
+          - "=============================================="
+          - "Kubernetes Cluster Join Complete"
+          - "=============================================="
+          - ""
+          - "Cluster Information:"
+          - "{{ cluster_info.stdout }}"
+          - ""
+          - "Node Summary:"
+          - "  Control Plane Nodes: {{ control_plane_count.stdout }}/3"
+          - "  Worker Nodes: {{ worker_count.stdout }}/6"
+          - "  Total Nodes: {{ node_count.stdout }}/9"
+          - ""
+          - "All Nodes:"
+          - "{{ all_nodes_status.stdout }}"
+          - ""
+          - "System Pods (kube-system namespace):"
+          - "{{ system_pods_status.stdout }}"
+          - ""
+          - "✓ All control plane nodes joined"
+          - "✓ All worker nodes joined"
+          - "✓ All nodes are Ready"
+          - "✓ System pods are running"
+          - ""
+          - "Cluster is fully operational and ready for workloads!"
+
+    ############################################################################
+    # FINAL HEALTH CHECK
+    ############################################################################
+
+    - name: Fail if expected node count not met
+      fail:
+        msg: |
+          Expected 9 nodes (3 control plane + 6 workers) but found {{ node_count.stdout }} nodes.
+          Check that all nodes completed the join process successfully.
+      when: node_count.stdout | int != 9
+
+    - name: Warn if any NotReady nodes
+      debug:
+        msg: |
+          WARNING: Some nodes are NotReady!
+          {{ notready_nodes.stdout }}
+
+          Troubleshooting steps:
+          1. Check kubelet logs: journalctl -u kubelet -f
+          2. Check pod logs: kubectl logs -n kube-system -l k8s-app=calico-node
+          3. Verify network connectivity between nodes
+          4. Check firewall rules
+      when: "'NotReady' in notready_nodes.stdout"
+
+################################################################################
+# POST-JOIN NOTES
+################################################################################
+# After this playbook completes:
+# 1. All 3 control plane nodes are joined to the cluster
+# 2. All 6 worker nodes are joined to the cluster
+# 3. All nodes show "Ready" status
+# 4. Cluster is fully operational
+#
+# Cluster topology:
+# - 3 control plane nodes (HA control plane)
+# - 6 worker nodes (for application workloads)
+# - Calico CNI for networking
+# - containerd as container runtime
+#
+# Next steps:
+# 1. Deploy workloads to the cluster
+# 2. Configure ingress controller (e.g., Traefik, nginx)
+# 3. Set up monitoring (Prometheus, Grafana)
+# 4. Configure storage classes (NFS, Ceph, etc.)
+# 5. Deploy applications
+#
+# Useful commands:
+# - kubectl get nodes
+# - kubectl get pods -A
+# - kubectl describe node <node-name>
+# - kubectl top nodes (requires metrics-server)
+################################################################################

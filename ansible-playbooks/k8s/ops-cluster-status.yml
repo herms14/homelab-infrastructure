@@ -1,0 +1,495 @@
+---
+################################################################################
+# Kubernetes Cluster Status Check Playbook
+################################################################################
+# This operational playbook provides comprehensive cluster health checks
+# and status information without making any changes to the cluster.
+#
+# Use this playbook to:
+# - Verify cluster health after deployment
+# - Troubleshoot issues
+# - Monitor cluster status
+# - Generate status reports
+#
+# Usage:
+#   ansible-playbook -i inventory.ini ops-cluster-status.yml
+################################################################################
+
+- name: Gather Cluster Status Information
+  hosts: k8s_control_plane[0]  # Run on primary control plane
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    ############################################################################
+    # BASIC CLUSTER INFORMATION
+    ############################################################################
+
+    - name: Get cluster information
+      command: kubectl cluster-info
+      register: cluster_info
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Get Kubernetes version
+      command: kubectl version --short
+      register: k8s_version
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    ############################################################################
+    # NODE STATUS
+    ############################################################################
+
+    - name: Get all nodes status
+      command: kubectl get nodes -o wide
+      register: all_nodes
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Count total nodes
+      shell: kubectl get nodes --no-headers | wc -l
+      register: total_nodes
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Count Ready nodes
+      shell: kubectl get nodes --no-headers | grep -c " Ready " || echo "0"
+      register: ready_nodes
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Count NotReady nodes
+      shell: kubectl get nodes --no-headers | grep -c "NotReady" || echo "0"
+      register: notready_nodes
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Count control plane nodes
+      shell: kubectl get nodes --selector=node-role.kubernetes.io/control-plane --no-headers | wc -l
+      register: control_plane_count
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Count worker nodes
+      shell: kubectl get nodes --selector='!node-role.kubernetes.io/control-plane' --no-headers | wc -l
+      register: worker_count
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    ############################################################################
+    # POD STATUS
+    ############################################################################
+
+    - name: Get all pods in all namespaces
+      command: kubectl get pods -A
+      register: all_pods
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Count total pods
+      shell: kubectl get pods -A --no-headers | wc -l
+      register: total_pods
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Count running pods
+      shell: kubectl get pods -A --no-headers | grep -c "Running" || echo "0"
+      register: running_pods
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: List non-running pods
+      shell: kubectl get pods -A --field-selector=status.phase!=Running,status.phase!=Succeeded --no-headers || echo "All pods running"
+      register: nonrunning_pods
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Get kube-system pods
+      command: kubectl get pods -n kube-system -o wide
+      register: system_pods
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    ############################################################################
+    # CALICO STATUS
+    ############################################################################
+
+    - name: Get Calico node pods
+      command: kubectl get pods -n kube-system -l k8s-app=calico-node -o wide
+      register: calico_nodes
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Count Calico node pods
+      shell: kubectl get pods -n kube-system -l k8s-app=calico-node --no-headers | wc -l
+      register: calico_count
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Get Calico controller pods
+      command: kubectl get pods -n kube-system -l k8s-app=calico-kube-controllers -o wide
+      register: calico_controller
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Get Calico daemonset status
+      command: kubectl get daemonset calico-node -n kube-system
+      register: calico_daemonset
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    ############################################################################
+    # COMPONENT STATUS
+    ############################################################################
+
+    - name: Get component statuses
+      command: kubectl get componentstatuses
+      register: component_status
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Get API server status
+      command: kubectl get pods -n kube-system -l component=kube-apiserver -o wide
+      register: apiserver_status
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Get controller-manager status
+      command: kubectl get pods -n kube-system -l component=kube-controller-manager -o wide
+      register: controller_manager_status
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Get scheduler status
+      command: kubectl get pods -n kube-system -l component=kube-scheduler -o wide
+      register: scheduler_status
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Get etcd status
+      command: kubectl get pods -n kube-system -l component=etcd -o wide
+      register: etcd_status
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    ############################################################################
+    # RESOURCE USAGE (if metrics-server is installed)
+    ############################################################################
+
+    - name: Check if metrics-server is installed
+      command: kubectl get deployment metrics-server -n kube-system
+      register: metrics_server_check
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Get node resource usage (if metrics available)
+      command: kubectl top nodes
+      register: node_metrics
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+      when: metrics_server_check.rc == 0
+
+    - name: Get pod resource usage (if metrics available)
+      command: kubectl top pods -A
+      register: pod_metrics
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+      when: metrics_server_check.rc == 0
+
+    ############################################################################
+    # SERVICES AND NAMESPACES
+    ############################################################################
+
+    - name: Get all namespaces
+      command: kubectl get namespaces
+      register: namespaces
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Get all services
+      command: kubectl get svc -A
+      register: services
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Get all deployments
+      command: kubectl get deployments -A
+      register: deployments
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Get all daemonsets
+      command: kubectl get daemonsets -A
+      register: daemonsets
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    ############################################################################
+    # PERSISTENT VOLUMES
+    ############################################################################
+
+    - name: Get persistent volumes
+      command: kubectl get pv
+      register: persistent_volumes
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Get persistent volume claims
+      command: kubectl get pvc -A
+      register: pvc
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Get storage classes
+      command: kubectl get storageclass
+      register: storage_classes
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    ############################################################################
+    # EVENTS (Recent Issues)
+    ############################################################################
+
+    - name: Get recent cluster events
+      command: kubectl get events -A --sort-by='.lastTimestamp' | tail -50
+      register: recent_events
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Get warning events
+      shell: kubectl get events -A --field-selector type=Warning --sort-by='.lastTimestamp' | tail -20 || echo "No warning events"
+      register: warning_events
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    ############################################################################
+    # DISPLAY COMPREHENSIVE STATUS REPORT
+    ############################################################################
+
+    - name: Display cluster status report
+      debug:
+        msg:
+          - "╔════════════════════════════════════════════════════════════════╗"
+          - "║         KUBERNETES CLUSTER STATUS REPORT                       ║"
+          - "╚════════════════════════════════════════════════════════════════╝"
+          - ""
+          - "═══════════════════ CLUSTER INFORMATION ════════════════════"
+          - "{{ cluster_info.stdout }}"
+          - ""
+          - "{{ k8s_version.stdout }}"
+          - ""
+          - "═══════════════════ NODE SUMMARY ═══════════════════════════"
+          - "Total Nodes: {{ total_nodes.stdout }}"
+          - "  ✓ Ready: {{ ready_nodes.stdout }}"
+          - "  ✗ NotReady: {{ notready_nodes.stdout }}"
+          - "  ⚙  Control Plane: {{ control_plane_count.stdout }}"
+          - "  ⚙  Workers: {{ worker_count.stdout }}"
+          - ""
+          - "═══════════════════ ALL NODES ══════════════════════════════"
+          - "{{ all_nodes.stdout }}"
+          - ""
+          - "═══════════════════ POD SUMMARY ════════════════════════════"
+          - "Total Pods: {{ total_pods.stdout }}"
+          - "  ✓ Running: {{ running_pods.stdout }}"
+          - "  ✗ Non-Running: {{ (total_pods.stdout | int) - (running_pods.stdout | int) }}"
+          - ""
+          - "═══════════════════ SYSTEM PODS (kube-system) ══════════════"
+          - "{{ system_pods.stdout }}"
+          - ""
+          - "═══════════════════ CALICO CNI STATUS ══════════════════════"
+          - "Calico Node Pods: {{ calico_count.stdout }}/{{ total_nodes.stdout }}"
+          - ""
+          - "{{ calico_daemonset.stdout }}"
+          - ""
+          - "{{ calico_nodes.stdout }}"
+          - ""
+          - "Calico Controller:"
+          - "{{ calico_controller.stdout }}"
+          - ""
+          - "═══════════════════ CONTROL PLANE COMPONENTS ═══════════════"
+          - ""
+          - "API Server:"
+          - "{{ apiserver_status.stdout }}"
+          - ""
+          - "Controller Manager:"
+          - "{{ controller_manager_status.stdout }}"
+          - ""
+          - "Scheduler:"
+          - "{{ scheduler_status.stdout }}"
+          - ""
+          - "etcd:"
+          - "{{ etcd_status.stdout }}"
+          - ""
+          - "═══════════════════ NAMESPACES ═════════════════════════════"
+          - "{{ namespaces.stdout }}"
+          - ""
+          - "═══════════════════ SERVICES ═══════════════════════════════"
+          - "{{ services.stdout }}"
+          - ""
+          - "═══════════════════ DEPLOYMENTS ════════════════════════════"
+          - "{{ deployments.stdout }}"
+          - ""
+          - "═══════════════════ DAEMONSETS ═════════════════════════════"
+          - "{{ daemonsets.stdout }}"
+          - ""
+          - "═══════════════════ STORAGE ════════════════════════════════"
+          - "Storage Classes:"
+          - "{{ storage_classes.stdout }}"
+          - ""
+          - "Persistent Volumes:"
+          - "{{ persistent_volumes.stdout }}"
+          - ""
+          - "═══════════════════ RECENT WARNING EVENTS ══════════════════"
+          - "{{ warning_events.stdout }}"
+          - ""
+          - "═══════════════════ HEALTH ASSESSMENT ══════════════════════"
+          - "{% if notready_nodes.stdout | int == 0 %}✓ All nodes are Ready{% else %}✗ {{ notready_nodes.stdout }} node(s) are NotReady{% endif %}"
+          - "{% if (total_pods.stdout | int) == (running_pods.stdout | int) %}✓ All pods are Running{% else %}⚠ {{ (total_pods.stdout | int) - (running_pods.stdout | int) }} pod(s) are not Running{% endif %}"
+          - "{% if calico_count.stdout | int == total_nodes.stdout | int %}✓ Calico running on all nodes{% else %}✗ Calico not running on all nodes ({{ calico_count.stdout }}/{{ total_nodes.stdout }}){% endif %}"
+          - ""
+          - "╔════════════════════════════════════════════════════════════════╗"
+          - "║              END OF STATUS REPORT                              ║"
+          - "╚════════════════════════════════════════════════════════════════╝"
+
+    - name: Display resource usage (if metrics-server available)
+      debug:
+        msg:
+          - ""
+          - "═══════════════════ NODE RESOURCE USAGE ════════════════════"
+          - "{{ node_metrics.stdout }}"
+          - ""
+          - "═══════════════════ POD RESOURCE USAGE (top 20) ═══════════"
+          - "{{ pod_metrics.stdout_lines[:20] | join('\n') }}"
+      when: metrics_server_check.rc == 0
+
+    - name: Display metrics-server recommendation
+      debug:
+        msg:
+          - ""
+          - "⚠  Metrics Server not installed"
+          - "Resource usage metrics unavailable."
+          - ""
+          - "To install metrics-server:"
+          - "kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml"
+      when: metrics_server_check.rc != 0
+
+    ############################################################################
+    # SAVE REPORT TO FILE
+    ############################################################################
+
+    - name: Create reports directory
+      file:
+        path: /tmp/k8s-reports
+        state: directory
+        mode: '0755'
+      delegate_to: localhost
+      become: no
+
+    - name: Generate timestamp for report
+      set_fact:
+        report_timestamp: "{{ ansible_date_time.iso8601_basic_short }}"
+
+    - name: Save detailed report to file
+      copy:
+        content: |
+          KUBERNETES CLUSTER STATUS REPORT
+          Generated: {{ ansible_date_time.iso8601 }}
+
+          ═══════════════════ CLUSTER INFORMATION ════════════════════
+          {{ cluster_info.stdout }}
+
+          {{ k8s_version.stdout }}
+
+          ═══════════════════ NODE SUMMARY ═══════════════════════════
+          Total Nodes: {{ total_nodes.stdout }}
+          Ready: {{ ready_nodes.stdout }}
+          NotReady: {{ notready_nodes.stdout }}
+          Control Plane: {{ control_plane_count.stdout }}
+          Workers: {{ worker_count.stdout }}
+
+          ═══════════════════ ALL NODES ══════════════════════════════
+          {{ all_nodes.stdout }}
+
+          ═══════════════════ POD SUMMARY ════════════════════════════
+          Total Pods: {{ total_pods.stdout }}
+          Running: {{ running_pods.stdout }}
+
+          ═══════════════════ NON-RUNNING PODS ═══════════════════════
+          {{ nonrunning_pods.stdout }}
+
+          ═══════════════════ SYSTEM PODS ════════════════════════════
+          {{ system_pods.stdout }}
+
+          ═══════════════════ CALICO STATUS ══════════════════════════
+          {{ calico_daemonset.stdout }}
+
+          {{ calico_nodes.stdout }}
+
+          {{ calico_controller.stdout }}
+
+          ═══════════════════ CONTROL PLANE COMPONENTS ═══════════════
+          API Server:
+          {{ apiserver_status.stdout }}
+
+          Controller Manager:
+          {{ controller_manager_status.stdout }}
+
+          Scheduler:
+          {{ scheduler_status.stdout }}
+
+          etcd:
+          {{ etcd_status.stdout }}
+
+          ═══════════════════ RECENT WARNING EVENTS ══════════════════
+          {{ warning_events.stdout }}
+
+          ═══════════════════ ALL RECENT EVENTS ══════════════════════
+          {{ recent_events.stdout }}
+        dest: "/tmp/k8s-reports/cluster-status-{{ report_timestamp }}.txt"
+        mode: '0644'
+
+    - name: Display report file location
+      debug:
+        msg:
+          - ""
+          - "Detailed report saved to:"
+          - "/tmp/k8s-reports/cluster-status-{{ report_timestamp }}.txt"
+
+################################################################################
+# END OF STATUS CHECK PLAYBOOK
+################################################################################

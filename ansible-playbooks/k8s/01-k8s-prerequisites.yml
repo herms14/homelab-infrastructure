@@ -1,0 +1,254 @@
+---
+################################################################################
+# Kubernetes Prerequisites Playbook
+################################################################################
+# This playbook prepares Ubuntu nodes for Kubernetes installation by:
+# 1. Disabling swap (required by kubelet)
+# 2. Loading required kernel modules for container networking
+# 3. Configuring sysctl parameters for Kubernetes networking
+# 4. Installing and configuring containerd as the container runtime
+#
+# This playbook is idempotent and can be run multiple times safely.
+################################################################################
+
+- name: Configure Kubernetes Prerequisites on All Nodes
+  hosts: k8s_all
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    ############################################################################
+    # SWAP MANAGEMENT
+    ############################################################################
+    # Kubernetes requires swap to be disabled because:
+    # - kubelet needs deterministic memory allocation
+    # - swap can cause unpredictable pod performance
+    # - memory limits become meaningless with swap enabled
+    ############################################################################
+
+    - name: Check if swap is currently enabled
+      command: swapon --show
+      register: swap_status
+      changed_when: false
+      failed_when: false
+
+    - name: Disable swap immediately (runtime)
+      command: swapoff -a
+      when: swap_status.stdout != ""
+
+    - name: Remove swap entries from /etc/fstab (persistent)
+      lineinfile:
+        path: /etc/fstab
+        regexp: '^\s*([^#\s]+\s+){1}swap\s+'
+        state: absent
+      notify: Verify swap is disabled
+
+    - name: Verify swap is disabled
+      command: swapon --show
+      register: verify_swap
+      changed_when: false
+      failed_when: verify_swap.stdout != ""
+
+    ############################################################################
+    # KERNEL MODULES
+    ############################################################################
+    # Load required kernel modules for container networking:
+    # - overlay: Enables OverlayFS storage driver for containerd
+    # - br_netfilter: Enables bridge netfilter for iptables to see bridged traffic
+    ############################################################################
+
+    - name: Load kernel modules immediately (runtime)
+      community.general.modprobe:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - overlay
+        - br_netfilter
+
+    - name: Ensure kernel modules load on boot (persistent)
+      copy:
+        dest: /etc/modules-load.d/k8s.conf
+        content: |
+          # Kernel modules required for Kubernetes
+          # overlay: OverlayFS storage driver for containerd
+          # br_netfilter: Bridge netfilter for container networking
+          overlay
+          br_netfilter
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Verify kernel modules are loaded
+      command: lsmod
+      register: lsmod_output
+      changed_when: false
+      failed_when: >
+        'overlay' not in lsmod_output.stdout or
+        'br_netfilter' not in lsmod_output.stdout
+
+    ############################################################################
+    # SYSCTL PARAMETERS
+    ############################################################################
+    # Configure kernel parameters required for Kubernetes networking:
+    # - net.bridge.bridge-nf-call-iptables: Allow iptables to see bridged IPv4 traffic
+    # - net.bridge.bridge-nf-call-ip6tables: Allow iptables to see bridged IPv6 traffic
+    # - net.ipv4.ip_forward: Enable IPv4 packet forwarding (required for pod-to-pod communication)
+    ############################################################################
+
+    - name: Configure sysctl parameters for Kubernetes
+      sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        sysctl_file: /etc/sysctl.d/k8s.conf
+        state: present
+        reload: yes
+      loop:
+        - { key: 'net.bridge.bridge-nf-call-iptables', value: '1' }
+        - { key: 'net.bridge.bridge-nf-call-ip6tables', value: '1' }
+        - { key: 'net.ipv4.ip_forward', value: '1' }
+
+    - name: Verify sysctl parameters are applied
+      command: sysctl -a
+      register: sysctl_output
+      changed_when: false
+      failed_when: >
+        'net.bridge.bridge-nf-call-iptables = 1' not in sysctl_output.stdout or
+        'net.bridge.bridge-nf-call-ip6tables = 1' not in sysctl_output.stdout or
+        'net.ipv4.ip_forward = 1' not in sysctl_output.stdout
+
+    ############################################################################
+    # CONTAINERD INSTALLATION
+    ############################################################################
+    # Install containerd as the container runtime for Kubernetes
+    # containerd is the industry-standard container runtime and recommended for K8s
+    ############################################################################
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install required packages for containerd
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - software-properties-common
+        state: present
+
+    - name: Create directory for apt keyrings
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Add Docker GPG key (for containerd packages)
+      shell: |
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+        chmod a+r /etc/apt/keyrings/docker.gpg
+      args:
+        creates: /etc/apt/keyrings/docker.gpg
+
+    - name: Add Docker repository (for containerd packages)
+      apt_repository:
+        repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+        filename: docker
+
+    - name: Update apt cache after adding Docker repository
+      apt:
+        update_cache: yes
+
+    - name: Install containerd
+      apt:
+        name: containerd.io
+        state: present
+
+    ############################################################################
+    # CONTAINERD CONFIGURATION
+    ############################################################################
+    # Configure containerd for Kubernetes:
+    # 1. Generate default config
+    # 2. Enable SystemdCgroup (required for kubelet)
+    # 3. Restart containerd to apply changes
+    ############################################################################
+
+    - name: Create containerd configuration directory
+      file:
+        path: /etc/containerd
+        state: directory
+        mode: '0755'
+
+    - name: Generate default containerd configuration
+      shell: containerd config default > /etc/containerd/config.toml
+      args:
+        creates: /etc/containerd/config.toml
+
+    - name: Configure containerd to use systemd cgroup driver
+      lineinfile:
+        path: /etc/containerd/config.toml
+        regexp: '^\s*SystemdCgroup\s*='
+        line: '            SystemdCgroup = true'
+        insertafter: '^\s*\[plugins\."io\.containerd\.grpc\.v1\.cri"\.containerd\.runtimes\.runc\.options\]'
+        state: present
+      notify: Restart containerd
+
+    - name: Enable and start containerd service
+      systemd:
+        name: containerd
+        state: started
+        enabled: yes
+        daemon_reload: yes
+
+    - name: Wait for containerd to be ready
+      wait_for:
+        path: /run/containerd/containerd.sock
+        state: present
+        timeout: 60
+
+    - name: Verify containerd is running
+      command: systemctl is-active containerd
+      register: containerd_status
+      changed_when: false
+      failed_when: containerd_status.stdout != "active"
+
+    ############################################################################
+    # FINAL VERIFICATION
+    ############################################################################
+
+    - name: Display prerequisites completion summary
+      debug:
+        msg:
+          - "=============================================="
+          - "Kubernetes Prerequisites Configured Successfully"
+          - "=============================================="
+          - "✓ Swap disabled permanently"
+          - "✓ Kernel modules loaded (overlay, br_netfilter)"
+          - "✓ Sysctl parameters configured"
+          - "✓ Containerd installed and running"
+          - "✓ Containerd configured for Kubernetes"
+          - ""
+          - "Node is ready for Kubernetes installation!"
+
+  ############################################################################
+  # HANDLERS
+  ############################################################################
+  # Handlers are tasks that run only when notified by other tasks
+  # This ensures services are restarted only when configuration changes
+  ############################################################################
+
+  handlers:
+    - name: Restart containerd
+      systemd:
+        name: containerd
+        state: restarted
+        daemon_reload: yes
+
+    - name: Verify swap is disabled
+      command: swapon --show
+      register: verify_swap_handler
+      changed_when: false
+      failed_when: verify_swap_handler.stdout != ""

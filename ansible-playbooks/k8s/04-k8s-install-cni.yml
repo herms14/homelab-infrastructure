@@ -1,0 +1,286 @@
+---
+################################################################################
+# Kubernetes CNI Installation Playbook (Calico)
+################################################################################
+# This playbook installs Calico as the Container Network Interface (CNI) plugin.
+#
+# CNI is REQUIRED for Kubernetes networking:
+# - Provides pod-to-pod communication
+# - Implements network policies
+# - Manages IP address allocation
+# - Enables service networking
+#
+# Without CNI, nodes will show "NotReady" status and pods cannot communicate.
+#
+# This playbook should be run AFTER:
+# - 01-k8s-prerequisites.yml
+# - 02-k8s-install.yml
+# - 03-k8s-init-cluster.yml
+#
+# This playbook is idempotent - will skip if Calico is already installed
+################################################################################
+
+- name: Install Calico CNI on Kubernetes Cluster
+  hosts: k8s_control_plane[0]  # Run only on primary control plane
+  become: yes
+  gather_facts: yes
+
+  vars:
+    # Calico version - update as needed
+    calico_version: "v3.27.0"
+    calico_manifest_url: "https://raw.githubusercontent.com/projectcalico/calico/{{ calico_version }}/manifests/calico.yaml"
+    calico_manifest_path: "/tmp/calico-{{ calico_version }}.yaml"
+
+  tasks:
+    ############################################################################
+    # PRE-INSTALLATION CHECKS
+    ############################################################################
+    # Check if Calico is already installed to make playbook idempotent
+    ############################################################################
+
+    - name: Check if Calico is already installed
+      command: kubectl get pods -n kube-system -l k8s-app=calico-node
+      register: calico_check
+      changed_when: false
+      failed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Set fact if Calico is already installed
+      set_fact:
+        calico_installed: "{{ calico_check.stdout_lines | length > 1 }}"
+
+    - name: Display Calico installation status
+      debug:
+        msg: "Calico is {{ 'already installed' if calico_installed else 'not installed' }}"
+
+    ############################################################################
+    # DOWNLOAD CALICO MANIFEST
+    ############################################################################
+    # Download Calico manifest from official repository
+    # Using specific version for reproducibility
+    ############################################################################
+
+    - name: Download Calico manifest
+      get_url:
+        url: "{{ calico_manifest_url }}"
+        dest: "{{ calico_manifest_path }}"
+        mode: '0644'
+      when: not calico_installed
+
+    - name: Verify Calico manifest was downloaded
+      stat:
+        path: "{{ calico_manifest_path }}"
+      register: calico_manifest
+      when: not calico_installed
+
+    - name: Fail if Calico manifest download failed
+      fail:
+        msg: "Failed to download Calico manifest from {{ calico_manifest_url }}"
+      when:
+        - not calico_installed
+        - not calico_manifest.stat.exists
+
+    ############################################################################
+    # MODIFY CALICO MANIFEST (if needed)
+    ############################################################################
+    # Ensure pod network CIDR matches cluster configuration
+    # Default Calico CIDR is 192.168.0.0/16
+    # Our cluster uses 10.244.0.0/16 (defined in inventory)
+    ############################################################################
+
+    - name: Check if pod network CIDR needs to be modified
+      lineinfile:
+        path: "{{ calico_manifest_path }}"
+        regexp: '^\s*#?\s*-\s*name:\s*CALICO_IPV4POOL_CIDR'
+        state: absent
+      check_mode: yes
+      register: cidr_check
+      when: not calico_installed
+
+    - name: Uncomment and set CALICO_IPV4POOL_CIDR in manifest
+      replace:
+        path: "{{ calico_manifest_path }}"
+        regexp: '^(\s*)#\s*-\s*name:\s*CALICO_IPV4POOL_CIDR\n\s*#\s*value:\s*"[^"]*"'
+        replace: '\1- name: CALICO_IPV4POOL_CIDR\n\1  value: "{{ k8s_pod_network_cidr }}"'
+      when: not calico_installed
+
+    ############################################################################
+    # APPLY CALICO MANIFEST
+    ############################################################################
+    # Apply Calico configuration to Kubernetes cluster
+    # This creates all necessary resources in kube-system namespace
+    ############################################################################
+
+    - name: Apply Calico manifest to cluster
+      command: kubectl apply -f {{ calico_manifest_path }}
+      register: calico_apply
+      when: not calico_installed
+      become_user: "{{ ansible_user }}"
+
+    - name: Display Calico application output
+      debug:
+        var: calico_apply.stdout_lines
+      when:
+        - not calico_installed
+        - calico_apply is changed
+
+    ############################################################################
+    # WAIT FOR CALICO PODS TO BE READY
+    ############################################################################
+    # Calico creates several pods:
+    # - calico-node: DaemonSet running on every node
+    # - calico-kube-controllers: Deployment for controller
+    # - calico-typha: (Optional) Deployment for scaling
+    #
+    # We wait for these pods to be Running before proceeding
+    ############################################################################
+
+    - name: Wait for Calico node pods to be created
+      command: kubectl get pods -n kube-system -l k8s-app=calico-node -o jsonpath='{.items[*].metadata.name}'
+      register: calico_node_pods
+      until: calico_node_pods.stdout != ""
+      retries: 30
+      delay: 10
+      when: not calico_installed
+      become_user: "{{ ansible_user }}"
+
+    - name: Wait for Calico node pods to be ready
+      command: kubectl wait --for=condition=Ready pods -n kube-system -l k8s-app=calico-node --timeout=600s
+      register: calico_node_ready
+      when: not calico_installed
+      become_user: "{{ ansible_user }}"
+
+    - name: Wait for Calico controller pods to be created
+      command: kubectl get pods -n kube-system -l k8s-app=calico-kube-controllers -o jsonpath='{.items[*].metadata.name}'
+      register: calico_controller_pods
+      until: calico_controller_pods.stdout != ""
+      retries: 30
+      delay: 10
+      when: not calico_installed
+      become_user: "{{ ansible_user }}"
+
+    - name: Wait for Calico controller pods to be ready
+      command: kubectl wait --for=condition=Ready pods -n kube-system -l k8s-app=calico-kube-controllers --timeout=600s
+      register: calico_controller_ready
+      when: not calico_installed
+      become_user: "{{ ansible_user }}"
+
+    ############################################################################
+    # VERIFY CALICO INSTALLATION
+    ############################################################################
+    # Verify all Calico components are running correctly
+    ############################################################################
+
+    - name: Get all Calico pods status
+      command: kubectl get pods -n kube-system -l k8s-app=calico-node -o wide
+      register: calico_pods_status
+      changed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Get Calico controller status
+      command: kubectl get pods -n kube-system -l k8s-app=calico-kube-controllers -o wide
+      register: calico_controller_status
+      changed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Verify nodes are now Ready
+      command: kubectl get nodes
+      register: nodes_status
+      changed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Check for any NotReady nodes
+      shell: kubectl get nodes | grep -i notready || true
+      register: notready_nodes
+      changed_when: false
+      become_user: "{{ ansible_user }}"
+
+    ############################################################################
+    # VERIFY NETWORKING
+    ############################################################################
+    # Test that pod networking is functional
+    ############################################################################
+
+    - name: Get Calico daemonset status
+      command: kubectl get daemonset calico-node -n kube-system
+      register: calico_daemonset
+      changed_when: false
+      become_user: "{{ ansible_user }}"
+
+    - name: Get Calico deployment status
+      command: kubectl get deployment calico-kube-controllers -n kube-system
+      register: calico_deployment
+      changed_when: false
+      become_user: "{{ ansible_user }}"
+
+    ############################################################################
+    # INSTALLATION SUMMARY
+    ############################################################################
+
+    - name: Display Calico installation summary
+      debug:
+        msg:
+          - "=============================================="
+          - "Calico CNI Installed Successfully"
+          - "=============================================="
+          - "Calico Version: {{ calico_version }}"
+          - "Pod Network CIDR: {{ k8s_pod_network_cidr }}"
+          - ""
+          - "Calico Node Pods (DaemonSet):"
+          - "{{ calico_pods_status.stdout }}"
+          - ""
+          - "Calico Controller:"
+          - "{{ calico_controller_status.stdout }}"
+          - ""
+          - "Node Status:"
+          - "{{ nodes_status.stdout }}"
+          - ""
+          - "✓ Calico CNI installed and running"
+          - "✓ Calico node pods running on all nodes"
+          - "✓ Calico controller pod running"
+          - "{{ '✓ All nodes are Ready' if notready_nodes.stdout == '' else '⚠️  Some nodes are NotReady' }}"
+          - ""
+          - "Pod networking is now functional!"
+          - "Cluster is ready to join additional nodes."
+
+    ############################################################################
+    # POST-INSTALLATION VERIFICATION
+    ############################################################################
+
+    - name: Fail if any nodes are NotReady after CNI installation
+      fail:
+        msg: |
+          Some nodes are NotReady after Calico installation.
+          NotReady nodes: {{ notready_nodes.stdout }}
+
+          This may indicate:
+          1. Calico pods are not running on all nodes
+          2. Node network configuration issues
+          3. Firewall blocking required ports
+
+          Check logs with: kubectl logs -n kube-system -l k8s-app=calico-node
+      when: notready_nodes.stdout != ""
+
+################################################################################
+# POST-INSTALLATION NOTES
+################################################################################
+# After this playbook completes:
+# 1. Calico CNI is installed and running on all control plane nodes
+# 2. Pod networking is functional
+# 3. Nodes should show "Ready" status
+# 4. Cluster is ready to join worker nodes
+#
+# Next steps:
+# 1. Run 05-k8s-join-nodes.yml to join additional control planes and workers
+#
+# Calico provides:
+# - Pod-to-pod networking across nodes
+# - Network policy enforcement
+# - IP address management (IPAM)
+# - BGP peering (if configured)
+#
+# Useful Calico commands:
+# - kubectl get pods -n kube-system -l k8s-app=calico-node
+# - kubectl logs -n kube-system -l k8s-app=calico-node
+# - calicoctl node status (requires calicoctl installation)
+################################################################################

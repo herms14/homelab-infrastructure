@@ -5,10 +5,10 @@
 locals {
   vm_groups = {
     # ============================================
-    # Agent 1: Ansible Controllers on node01
+    # Agent 1: Ansible Controller on node01
     # ============================================
     ansible-controller = {
-      count         = 2
+      count         = 1
       starting_ip   = "192.168.20.30"
       target_node   = "node01"
       template      = "tpl-ubuntuv24.04-v1"
@@ -41,7 +41,7 @@ locals {
     }
 
     k8s-worker = {
-      count         = 4
+      count         = 6
       starting_ip   = "192.168.20.40"
       target_node   = "node03"
       template      = "tpl-ubuntu-shared-v1"

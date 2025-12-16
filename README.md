@@ -14,7 +14,23 @@ This repository contains Terraform configurations for managing a 3-node Proxmox 
 - **Dynamic resource creation**: Terraform `for_each` for scalable infrastructure
 - **Cloud-init provisioning**: ✅ Fully operational automated VM configuration (UEFI boot support added Dec 2025)
 - **UEFI boot support**: Native UEFI template compatibility for modern cloud-init images
+- **Ansible automation**: Centralized configuration management with production-grade playbooks
 - **LXC container support**: Lightweight containers with persistent storage via NFS bind mounts
+
+## Current Infrastructure
+
+**Production Deployment (17 VMs):**
+- ✅ **Kubernetes Cluster**: 9 nodes (3 control plane + 6 workers) - Infrastructure deployed, pending initialization
+- ✅ **Ansible Automation**: 1 controller managing all infrastructure
+- ✅ **Application Services**: 7 VMs (logging, Docker hosts, Traefik, Authentik, Immich, GitLab)
+
+**Resources:**
+- **Total VMs**: 17 across 2 VLANs
+- **Total vCPUs**: 36 cores
+- **Total RAM**: 72GB
+- **Storage**: 370GB on NFS (Synology NAS)
+
+See [CLAUDE.md](./CLAUDE.md) for detailed infrastructure inventory.
 
 ## Architecture
 
@@ -398,8 +414,21 @@ df -h | grep 192.168.20.31
   - Storage architecture deep-dive
   - Network configuration and requirements
   - Node setup requirements (VLAN-aware bridges)
-  - Deployed infrastructure inventory
+  - Deployed infrastructure inventory (17 VMs across 2 VLANs)
   - Terraform usage guide
+
+- **[Kubernetes_Setup.md](./Kubernetes_Setup.md)**: Complete Kubernetes deployment guide:
+  - Production-grade 9-node HA cluster (3 controllers + 6 workers)
+  - Ansible playbook documentation with detailed explanations
+  - Every command explained with rationale
+  - Comprehensive troubleshooting section
+  - Post-installation tasks and verification
+
+- **[ANSIBLE_SETUP.md](./ANSIBLE_SETUP.md)**: Ansible automation documentation:
+  - Inventory organization and host groups
+  - SSH key configuration
+  - Common playbooks and commands
+  - Managed hosts status (9 VMs active, 5 offline K8s nodes)
 
 - **[TROUBLESHOOTING.md](./TROUBLESHOOTING.md)**: Detailed troubleshooting guide covering:
   - Cloud-init VM UEFI/BIOS boot mismatch resolution
