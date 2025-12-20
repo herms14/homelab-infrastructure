@@ -98,13 +98,7 @@ ssh hermes-admin@192.168.40.20 "cd /opt/traefik && sudo docker compose restart"
 
 ### API Keys
 
-| Service | API Key |
-|---------|---------|
-| Radarr | `21f807cf286941158e11ba6477853821` |
-| Sonarr | `50c598d01b294f929e5ecf36ae42ad2e` |
-| Lidarr | `13fe89b5dbdb45d48418e0879781ff3b` |
-| Prowlarr | `e5f64c69e6c04bd8ba5eb8952ed25dbc` |
-| Bazarr | `6c0037b075a3ee20f9818c14a3c35e7d` |
+API keys are stored in your internal documentation. Access Settings > General > API Key in each service to retrieve them.
 
 ### Manual Setup Needed
 

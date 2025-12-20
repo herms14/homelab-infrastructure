@@ -39,3 +39,9 @@ terraform.tfvars
 
 # Credentials file (contains sensitive API tokens and keys)
 CREDENTIALS.md
+
+# Sensitive network configuration (contains passwords)
+docs/legacy/2026-Omada-Network-Configuration.md
+
+# Obsidian vault (internal documentation with credentials)
+# The Obsidian vault is stored separately and should not be committed

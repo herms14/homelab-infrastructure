@@ -1,0 +1,93 @@
+---
+# Proxmox SSL Certificate Configuration
+# Configures Let's Encrypt certificates on all Proxmox nodes using DNS-01 challenge
+#
+# Prerequisites:
+# - Cloudflare API token with DNS edit permissions
+# - Domain configured in Cloudflare
+#
+# Usage:
+#   ansible-playbook proxmox/configure-ssl.yml -e "cf_api_token=YOUR_TOKEN"
+
+- name: Configure SSL certificates on Proxmox hosts
+  hosts: proxmox_nodes
+  become: yes
+  vars:
+    acme_email: "herms14@gmail.com"
+    acme_directory: "https://acme-v02.api.letsencrypt.org/directory"
+    domain: "hrmsmrflrii.xyz"
+
+  tasks:
+    - name: Check if ACME account is registered
+      command: pvenode acme account list
+      register: acme_accounts
+      changed_when: false
+      failed_when: false
+
+    - name: Register ACME account with Let's Encrypt
+      command: >
+        pvenode acme account register default
+        {{ acme_email }}
+        --directory {{ acme_directory }}
+      when: "'default' not in acme_accounts.stdout"
+      register: acme_register
+
+    - name: Create Cloudflare DNS plugin configuration
+      copy:
+        dest: /etc/pve/priv/acme/cloudflare.ini
+        content: |
+          CF_Token={{ cf_api_token }}
+          CF_Account_ID={{ cf_account_id | default('') }}
+        mode: '0600'
+        owner: root
+        group: root
+      when: cf_api_token is defined
+
+    - name: Check if DNS plugin is configured
+      command: pvenode acme plugin list
+      register: acme_plugins
+      changed_when: false
+      failed_when: false
+
+    - name: Add Cloudflare DNS plugin
+      command: >
+        pvenode acme plugin add dns cloudflare
+        --api cf
+        --data CF_Token={{ cf_api_token }}
+      when:
+        - cf_api_token is defined
+        - "'cloudflare' not in acme_plugins.stdout"
+      register: plugin_add
+
+    - name: Set node domain for certificate
+      command: pvenode config set --acme domains={{ inventory_hostname }}.{{ domain }}
+      register: set_domain
+
+    - name: Order certificate for node
+      command: pvenode acme cert order
+      register: cert_order
+      changed_when: "'Certificate successfully installed' in cert_order.stdout"
+      failed_when:
+        - cert_order.rc != 0
+        - "'already exists' not in cert_order.stderr"
+
+    - name: Verify certificate installation
+      stat:
+        path: /etc/pve/nodes/{{ inventory_hostname }}/pve-ssl.pem
+      register: cert_file
+
+    - name: Display certificate status
+      debug:
+        msg: "Certificate installed: {{ cert_file.stat.exists }}"
+
+    - name: Restart pveproxy to apply certificate
+      systemd:
+        name: pveproxy
+        state: restarted
+      when: cert_order.changed
+
+  handlers:
+    - name: restart pveproxy
+      systemd:
+        name: pveproxy
+        state: restarted

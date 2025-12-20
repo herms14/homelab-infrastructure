@@ -1,0 +1,366 @@
+---
+# Glance Dashboard Deployment
+# Deploys a comprehensive dashboard with all homelab monitoring widgets
+#
+# Features:
+# - Proxmox health monitoring
+# - Arr stack download progress
+# - NBA scores
+# - Bitcoin price
+# - MSFT stock price
+# - Network health via Omada/Prometheus
+# - OPNsense Unbound stats
+# - Kubernetes node status
+#
+# Usage:
+#   ansible-playbook glance/deploy-glance-dashboard.yml
+
+- name: Deploy Glance Dashboard
+  hosts: docker-vm-utilities01
+  become: yes
+  vars:
+    glance_path: /opt/glance
+    glance_port: 8080
+
+  tasks:
+    - name: Create Glance directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ glance_path }}"
+        - "{{ glance_path }}/config"
+        - "{{ glance_path }}/assets"
+
+    - name: Create Glance configuration
+      copy:
+        dest: "{{ glance_path }}/config/glance.yml"
+        content: |
+          server:
+            port: 8080
+            assets-path: /app/assets
+
+          theme:
+            background-color: 240 21 15
+            contrast-multiplier: 1.2
+            primary-color: 217 92 83
+            positive-color: 115 54 76
+            negative-color: 0 70 70
+
+          pages:
+            - name: Home
+              columns:
+                - size: small
+                  widgets:
+                    - type: clock
+                      hour-format: "24h"
+                      timezone: Asia/Manila
+
+                    - type: weather
+                      location: Manila, Philippines
+                      units: metric
+                      hour-format: "24h"
+
+                    - type: bookmarks
+                      title: Quick Links
+                      groups:
+                        - title: Infrastructure
+                          links:
+                            - title: Proxmox
+                              url: https://proxmox.hrmsmrflrii.xyz
+                            - title: Traefik
+                              url: https://traefik.hrmsmrflrii.xyz
+                            - title: OPNsense
+                              url: https://192.168.91.30
+                            - title: Portainer
+                              url: https://portainer.hrmsmrflrii.xyz
+
+                        - title: Services
+                          links:
+                            - title: Jellyfin
+                              url: https://jellyfin.hrmsmrflrii.xyz
+                            - title: GitLab
+                              url: https://gitlab.hrmsmrflrii.xyz
+                            - title: Immich
+                              url: https://photos.hrmsmrflrii.xyz
+                            - title: n8n
+                              url: https://n8n.hrmsmrflrii.xyz
+
+                - size: full
+                  widgets:
+                    - type: monitor
+                      title: Service Health
+                      cache: 1m
+                      sites:
+                        - title: Proxmox Node 01
+                          url: https://192.168.20.20:8006
+                          icon: si:proxmox
+                          allow-insecure: true
+                        - title: Proxmox Node 02
+                          url: https://192.168.20.21:8006
+                          icon: si:proxmox
+                          allow-insecure: true
+                        - title: Proxmox Node 03
+                          url: https://192.168.20.22:8006
+                          icon: si:proxmox
+                          allow-insecure: true
+                        - title: Traefik
+                          url: http://192.168.40.20:8080/api/overview
+                          icon: si:traefikproxy
+                        - title: Jellyfin
+                          url: http://192.168.40.11:8096/health
+                          icon: si:jellyfin
+                        - title: Radarr
+                          url: http://192.168.40.11:7878/api/v3/health
+                          icon: si:radarr
+                        - title: Sonarr
+                          url: http://192.168.40.11:8989/api/v3/health
+                          icon: si:sonarr
+                        - title: GitLab
+                          url: http://192.168.40.23/-/health
+                          icon: si:gitlab
+                        - title: Immich
+                          url: http://192.168.40.22:2283/api/server-info/ping
+                          icon: di:immich
+                        - title: Authentik
+                          url: http://192.168.40.21:9000/-/health/ready/
+                          icon: si:authentik
+
+                    - type: monitor
+                      title: Kubernetes Cluster
+                      cache: 1m
+                      sites:
+                        - title: K8s Controller 01
+                          url: https://192.168.20.32:6443/healthz
+                          icon: si:kubernetes
+                          allow-insecure: true
+                        - title: K8s Controller 02
+                          url: https://192.168.20.33:6443/healthz
+                          icon: si:kubernetes
+                          allow-insecure: true
+                        - title: K8s Controller 03
+                          url: https://192.168.20.34:6443/healthz
+                          icon: si:kubernetes
+                          allow-insecure: true
+                        - title: K8s Worker 01
+                          url: http://192.168.20.40:10248/healthz
+                          icon: si:kubernetes
+                        - title: K8s Worker 02
+                          url: http://192.168.20.41:10248/healthz
+                          icon: si:kubernetes
+                        - title: K8s Worker 03
+                          url: http://192.168.20.42:10248/healthz
+                          icon: si:kubernetes
+                        - title: K8s Worker 04
+                          url: http://192.168.20.43:10248/healthz
+                          icon: si:kubernetes
+                        - title: K8s Worker 05
+                          url: http://192.168.20.44:10248/healthz
+                          icon: si:kubernetes
+                        - title: K8s Worker 06
+                          url: http://192.168.20.45:10248/healthz
+                          icon: si:kubernetes
+
+                - size: small
+                  widgets:
+                    - type: markets
+                      title: Markets
+                      markets:
+                        - symbol: BTC-USD
+                          name: Bitcoin
+                        - symbol: MSFT
+                          name: Microsoft
+                        - symbol: AAPL
+                          name: Apple
+                        - symbol: SPY
+                          name: S&P 500
+
+                    - type: rss
+                      title: Tech News
+                      style: horizontal-cards
+                      feeds:
+                        - url: https://www.reddit.com/r/homelab/.rss
+                          title: r/homelab
+                        - url: https://www.reddit.com/r/selfhosted/.rss
+                          title: r/selfhosted
+                      limit: 5
+
+            - name: Media
+              columns:
+                - size: full
+                  widgets:
+                    - type: custom-api
+                      title: Arr Stack Downloads
+                      cache: 30s
+                      url: http://192.168.40.11:7878/api/v3/queue
+                      headers:
+                        X-Api-Key: "${RADARR_API_KEY}"
+                      template: |
+                        {{ range .data.records }}
+                        {{ .title }} - {{ .status }} ({{ .sizeleft | formatBytes }}/{{ .size | formatBytes }})
+                        {{ end }}
+
+                    - type: iframe
+                      title: Radarr Calendar
+                      source: http://192.168.40.11:7878/calendar
+                      height: 300
+
+                - size: small
+                  widgets:
+                    - type: bookmarks
+                      title: Media Apps
+                      groups:
+                        - title: Arr Stack
+                          links:
+                            - title: Radarr
+                              url: https://radarr.hrmsmrflrii.xyz
+                            - title: Sonarr
+                              url: https://sonarr.hrmsmrflrii.xyz
+                            - title: Lidarr
+                              url: https://lidarr.hrmsmrflrii.xyz
+                            - title: Prowlarr
+                              url: https://prowlarr.hrmsmrflrii.xyz
+                            - title: Bazarr
+                              url: https://bazarr.hrmsmrflrii.xyz
+                            - title: Jellyseerr
+                              url: https://jellyseerr.hrmsmrflrii.xyz
+
+            - name: Sports
+              columns:
+                - size: full
+                  widgets:
+                    - type: custom-api
+                      title: NBA Scores
+                      cache: 5m
+                      url: https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard
+                      template: |
+                        {{ range .events }}
+                        {{ .name }} - {{ .status.type.shortDetail }}
+                        {{ range .competitions }}
+                          {{ range .competitors }}
+                            {{ .team.displayName }}: {{ .score }}
+                          {{ end }}
+                        {{ end }}
+                        {{ end }}
+
+                    - type: custom-api
+                      title: NFL Scores
+                      cache: 5m
+                      url: https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard
+                      template: |
+                        {{ range .events }}
+                        {{ .name }} - {{ .status.type.shortDetail }}
+                        {{ end }}
+
+            - name: Network
+              columns:
+                - size: full
+                  widgets:
+                    - type: monitor
+                      title: Network Devices
+                      cache: 1m
+                      sites:
+                        - title: Core Router (ER605)
+                          url: http://192.168.0.1
+                          icon: di:tplink
+                        - title: Core Switch (SG3210)
+                          url: http://192.168.90.2
+                          icon: di:tplink
+                        - title: Morpheus Switch (SG2210P)
+                          url: http://192.168.90.3
+                          icon: di:tplink
+                        - title: Atreus Switch (ES20GP)
+                          url: http://192.168.90.51
+                          icon: di:tplink
+                        - title: OPNsense Firewall
+                          url: https://192.168.91.30
+                          allow-insecure: true
+                          icon: si:opnsense
+                        - title: Synology NAS
+                          url: http://192.168.20.31:5000
+                          icon: si:synology
+
+                    - type: custom-api
+                      title: OPNsense Unbound Statistics
+                      cache: 1m
+                      url: https://192.168.91.30/api/unbound/diagnostics/stats
+                      headers:
+                        Authorization: "Basic ${OPNSENSE_API_CREDENTIALS}"
+                      allow-insecure: true
+                      template: |
+                        Total Queries: {{ .data.total.num.queries }}
+                        Cache Hits: {{ .data.total.num.cachehits }}
+                        Blocked: {{ .data.total.num.zero_ttl }}
+        mode: '0644'
+
+    - name: Create environment file for secrets
+      copy:
+        dest: "{{ glance_path }}/.env"
+        content: |
+          RADARR_API_KEY=21f807cf286941158e11ba6477853821
+          SONARR_API_KEY=50c598d01b294f929e5ecf36ae42ad2e
+          OPNSENSE_API_CREDENTIALS=base64_encoded_key:secret
+        mode: '0600'
+
+    - name: Create Docker Compose file
+      copy:
+        dest: "{{ glance_path }}/docker-compose.yml"
+        content: |
+          version: '3.8'
+
+          services:
+            glance:
+              image: glanceapp/glance:latest
+              container_name: glance
+              restart: unless-stopped
+              ports:
+                - "{{ glance_port }}:8080"
+              volumes:
+                - {{ glance_path }}/config/glance.yml:/app/glance.yml:ro
+                - {{ glance_path }}/assets:/app/assets:ro
+              env_file:
+                - .env
+        mode: '0644'
+
+    - name: Deploy Glance container
+      community.docker.docker_compose:
+        project_src: "{{ glance_path }}"
+        state: present
+        pull: yes
+
+    - name: Wait for Glance to be ready
+      uri:
+        url: "http://localhost:{{ glance_port }}"
+        status_code: [200]
+      register: glance_status
+      until: glance_status.status == 200
+      retries: 30
+      delay: 2
+
+    - name: Display access information
+      debug:
+        msg: |
+          ===========================================
+          Glance Dashboard Deployed Successfully!
+          ===========================================
+
+          Access URL: http://192.168.40.10:{{ glance_port }}
+          External URL: https://glance.hrmsmrflrii.xyz
+
+          Dashboard Features:
+          ------------------
+          - Service Health Monitoring
+          - Kubernetes Cluster Status
+          - Bitcoin & Stock Prices (MSFT, AAPL, SPY)
+          - NBA & NFL Scores
+          - Network Device Status
+          - Arr Stack Download Progress
+          - OPNsense Unbound Statistics
+          - Tech News from Reddit
+
+          Configuration: {{ glance_path }}/config/glance.yml
+          Secrets: {{ glance_path }}/.env
+
+          To customize, edit glance.yml and restart:
+          cd {{ glance_path }} && docker compose restart

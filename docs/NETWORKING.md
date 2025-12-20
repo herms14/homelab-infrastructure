@@ -4,14 +4,62 @@
 
 ## Physical Network Topology
 
+```
+                                    Internet
+                                        │
+                                        ▼
+                              ┌─────────────────┐
+                              │   ISP Router    │
+                              │  192.168.100.1  │
+                              │   (Converge)    │
+                              └────────┬────────┘
+                                       │
+                              ┌────────▼────────┐
+                              │   Core Router   │
+                              │   ER605 v2.20   │
+                              │   192.168.0.1   │
+                              └────────┬────────┘
+                                       │
+                              ┌────────▼────────┐
+                              │  Atreus Switch  │
+                              │  ES20GP v1.0    │
+                              │  192.168.90.51  │
+                              │ (First Floor)   │
+                              └────────┬────────┘
+                                       │
+                              ┌────────▼────────┐
+                              │   Core Switch   │
+                              │  SG3210 v3.20   │
+                              │  192.168.90.2   │
+                              └────────┬────────┘
+                                       │
+          ┌────────────┬───────────────┼───────────────┬────────────┐
+          │            │               │               │            │
+          ▼            ▼               ▼               ▼            ▼
+    ┌──────────┐ ┌──────────┐  ┌──────────┐  ┌───────────┐  ┌──────────┐
+    │ Morpheus │ │ OPNsense │  │ Synology │  │  Wireless │  │  Other   │
+    │  Switch  │ │ Firewall │  │   NAS    │  │    APs    │  │ Devices  │
+    │ SG2210P  │ │  .91.30  │  │  .20.31  │  │ EAP225/   │  │          │
+    │  .90.3   │ │          │  │          │  │ EAP610    │  │          │
+    └────┬─────┘ └──────────┘  └──────────┘  └───────────┘  └──────────┘
+         │
+    ┌────┼────┬────┐
+    │    │    │    │
+    ▼    ▼    ▼    ▼
+  Node01 Node02 NAS  EAP
+  (.20) (.21) (.31) (.12)
+```
+
+**Physical Path**: ER605 Gateway → Atreus Switch → Core Switch (SG3210) → Morpheus Switch → Proxmox Nodes
+
 ### Network Hardware
 
 | Device | Model | IP Address | Purpose |
 |--------|-------|------------|---------|
 | Core Router | ER605 v2.20 | 192.168.0.1 | Main gateway, inter-VLAN routing |
+| Atreus Switch | ES20GP v1.0 | 192.168.90.51 | First floor distribution (router uplink) |
 | Core Switch | SG3210 v3.20 | 192.168.90.2 | Primary L2 switch, VLAN trunking |
 | Morpheus Switch | SG2210P v5.20 | 192.168.90.3 | Proxmox node connectivity (PoE) |
-| Atreus Switch | ES20GP v1.0 | 192.168.90.51 | First floor distribution |
 | Computer Room EAP | EAP225 v4.0 | 192.168.90.12 | WiFi AP |
 | Living Room EAP | EAP610 v3.0 | 192.168.90.10 | WiFi AP (primary) |
 | Outdoor EAP | EAP603-Outdoor v1.0 | 192.168.90.11 | Outdoor WiFi AP |

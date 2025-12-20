@@ -1,0 +1,166 @@
+---
+# Authentik Google SSO Configuration
+# Configures Google OAuth provider and creates applications for all services
+#
+# Prerequisites:
+# 1. Google Cloud Console OAuth 2.0 credentials
+#    - Go to: https://console.cloud.google.com/apis/credentials
+#    - Create OAuth 2.0 Client ID (Web application)
+#    - Authorized redirect URIs: https://auth.hrmsmrflrii.xyz/source/oauth/callback/google/
+#
+# 2. Authentik admin credentials
+#
+# Usage:
+#   ansible-playbook authentik/configure-google-sso.yml \
+#     -e "google_client_id=YOUR_CLIENT_ID" \
+#     -e "google_client_secret=YOUR_CLIENT_SECRET" \
+#     -e "authentik_token=YOUR_API_TOKEN"
+
+- name: Configure Authentik with Google SSO
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  vars:
+    authentik_url: "http://192.168.40.21:9000"
+    authentik_token: "{{ lookup('env', 'AUTHENTIK_TOKEN') }}"
+    google_client_id: "{{ lookup('env', 'GOOGLE_CLIENT_ID') }}"
+    google_client_secret: "{{ lookup('env', 'GOOGLE_CLIENT_SECRET') }}"
+
+    # Services to protect with Authentik
+    services:
+      - name: proxmox
+        url: https://proxmox.hrmsmrflrii.xyz
+        description: "Proxmox Cluster"
+      - name: traefik
+        url: https://traefik.hrmsmrflrii.xyz
+        description: "Traefik Dashboard"
+      - name: jellyfin
+        url: https://jellyfin.hrmsmrflrii.xyz
+        description: "Jellyfin Media Server"
+      - name: radarr
+        url: https://radarr.hrmsmrflrii.xyz
+        description: "Radarr Movie Manager"
+      - name: sonarr
+        url: https://sonarr.hrmsmrflrii.xyz
+        description: "Sonarr TV Manager"
+      - name: prowlarr
+        url: https://prowlarr.hrmsmrflrii.xyz
+        description: "Prowlarr Indexer"
+      - name: gitlab
+        url: https://gitlab.hrmsmrflrii.xyz
+        description: "GitLab DevOps"
+      - name: immich
+        url: https://photos.hrmsmrflrii.xyz
+        description: "Immich Photos"
+      - name: n8n
+        url: https://n8n.hrmsmrflrii.xyz
+        description: "n8n Automation"
+      - name: portainer
+        url: https://portainer.hrmsmrflrii.xyz
+        description: "Portainer Docker Manager"
+      - name: glance
+        url: https://glance.hrmsmrflrii.xyz
+        description: "Glance Dashboard"
+
+  tasks:
+    - name: Check Authentik connectivity
+      uri:
+        url: "{{ authentik_url }}/api/v3/core/applications/"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ authentik_token }}"
+        status_code: [200]
+      register: authentik_check
+      failed_when: false
+
+    - name: Fail if Authentik is not accessible
+      fail:
+        msg: "Cannot connect to Authentik API. Ensure the server is running and token is valid."
+      when: authentik_check.status != 200
+
+    - name: Check if Google OAuth source exists
+      uri:
+        url: "{{ authentik_url }}/api/v3/sources/oauth/?name=google"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ authentik_token }}"
+      register: google_source_check
+
+    - name: Create Google OAuth source
+      uri:
+        url: "{{ authentik_url }}/api/v3/sources/oauth/"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ authentik_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "google"
+          slug: "google"
+          enabled: true
+          authentication_flow: null
+          enrollment_flow: null
+          provider_type: "google"
+          consumer_key: "{{ google_client_id }}"
+          consumer_secret: "{{ google_client_secret }}"
+          user_matching_mode: "email_deny"
+        status_code: [201, 400]
+      when: google_source_check.json.results | length == 0
+      register: google_source_create
+
+    - name: Create OAuth2 provider for each service
+      uri:
+        url: "{{ authentik_url }}/api/v3/providers/oauth2/"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ authentik_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "{{ item.name }}-provider"
+          authorization_flow: null
+          client_type: "confidential"
+          redirect_uris: "{{ item.url }}/oauth2/callback"
+        status_code: [201, 400]
+      loop: "{{ services }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: provider_results
+      failed_when: false
+
+    - name: Create application for each service
+      uri:
+        url: "{{ authentik_url }}/api/v3/core/applications/"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ authentik_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "{{ item.name }}"
+          slug: "{{ item.name }}"
+          meta_launch_url: "{{ item.url }}"
+          meta_description: "{{ item.description }}"
+        status_code: [201, 400]
+      loop: "{{ services }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: app_results
+      failed_when: false
+
+    - name: Display summary
+      debug:
+        msg: |
+          Authentik Google SSO Configuration Complete!
+
+          Google OAuth Source: {{ 'Created' if google_source_create.changed | default(false) else 'Already exists' }}
+
+          Applications configured:
+          {% for svc in services %}
+          - {{ svc.name }}: {{ svc.url }}
+          {% endfor %}
+
+          Next Steps:
+          1. Navigate to Authentik Admin: https://auth.hrmsmrflrii.xyz/if/admin/
+          2. Configure each application with its OAuth2 provider
+          3. Update Traefik to use Authentik forward auth middleware
