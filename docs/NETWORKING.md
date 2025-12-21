@@ -281,6 +281,27 @@ All `*.hrmsmrflrii.xyz` subdomains resolve to `192.168.40.20` (Traefik)
 | Glance Dashboard | https://glance.hrmsmrflrii.xyz | 192.168.40.10:8080 |
 | n8n Automation | https://n8n.hrmsmrflrii.xyz | 192.168.40.10:5678 |
 
+### Monitoring & Observability (docker-vm-utilities01)
+
+| Service | URL | Backend | Purpose |
+|---------|-----|---------|---------|
+| Uptime Kuma | https://uptime.hrmsmrflrii.xyz | 192.168.40.10:3001 | Service uptime monitoring |
+| Prometheus | https://prometheus.hrmsmrflrii.xyz | 192.168.40.10:9090 | Metrics collection |
+| Grafana | https://grafana.hrmsmrflrii.xyz | 192.168.40.10:3030 | Dashboards |
+| Jaeger | https://jaeger.hrmsmrflrii.xyz | 192.168.40.10:16686 | Distributed tracing |
+| Demo App | https://demo.hrmsmrflrii.xyz | 192.168.40.10:8080 | OTEL demo application |
+
+### Internal Observability Endpoints (not externally exposed)
+
+| Service | Endpoint | Purpose |
+|---------|----------|---------|
+| Traefik Metrics | 192.168.40.20:8082/metrics | Prometheus scrape target |
+| OTEL Collector (gRPC) | 192.168.40.10:4317 | OTLP trace receiver |
+| OTEL Collector (HTTP) | 192.168.40.10:4318 | OTLP trace receiver |
+| OTEL Collector Metrics | 192.168.40.10:8888/metrics | Collector internal metrics |
+| OTEL Pipeline Metrics | 192.168.40.10:8889/metrics | Pipeline exporter metrics |
+| Jaeger Metrics | 192.168.40.10:14269/metrics | Jaeger internal metrics |
+
 ## Network Maintenance
 
 ### Omada Controller Backup

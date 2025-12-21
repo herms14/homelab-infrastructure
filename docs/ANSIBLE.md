@@ -24,7 +24,8 @@ cd ~/ansible
 ├── immich/
 │   └── deploy-immich.yml           # Photo management
 ├── traefik/
-│   └── deploy-traefik.yml          # Reverse proxy
+│   ├── deploy-traefik.yml          # Reverse proxy (basic)
+│   └── deploy-traefik-ssl.yml      # Reverse proxy with SSL + OTEL
 ├── gitlab/
 │   └── deploy-gitlab.yml           # DevOps platform
 ├── n8n/
@@ -33,11 +34,18 @@ cd ~/ansible
 │   └── configure-nfs-permissions.yml
 ├── opnsense/
 │   ├── add-dns-record.yml          # Single DNS record
-│   └── add-all-services-dns.yml    # All 22 homelab services
+│   ├── add-all-services-dns.yml    # All 27 homelab services
+│   └── add-observability-dns.yml   # Observability services only
 ├── k8s/
 │   └── k8s-deploy-all.yml          # Full K8s cluster
 └── callback_plugins/
     └── discord_notify.py           # Discord notifications
+
+~/ansible-playbooks/
+├── monitoring/
+│   ├── deploy-monitoring-stack.yml     # Prometheus, Grafana, Uptime Kuma
+│   └── deploy-observability-stack.yml  # OTEL Collector, Jaeger, Demo App
+└── ...
 ```
 
 ## Common Operations
@@ -74,11 +82,13 @@ See [Kubernetes_Setup.md](./legacy/Kubernetes_Setup.md) for complete guide.
 |---------|----------|-------------|
 | Docker | `docker/install-docker.yml` | Any VM |
 | Arr Stack | `docker/deploy-arr-stack.yml` | docker-vm-media01 |
-| Traefik | `traefik/deploy-traefik.yml` | traefik-vm01 |
+| Traefik (SSL + OTEL) | `traefik/deploy-traefik-ssl.yml` | traefik-vm01 |
 | Authentik | `authentik/deploy-authentik.yml` | authentik-vm01 |
 | Immich | `immich/deploy-immich.yml` | immich-vm01 |
 | GitLab | `gitlab/deploy-gitlab.yml` | gitlab-vm01 |
 | n8n | `n8n/deploy-n8n.yml` | docker-vm-utilities01 |
+| Monitoring Stack | `monitoring/deploy-monitoring-stack.yml` | docker-vm-utilities01 |
+| Observability Stack | `monitoring/deploy-observability-stack.yml` | docker-vm-utilities01 |
 
 ## OPNsense DNS Automation
 
@@ -104,6 +114,14 @@ ansible-playbook opnsense/add-dns-record.yml -e "hostname=myservice ip=192.168.4
 ```bash
 ansible-playbook opnsense/add-all-services-dns.yml
 ```
+
+### Add Observability Services Only
+
+```bash
+ansible-playbook opnsense/add-observability-dns.yml
+```
+
+Adds DNS for: uptime, prometheus, grafana, jaeger, demo
 
 ## Discord Notifications
 

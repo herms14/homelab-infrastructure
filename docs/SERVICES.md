@@ -322,6 +322,28 @@ ssh hermes-admin@192.168.40.10 "cd /opt/n8n && sudo docker compose pull && sudo 
 - **Prometheus**: Time-series metrics database for infrastructure monitoring
 - **Grafana**: Dashboard visualization (default login: admin/admin)
 
+### Datasources
+
+- **Prometheus**: Default datasource for metrics
+- **Jaeger**: Distributed tracing datasource
+
+### Dashboards
+
+- **Proxmox Cluster Overview**: Node status, memory, CPU metrics
+- **Traefik Observability**: Request rate, latency, error rate, status codes
+
+### Prometheus Scrape Targets
+
+| Target | Endpoint | Purpose |
+|--------|----------|---------|
+| Prometheus | localhost:9090 | Self-monitoring |
+| Proxmox VE | via PVE Exporter | Node metrics |
+| Traefik | 192.168.40.20:8082 | Request metrics |
+| OTEL Collector | 192.168.40.10:8888 | Collector metrics |
+| OTEL Pipeline | 192.168.40.10:8889 | Pipeline metrics |
+| Jaeger | 192.168.40.10:14269 | Tracing metrics |
+| Demo App | 192.168.40.10:8080 | Application metrics |
+
 ### Storage
 
 - Config: `/opt/monitoring/`
@@ -343,7 +365,68 @@ ssh hermes-admin@192.168.40.10 "cd /opt/monitoring && sudo docker compose restar
 ssh hermes-admin@192.168.40.10 "cd /opt/monitoring && sudo docker compose pull && sudo docker compose up -d"
 ```
 
-**Ansible**: `~/ansible/monitoring/deploy-monitoring-stack.yml`
+**Ansible**: `~/ansible-playbooks/monitoring/deploy-monitoring-stack.yml`
+
+---
+
+## Observability Stack
+
+**Host**: docker-vm-utilities01 (192.168.40.10)
+**Status**: Deployed December 21, 2025
+
+| Service | Port | URL | Purpose |
+|---------|------|-----|---------|
+| OTEL Collector | 4317/4318 | Internal | Trace/metrics collection |
+| Jaeger | 16686 | https://jaeger.hrmsmrflrii.xyz | Distributed tracing UI |
+| Demo App | 8080 | https://demo.hrmsmrflrii.xyz | Instrumented test app |
+
+### Components
+
+- **OpenTelemetry Collector**: Central receiver for traces and metrics from Traefik and applications
+- **Jaeger**: Distributed tracing visualization with OTLP support
+- **Demo App**: Python/Flask application instrumented with OpenTelemetry for testing
+
+### Trace Flow
+
+```
+Traefik → OTEL Collector → Jaeger → Grafana (optional)
+Demo App ↗
+```
+
+### Demo App Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `/` | Simple response with user info |
+| `/api/data` | Complex operation showing cache, DB, external API spans |
+| `/api/slow` | Slow operation (1-3s) for latency testing |
+| `/api/error` | Random failures for error trace testing |
+| `/health` | Health check |
+| `/metrics` | Prometheus metrics |
+
+### Storage
+
+- Config: `/opt/observability/`
+  - Docker Compose: `/opt/observability/docker-compose.yml`
+  - OTEL Collector: `/opt/observability/otel-collector/`
+  - Demo App: `/opt/observability/demo-app/`
+  - Jaeger data: Docker volume (in-memory, 50k traces max)
+
+### Management
+
+```bash
+# View logs
+ssh hermes-admin@192.168.40.10 "cd /opt/observability && sudo docker compose logs -f"
+
+# Restart all
+ssh hermes-admin@192.168.40.10 "cd /opt/observability && sudo docker compose restart"
+
+# Update
+ssh hermes-admin@192.168.40.10 "cd /opt/observability && sudo docker compose pull && sudo docker compose up -d"
+```
+
+**Ansible**: `~/ansible-playbooks/monitoring/deploy-observability-stack.yml`
+**Full Guide**: [OBSERVABILITY.md](./OBSERVABILITY.md)
 
 ---
 

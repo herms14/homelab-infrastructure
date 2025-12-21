@@ -8,6 +8,11 @@
 #   - Grafana: Visualization dashboards (port 3030)
 #   - PVE Exporter: Proxmox metrics for Prometheus
 #
+# Integrations:
+#   - Jaeger datasource for distributed tracing
+#   - Traefik metrics scraping
+#   - OTEL Collector metrics scraping
+#
 # Usage:
 #   ansible-playbook monitoring/deploy-monitoring-stack.yml
 
@@ -16,6 +21,7 @@
   become: yes
   vars:
     monitoring_dir: /opt/monitoring
+    domain: "hrmsmrflrii.xyz"
     # Proxmox API credentials (set via environment or extra vars)
     pve_host: "192.168.20.21"
     pve_user: "{{ lookup('env', 'PVE_USER') | default('root@pam', true) }}"
@@ -25,6 +31,9 @@
     prometheus_port: 9090
     grafana_port: 3030
     pve_exporter_port: 9221
+    # External service IPs
+    traefik_ip: "192.168.40.20"
+    utilities_ip: "192.168.40.10"
 
   tasks:
     - name: Create monitoring directory structure
@@ -62,12 +71,17 @@
           global:
             scrape_interval: 15s
             evaluation_interval: 15s
+            external_labels:
+              cluster: 'homelab'
+              env: 'production'
 
           scrape_configs:
             # Prometheus self-monitoring
             - job_name: 'prometheus'
               static_configs:
                 - targets: ['localhost:9090']
+                  labels:
+                    instance: 'prometheus'
 
             # Proxmox VE metrics via PVE Exporter
             - job_name: 'proxmox'
@@ -89,6 +103,51 @@
                 - target_label: __address__
                   replacement: pve-exporter:9221
 
+            # Traefik Metrics
+            - job_name: 'traefik'
+              static_configs:
+                - targets: ['{{ traefik_ip }}:8082']
+                  labels:
+                    instance: 'traefik-primary'
+              metrics_path: /metrics
+              scheme: http
+
+            # OpenTelemetry Collector Metrics
+            - job_name: 'otel-collector'
+              static_configs:
+                - targets: ['{{ utilities_ip }}:8888']
+                  labels:
+                    instance: 'otel-collector'
+              metrics_path: /metrics
+              scheme: http
+
+            # OTEL Collector Prometheus Exporter (pipeline metrics)
+            - job_name: 'otel-collector-pipeline'
+              static_configs:
+                - targets: ['{{ utilities_ip }}:8889']
+                  labels:
+                    instance: 'otel-pipeline'
+              metrics_path: /metrics
+              scheme: http
+
+            # Jaeger Metrics
+            - job_name: 'jaeger'
+              static_configs:
+                - targets: ['{{ utilities_ip }}:14269']
+                  labels:
+                    instance: 'jaeger'
+              metrics_path: /metrics
+              scheme: http
+
+            # Demo Application
+            - job_name: 'demo-app'
+              static_configs:
+                - targets: ['{{ utilities_ip }}:8080']
+                  labels:
+                    instance: 'demo-app'
+              metrics_path: /metrics
+              scheme: http
+
             # Node Exporter for host metrics (optional, if installed)
             - job_name: 'node'
               static_configs:
@@ -106,17 +165,42 @@
 
     - name: Create Grafana datasource provisioning
       copy:
-        dest: "{{ monitoring_dir }}/grafana/provisioning/datasources/prometheus.yml"
+        dest: "{{ monitoring_dir }}/grafana/provisioning/datasources/datasources.yml"
         mode: '0644'
         content: |
           apiVersion: 1
           datasources:
+            # Prometheus - Metrics
             - name: Prometheus
               type: prometheus
               access: proxy
               url: http://prometheus:9090
               isDefault: true
               editable: true
+              jsonData:
+                httpMethod: POST
+                manageAlerts: true
+                prometheusType: Prometheus
+
+            # Jaeger - Distributed Tracing
+            - name: Jaeger
+              type: jaeger
+              access: proxy
+              url: http://{{ utilities_ip }}:16686
+              editable: true
+              jsonData:
+                tracesToLogsV2:
+                  datasourceUid: ''
+                  spanStartTimeShift: ''
+                  spanEndTimeShift: ''
+                  filterByTraceID: false
+                  filterBySpanID: false
+                tracesToMetrics:
+                  datasourceUid: 'prometheus'
+                  spanStartTimeShift: ''
+                  spanEndTimeShift: ''
+                nodeGraph:
+                  enabled: true
 
     - name: Create Grafana dashboard provisioning
       copy:
@@ -593,6 +677,176 @@
             "weekStart": ""
           }
 
+    - name: Create Traefik observability dashboard
+      copy:
+        dest: "{{ monitoring_dir }}/grafana/dashboards/traefik-observability.json"
+        mode: '0644'
+        content: |
+          {
+            "annotations": {"list": []},
+            "editable": true,
+            "fiscalYearStartMonth": 0,
+            "graphTooltip": 1,
+            "id": null,
+            "links": [],
+            "liveNow": false,
+            "panels": [
+              {
+                "datasource": {"type": "prometheus", "uid": "prometheus"},
+                "fieldConfig": {
+                  "defaults": {
+                    "color": {"mode": "thresholds"},
+                    "mappings": [],
+                    "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+                    "unit": "reqps"
+                  },
+                  "overrides": []
+                },
+                "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+                "id": 1,
+                "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+                "pluginVersion": "10.0.0",
+                "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(rate(traefik_service_requests_total[5m]))", "refId": "A"}],
+                "title": "Request Rate",
+                "type": "stat"
+              },
+              {
+                "datasource": {"type": "prometheus", "uid": "prometheus"},
+                "fieldConfig": {
+                  "defaults": {
+                    "color": {"mode": "thresholds"},
+                    "mappings": [],
+                    "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.5}, {"color": "red", "value": 1}]},
+                    "unit": "s"
+                  },
+                  "overrides": []
+                },
+                "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+                "id": 2,
+                "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+                "pluginVersion": "10.0.0",
+                "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(traefik_service_request_duration_seconds_bucket[5m])) by (le))", "refId": "A"}],
+                "title": "P95 Latency",
+                "type": "stat"
+              },
+              {
+                "datasource": {"type": "prometheus", "uid": "prometheus"},
+                "fieldConfig": {
+                  "defaults": {
+                    "color": {"mode": "thresholds"},
+                    "mappings": [],
+                    "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}]},
+                    "unit": "percent"
+                  },
+                  "overrides": []
+                },
+                "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+                "id": 3,
+                "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+                "pluginVersion": "10.0.0",
+                "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(rate(traefik_service_requests_total{code=~\"5..\"}[5m])) / sum(rate(traefik_service_requests_total[5m])) * 100 or vector(0)", "refId": "A"}],
+                "title": "Error Rate %",
+                "type": "stat"
+              },
+              {
+                "datasource": {"type": "prometheus", "uid": "prometheus"},
+                "fieldConfig": {
+                  "defaults": {
+                    "color": {"mode": "thresholds"},
+                    "mappings": [],
+                    "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+                    "unit": "none"
+                  },
+                  "overrides": []
+                },
+                "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+                "id": 4,
+                "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+                "pluginVersion": "10.0.0",
+                "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "count(traefik_service_server_up)", "refId": "A"}],
+                "title": "Active Services",
+                "type": "stat"
+              },
+              {
+                "datasource": {"type": "prometheus", "uid": "prometheus"},
+                "fieldConfig": {
+                  "defaults": {
+                    "color": {"mode": "palette-classic"},
+                    "custom": {"axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 20, "gradientMode": "none", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}},
+                    "mappings": [],
+                    "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+                    "unit": "reqps"
+                  },
+                  "overrides": []
+                },
+                "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+                "id": 5,
+                "options": {"legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+                "pluginVersion": "10.0.0",
+                "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(rate(traefik_service_requests_total[5m])) by (service)", "legendFormat": "{{ '{{' }}service{{ '}}' }}", "refId": "A"}],
+                "title": "Requests by Service",
+                "type": "timeseries"
+              },
+              {
+                "datasource": {"type": "prometheus", "uid": "prometheus"},
+                "fieldConfig": {
+                  "defaults": {
+                    "color": {"mode": "palette-classic"},
+                    "custom": {"axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 20, "gradientMode": "none", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}},
+                    "mappings": [],
+                    "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+                    "unit": "s"
+                  },
+                  "overrides": []
+                },
+                "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+                "id": 6,
+                "options": {"legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+                "pluginVersion": "10.0.0",
+                "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(traefik_service_request_duration_seconds_bucket[5m])) by (le, service))", "legendFormat": "{{ '{{' }}service{{ '}}' }}", "refId": "A"}],
+                "title": "P95 Latency by Service",
+                "type": "timeseries"
+              },
+              {
+                "datasource": {"type": "prometheus", "uid": "prometheus"},
+                "fieldConfig": {
+                  "defaults": {
+                    "color": {"mode": "palette-classic"},
+                    "custom": {"axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "bars", "fillOpacity": 100, "gradientMode": "none", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false, "stacking": {"group": "A", "mode": "normal"}, "thresholdsStyle": {"mode": "off"}},
+                    "mappings": [],
+                    "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+                    "unit": "reqps"
+                  },
+                  "overrides": [
+                    {"matcher": {"id": "byRegexp", "options": "2.."}, "properties": [{"id": "color", "value": {"fixedColor": "green", "mode": "fixed"}}]},
+                    {"matcher": {"id": "byRegexp", "options": "3.."}, "properties": [{"id": "color", "value": {"fixedColor": "blue", "mode": "fixed"}}]},
+                    {"matcher": {"id": "byRegexp", "options": "4.."}, "properties": [{"id": "color", "value": {"fixedColor": "yellow", "mode": "fixed"}}]},
+                    {"matcher": {"id": "byRegexp", "options": "5.."}, "properties": [{"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}]}
+                  ]
+                },
+                "gridPos": {"h": 8, "w": 24, "x": 0, "y": 12},
+                "id": 7,
+                "options": {"legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+                "pluginVersion": "10.0.0",
+                "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(rate(traefik_service_requests_total[5m])) by (code)", "legendFormat": "{{ '{{' }}code{{ '}}' }}", "refId": "A"}],
+                "title": "Requests by Status Code",
+                "type": "timeseries"
+              }
+            ],
+            "refresh": "30s",
+            "schemaVersion": 38,
+            "style": "dark",
+            "tags": ["traefik", "observability"],
+            "templating": {"list": []},
+            "time": {"from": "now-1h", "to": "now"},
+            "timepicker": {},
+            "timezone": "",
+            "title": "Traefik Observability",
+            "uid": "traefik-observability",
+            "version": 1,
+            "weekStart": ""
+          }
+
     - name: Create Docker Compose file for monitoring stack
       copy:
         dest: "{{ monitoring_dir }}/docker-compose.yml"
@@ -696,18 +950,40 @@
           - "============================================"
           - ""
           - "Services:"
-          - "  Uptime Kuma:  http://192.168.40.10:{{ uptime_kuma_port }}"
-          - "  Prometheus:   http://192.168.40.10:{{ prometheus_port }}"
-          - "  Grafana:      http://192.168.40.10:{{ grafana_port }}"
-          - "  PVE Exporter: http://192.168.40.10:{{ pve_exporter_port }}"
+          - "  Uptime Kuma:  http://{{ utilities_ip }}:{{ uptime_kuma_port }}"
+          - "  Prometheus:   http://{{ utilities_ip }}:{{ prometheus_port }}"
+          - "  Grafana:      http://{{ utilities_ip }}:{{ grafana_port }}"
+          - "  PVE Exporter: http://{{ utilities_ip }}:{{ pve_exporter_port }}"
+          - ""
+          - "External URLs (via Traefik):"
+          - "  https://uptime.{{ domain }}"
+          - "  https://prometheus.{{ domain }}"
+          - "  https://grafana.{{ domain }}"
           - ""
           - "Grafana Credentials:"
           - "  Username: admin"
           - "  Password: admin (change on first login!)"
           - ""
+          - "Datasources Configured:"
+          - "  - Prometheus (default)"
+          - "  - Jaeger (distributed tracing)"
+          - ""
+          - "Dashboards Configured:"
+          - "  - Proxmox Cluster Overview"
+          - "  - Traefik Observability"
+          - ""
+          - "Prometheus Scrape Targets:"
+          - "  - Prometheus (self)"
+          - "  - Proxmox VE (via PVE Exporter)"
+          - "  - Traefik ({{ traefik_ip }}:8082)"
+          - "  - OTEL Collector ({{ utilities_ip }}:8888, 8889)"
+          - "  - Jaeger ({{ utilities_ip }}:14269)"
+          - "  - Demo App ({{ utilities_ip }}:8080)"
+          - ""
           - "Next Steps:"
-          - "  1. Add DNS records for monitoring.hrmsmrflrii.xyz, grafana.hrmsmrflrii.xyz, uptime.hrmsmrflrii.xyz"
-          - "  2. Add Traefik routes for the monitoring services"
+          - "  1. Deploy observability stack (deploy-observability-stack.yml)"
+          - "  2. Deploy updated Traefik config (deploy-traefik-ssl.yml)"
           - "  3. Set PVE_PASSWORD environment variable for Proxmox metrics"
-          - "  4. Import/view the pre-configured Proxmox dashboard in Grafana"
+          - "  4. View dashboards in Grafana"
+          - "  5. Explore traces in Jaeger"
           - "============================================"

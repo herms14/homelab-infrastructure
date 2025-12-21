@@ -1,0 +1,112 @@
+---
+# Add Observability Services to OPNsense DNS
+# Configures DNS host overrides for monitoring and tracing services
+#
+# Prerequisites:
+#   Set OPNSENSE_API_KEY and OPNSENSE_API_SECRET environment variables
+#   Or pass them as extra vars: -e "api_key=xxx api_secret=yyy"
+#
+# Usage:
+#   ansible-playbook opnsense/add-observability-dns.yml
+
+- name: Add Observability Services DNS Records
+  hosts: localhost
+  gather_facts: no
+  vars:
+    opnsense_url: "https://192.168.91.30"
+    domain: "hrmsmrflrii.xyz"
+    api_key: "{{ lookup('env', 'OPNSENSE_API_KEY') | default('') }}"
+    api_secret: "{{ lookup('env', 'OPNSENSE_API_SECRET') | default('') }}"
+    traefik_ip: "192.168.40.20"
+
+    # Observability services - all point to Traefik for reverse proxy
+    observability_services:
+      # Monitoring Stack
+      - hostname: uptime
+        description: "Uptime Kuma Service Monitoring"
+      - hostname: prometheus
+        description: "Prometheus Metrics Collection"
+      - hostname: grafana
+        description: "Grafana Dashboards & Visualization"
+
+      # Tracing Stack
+      - hostname: jaeger
+        description: "Jaeger Distributed Tracing"
+      - hostname: demo
+        description: "OpenTelemetry Demo Application"
+
+  tasks:
+    - name: Validate API credentials
+      fail:
+        msg: |
+          OPNsense API credentials not set!
+
+          To configure:
+          1. Login to OPNsense (https://192.168.91.30)
+          2. Go to: System > Access > Users
+          3. Edit your user (or create API user)
+          4. Click '+' next to API keys to generate key/secret
+          5. Set environment variables:
+             export OPNSENSE_API_KEY="your-api-key"
+             export OPNSENSE_API_SECRET="your-api-secret"
+      when: api_key == '' or api_secret == ''
+
+    - name: Add DNS host override for each observability service
+      uri:
+        url: "{{ opnsense_url }}/api/unbound/settings/addHostOverride"
+        method: POST
+        user: "{{ api_key }}"
+        password: "{{ api_secret }}"
+        force_basic_auth: yes
+        validate_certs: no
+        body_format: json
+        body:
+          host:
+            enabled: "1"
+            hostname: "{{ item.hostname }}"
+            domain: "{{ domain }}"
+            rr: "A"
+            server: "{{ traefik_ip }}"
+            description: "{{ item.description }}"
+        status_code: [200, 201]
+      loop: "{{ observability_services }}"
+      register: add_results
+      ignore_errors: yes
+
+    - name: Apply Unbound configuration
+      uri:
+        url: "{{ opnsense_url }}/api/unbound/service/reconfigure"
+        method: POST
+        user: "{{ api_key }}"
+        password: "{{ api_secret }}"
+        force_basic_auth: yes
+        validate_certs: no
+        body_format: json
+        body: {}
+        status_code: [200]
+
+    - name: Display summary
+      debug:
+        msg:
+          - "============================================"
+          - "Observability DNS Records Added to OPNsense"
+          - "============================================"
+          - ""
+          - "Services added ({{ observability_services | length }} total):"
+          - "  - uptime.{{ domain }}     -> {{ traefik_ip }}"
+          - "  - prometheus.{{ domain }} -> {{ traefik_ip }}"
+          - "  - grafana.{{ domain }}    -> {{ traefik_ip }}"
+          - "  - jaeger.{{ domain }}     -> {{ traefik_ip }}"
+          - "  - demo.{{ domain }}       -> {{ traefik_ip }}"
+          - ""
+          - "Verify with:"
+          - "  nslookup jaeger.{{ domain }} 192.168.91.30"
+          - "  nslookup demo.{{ domain }} 192.168.91.30"
+          - ""
+          - "Access URLs:"
+          - "  https://jaeger.{{ domain }}"
+          - "  https://demo.{{ domain }}"
+          - "  https://prometheus.{{ domain }}"
+          - "  https://grafana.{{ domain }}"
+          - "  https://uptime.{{ domain }}"
+          - "============================================"

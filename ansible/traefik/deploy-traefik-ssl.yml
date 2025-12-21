@@ -8,11 +8,15 @@
 # - Docker and Docker Compose installed (use docker/install-docker.yml first)
 # - Cloudflare API Token with Zone:DNS:Edit permissions
 # - OPNsense DNS configured to resolve *.hrmsmrflrii.xyz to 192.168.40.20
+# - Observability stack deployed for tracing (deploy-observability-stack.yml)
 #
 # Features:
 # - Let's Encrypt wildcard certificate for *.hrmsmrflrii.xyz
 # - Cloudflare DNS-01 challenge (no ports need to be open to internet)
-# - 14 services configured with HTTPS
+# - OpenTelemetry tracing integration
+# - Prometheus metrics endpoint
+# - Authentik ForwardAuth protection for admin endpoints
+# - 17+ services configured with HTTPS
 # - Automatic certificate renewal
 
 - name: Deploy Traefik with SSL (Let's Encrypt + Cloudflare)
@@ -47,6 +51,13 @@
     immich_ip: "192.168.40.22"
     gitlab_ip: "192.168.40.23"
     media_server_ip: "192.168.40.11"
+    utilities_server_ip: "192.168.40.10"
+
+    # OpenTelemetry Collector endpoint
+    otel_collector_endpoint: "http://192.168.40.10:4318/v1/traces"
+
+    # Metrics port (internal)
+    metrics_port: 8082
 
   tasks:
     # ============================================
@@ -88,6 +99,7 @@
         content: |
           # Traefik Static Configuration with Let's Encrypt SSL
           # Domain: {{ domain }}
+          # Features: OTEL Tracing, Prometheus Metrics, ForwardAuth
 
           global:
             checkNewVersion: false
@@ -104,10 +116,43 @@
             filePath: /logs/traefik.log
             format: json
 
+          # Access Log with trace correlation
           accessLog:
             filePath: /logs/access.log
             format: json
             bufferingSize: 100
+            fields:
+              defaultMode: keep
+              names:
+                ClientUsername: drop
+              headers:
+                defaultMode: keep
+                names:
+                  User-Agent: keep
+                  Authorization: drop
+                  X-Request-Id: keep
+                  Traceparent: keep
+
+          # OpenTelemetry Tracing
+          tracing:
+            otlp:
+              http:
+                endpoint: "{{ otel_collector_endpoint }}"
+            serviceName: "traefik"
+            sampleRate: 1.0
+
+          # Prometheus Metrics
+          metrics:
+            prometheus:
+              buckets:
+                - 0.1
+                - 0.3
+                - 1.2
+                - 5.0
+              addEntryPointsLabels: true
+              addRoutersLabels: true
+              addServicesLabels: true
+              entryPoint: metrics
 
           # Entrypoints
           entryPoints:
@@ -128,6 +173,8 @@
                     - main: "{{ domain }}"
                       sans:
                         - "*.{{ domain }}"
+            metrics:
+              address: ":{{ metrics_port }}"
 
           # Certificate Resolvers (Let's Encrypt)
           certificatesResolvers:
@@ -166,7 +213,8 @@
         mode: "0644"
         content: |
           # Traefik Dynamic Configuration - {{ domain }}
-          # 14 Services with SSL via Let's Encrypt
+          # 17+ Services with SSL via Let's Encrypt
+          # Features: Authentik ForwardAuth, Rate Limiting, OTEL Tracing
 
           http:
             # ==========================================
@@ -180,6 +228,8 @@
                 service: api@internal
                 entryPoints:
                   - websecure
+                middlewares:
+                  - authentik-auth
                 tls:
                   certResolver: letsencrypt
 
@@ -207,6 +257,58 @@
                 tls:
                   certResolver: letsencrypt
 
+              # --- Observability Services (docker-vm-utilities01) ---
+
+              jaeger:
+                rule: "Host(`jaeger.{{ domain }}`)"
+                service: jaeger
+                entryPoints:
+                  - websecure
+                middlewares:
+                  - authentik-auth
+                tls:
+                  certResolver: letsencrypt
+
+              prometheus:
+                rule: "Host(`prometheus.{{ domain }}`)"
+                service: prometheus
+                entryPoints:
+                  - websecure
+                middlewares:
+                  - authentik-auth
+                tls:
+                  certResolver: letsencrypt
+
+              grafana:
+                rule: "Host(`grafana.{{ domain }}`)"
+                service: grafana
+                entryPoints:
+                  - websecure
+                middlewares:
+                  - authentik-auth
+                tls:
+                  certResolver: letsencrypt
+
+              uptime-kuma:
+                rule: "Host(`uptime.{{ domain }}`)"
+                service: uptime-kuma
+                entryPoints:
+                  - websecure
+                middlewares:
+                  - authentik-auth
+                tls:
+                  certResolver: letsencrypt
+
+              demo-app:
+                rule: "Host(`demo.{{ domain }}`)"
+                service: demo-app
+                entryPoints:
+                  - websecure
+                middlewares:
+                  - authentik-auth
+                tls:
+                  certResolver: letsencrypt
+
               # --- Media Services (docker-vm-media01) ---
 
               jellyfin:
@@ -214,6 +316,8 @@
                 service: jellyfin
                 entryPoints:
                   - websecure
+                middlewares:
+                  - authentik-auth
                 tls:
                   certResolver: letsencrypt
 
@@ -222,6 +326,8 @@
                 service: radarr
                 entryPoints:
                   - websecure
+                middlewares:
+                  - authentik-auth
                 tls:
                   certResolver: letsencrypt
 
@@ -230,6 +336,8 @@
                 service: sonarr
                 entryPoints:
                   - websecure
+                middlewares:
+                  - authentik-auth
                 tls:
                   certResolver: letsencrypt
 
@@ -238,6 +346,8 @@
                 service: lidarr
                 entryPoints:
                   - websecure
+                middlewares:
+                  - authentik-auth
                 tls:
                   certResolver: letsencrypt
 
@@ -246,6 +356,8 @@
                 service: prowlarr
                 entryPoints:
                   - websecure
+                middlewares:
+                  - authentik-auth
                 tls:
                   certResolver: letsencrypt
 
@@ -254,6 +366,8 @@
                 service: bazarr
                 entryPoints:
                   - websecure
+                middlewares:
+                  - authentik-auth
                 tls:
                   certResolver: letsencrypt
 
@@ -262,6 +376,8 @@
                 service: overseerr
                 entryPoints:
                   - websecure
+                middlewares:
+                  - authentik-auth
                 tls:
                   certResolver: letsencrypt
 
@@ -270,6 +386,8 @@
                 service: jellyseerr
                 entryPoints:
                   - websecure
+                middlewares:
+                  - authentik-auth
                 tls:
                   certResolver: letsencrypt
 
@@ -278,6 +396,8 @@
                 service: tdarr
                 entryPoints:
                   - websecure
+                middlewares:
+                  - authentik-auth
                 tls:
                   certResolver: letsencrypt
 
@@ -286,6 +406,40 @@
                 service: autobrr
                 entryPoints:
                   - websecure
+                middlewares:
+                  - authentik-auth
+                tls:
+                  certResolver: letsencrypt
+
+              # --- Utility Services (docker-vm-utilities01) ---
+
+              n8n:
+                rule: "Host(`n8n.{{ domain }}`)"
+                service: n8n
+                entryPoints:
+                  - websecure
+                middlewares:
+                  - authentik-auth
+                tls:
+                  certResolver: letsencrypt
+
+              paperless:
+                rule: "Host(`paperless.{{ domain }}`)"
+                service: paperless
+                entryPoints:
+                  - websecure
+                middlewares:
+                  - authentik-auth
+                tls:
+                  certResolver: letsencrypt
+
+              glance:
+                rule: "Host(`glance.{{ domain }}`)"
+                service: glance
+                entryPoints:
+                  - websecure
+                middlewares:
+                  - authentik-auth
                 tls:
                   certResolver: letsencrypt
 
@@ -309,6 +463,33 @@
                 loadBalancer:
                   servers:
                     - url: "http://{{ gitlab_ip }}:80"
+
+              # --- Observability Services ---
+
+              jaeger:
+                loadBalancer:
+                  servers:
+                    - url: "http://{{ utilities_server_ip }}:16686"
+
+              prometheus:
+                loadBalancer:
+                  servers:
+                    - url: "http://{{ utilities_server_ip }}:9090"
+
+              grafana:
+                loadBalancer:
+                  servers:
+                    - url: "http://{{ utilities_server_ip }}:3030"
+
+              uptime-kuma:
+                loadBalancer:
+                  servers:
+                    - url: "http://{{ utilities_server_ip }}:3001"
+
+              demo-app:
+                loadBalancer:
+                  servers:
+                    - url: "http://{{ utilities_server_ip }}:8080"
 
               # --- Media Services ---
 
@@ -362,10 +543,46 @@
                   servers:
                     - url: "http://{{ media_server_ip }}:7474"
 
+              # --- Utility Services ---
+
+              n8n:
+                loadBalancer:
+                  servers:
+                    - url: "http://{{ utilities_server_ip }}:5678"
+
+              paperless:
+                loadBalancer:
+                  servers:
+                    - url: "http://{{ utilities_server_ip }}:8000"
+
+              glance:
+                loadBalancer:
+                  servers:
+                    - url: "http://{{ utilities_server_ip }}:8080"
+
             # ==========================================
             # MIDDLEWARES
             # ==========================================
             middlewares:
+              # Authentik ForwardAuth - Protects services with SSO
+              authentik-auth:
+                forwardAuth:
+                  address: "http://{{ authentik_ip }}:9000/outpost.goauthentik.io/auth/traefik"
+                  trustForwardHeader: true
+                  authResponseHeaders:
+                    - X-authentik-username
+                    - X-authentik-groups
+                    - X-authentik-email
+                    - X-authentik-name
+                    - X-authentik-uid
+                    - X-authentik-jwt
+                    - X-authentik-meta-jwks
+                    - X-authentik-meta-outpost
+                    - X-authentik-meta-provider
+                    - X-authentik-meta-app
+                    - X-authentik-meta-version
+
+              # Security headers
               secure-headers:
                 headers:
                   frameDeny: true
@@ -374,12 +591,15 @@
                   stsSeconds: 31536000
                   stsIncludeSubdomains: true
                   stsPreload: true
+                  customFrameOptionsValue: "SAMEORIGIN"
+                  referrerPolicy: "strict-origin-when-cross-origin"
 
-              # Rate limiting middleware (optional, for protection)
+              # Rate limiting middleware
               rate-limit:
                 rateLimit:
                   average: 100
                   burst: 50
+                  period: 1m
 
           # ==========================================
           # TLS OPTIONS
@@ -403,6 +623,7 @@
         mode: "0644"
         content: |
           # Traefik with Let's Encrypt SSL via Cloudflare DNS
+          # Features: OTEL Tracing, Prometheus Metrics, ForwardAuth
           name: traefik
 
           services:
@@ -415,6 +636,7 @@
               ports:
                 - "80:80"
                 - "443:443"
+                - "{{ metrics_port }}:{{ metrics_port }}"  # Prometheus metrics
                 # Dashboard now accessible via HTTPS at traefik.{{ domain }}
               volumes:
                 - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -427,6 +649,17 @@
                 - CF_DNS_API_TOKEN={{ cloudflare_api_token }}
               networks:
                 - traefik-network
+              healthcheck:
+                test: ["CMD", "traefik", "healthcheck", "--ping"]
+                interval: 30s
+                timeout: 10s
+                retries: 3
+                start_period: 10s
+              logging:
+                driver: "json-file"
+                options:
+                  max-size: "10m"
+                  max-file: "5"
 
           networks:
             traefik-network:
@@ -482,6 +715,7 @@
 
           Domain: {{ domain }}
           Certificate: Wildcard (*.{{ domain }})
+          Features: OTEL Tracing, Prometheus Metrics, ForwardAuth
 
           IMPORTANT: Configure OPNsense DNS!
           ------------------------------------
@@ -496,27 +730,49 @@
           Service URLs (after DNS configured):
           ------------------------------------
           Core Services:
-            - https://traefik.{{ domain }}     (Dashboard)
+            - https://traefik.{{ domain }}     (Dashboard - Protected)
             - https://auth.{{ domain }}        (Authentik)
             - https://photos.{{ domain }}      (Immich)
             - https://gitlab.{{ domain }}      (GitLab)
 
+          Observability Services:
+            - https://jaeger.{{ domain }}      (Distributed Tracing - Protected)
+            - https://prometheus.{{ domain }}  (Metrics - Protected)
+            - https://grafana.{{ domain }}     (Dashboards - Protected)
+            - https://uptime.{{ domain }}      (Uptime Kuma - Protected)
+            - https://demo.{{ domain }}        (Demo App - Protected)
+
           Media Services:
-            - https://jellyfin.{{ domain }}    (Media Server)
-            - https://radarr.{{ domain }}      (Movies)
-            - https://sonarr.{{ domain }}      (TV Shows)
-            - https://lidarr.{{ domain }}      (Music)
-            - https://prowlarr.{{ domain }}    (Indexers)
-            - https://bazarr.{{ domain }}      (Subtitles)
-            - https://overseerr.{{ domain }}   (Requests - Plex)
-            - https://jellyseerr.{{ domain }}  (Requests - Jellyfin)
-            - https://tdarr.{{ domain }}       (Transcoding)
-            - https://autobrr.{{ domain }}     (Automation)
+            - https://jellyfin.{{ domain }}    (Media Server - Protected)
+            - https://radarr.{{ domain }}      (Movies - Protected)
+            - https://sonarr.{{ domain }}      (TV Shows - Protected)
+            - https://lidarr.{{ domain }}      (Music - Protected)
+            - https://prowlarr.{{ domain }}    (Indexers - Protected)
+            - https://bazarr.{{ domain }}      (Subtitles - Protected)
+            - https://overseerr.{{ domain }}   (Requests - Protected)
+            - https://jellyseerr.{{ domain }}  (Requests - Protected)
+            - https://tdarr.{{ domain }}       (Transcoding - Protected)
+            - https://autobrr.{{ domain }}     (Automation - Protected)
+
+          Utility Services:
+            - https://n8n.{{ domain }}         (Workflow Automation - Protected)
+            - https://paperless.{{ domain }}   (Documents - Protected)
+            - https://glance.{{ domain }}      (Dashboard - Protected)
+
+          Metrics Endpoint:
+          ------------------------------------
+          Internal: http://{{ ansible_host }}:{{ metrics_port }}/metrics
 
           Verification:
           ------------------------------------
           # Check certificate status
           docker logs traefik | grep -i "certificate"
+
+          # Check OTEL tracing
+          docker logs traefik | grep -i "otel\|trace"
+
+          # Test metrics endpoint
+          curl http://{{ ansible_host }}:{{ metrics_port }}/metrics | head -20
 
           # View acme.json (contains certificates)
           cat {{ traefik_dir }}/certs/acme.json | jq '.letsencrypt'

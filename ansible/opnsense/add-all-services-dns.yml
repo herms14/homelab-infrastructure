@@ -73,6 +73,18 @@
       - hostname: n8n
         description: "n8n Workflow Automation"
 
+      # Monitoring & Observability Services
+      - hostname: uptime
+        description: "Uptime Kuma Service Monitoring"
+      - hostname: prometheus
+        description: "Prometheus Metrics"
+      - hostname: grafana
+        description: "Grafana Dashboards"
+      - hostname: jaeger
+        description: "Jaeger Distributed Tracing"
+      - hostname: demo
+        description: "OpenTelemetry Demo Application"
+
       # Kubernetes Services
       - hostname: k8s-test
         description: "Kubernetes Test Service (nginx)"
@@ -135,7 +147,15 @@
           - "============================================"
           - "All services now resolve to Traefik ({{ traefik_ip }})"
           - ""
+          - "Services by category:"
+          - "  - Infrastructure: traefik, proxmox, node01-03"
+          - "  - Core: auth, photos, gitlab"
+          - "  - Media: jellyfin, radarr, sonarr, lidarr, prowlarr, bazarr, overseerr, jellyseerr, tdarr, autobrr"
+          - "  - Utility: paperless, glance, n8n"
+          - "  - Observability: uptime, prometheus, grafana, jaeger, demo"
+          - "  - Kubernetes: k8s-test"
+          - ""
           - "Verify with:"
           - "  nslookup traefik.{{ domain }} 192.168.91.30"
-          - "  nslookup n8n.{{ domain }} 192.168.91.30"
+          - "  nslookup jaeger.{{ domain }} 192.168.91.30"
           - "============================================"
