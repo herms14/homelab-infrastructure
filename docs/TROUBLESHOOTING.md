@@ -283,6 +283,169 @@ sudo docker compose down && sudo docker compose build --no-cache && sudo docker 
 
 ## Service-Specific Issues
 
+### Immich Container Restart Loop - Missing Directory Structure
+
+**Resolved**: December 21, 2025
+
+**Symptoms**:
+- Immich container status shows "Restarting"
+- Logs show: `Failed to read: "<UPLOAD_LOCATION>/encoded-video/.immich"`
+- Container never becomes healthy
+
+**Root Cause**: When pointing Immich to a new empty NFS share, the required directory structure with `.immich` marker files doesn't exist. Immich performs system integrity checks on startup.
+
+**Diagnosis**:
+```bash
+ssh hermes-admin@192.168.40.22 "sudo docker logs immich-server --tail 30 2>&1 | grep -i error"
+```
+
+**Fix**:
+```bash
+ssh hermes-admin@192.168.40.22 "for dir in thumbs upload backups library profile encoded-video; do \
+  sudo mkdir -p /mnt/immich-uploads/\$dir && \
+  sudo touch /mnt/immich-uploads/\$dir/.immich; \
+done"
+
+ssh hermes-admin@192.168.40.22 "cd /opt/immich && sudo docker compose restart immich-server"
+```
+
+**Verification**:
+```bash
+ssh hermes-admin@192.168.40.22 "sudo docker ps --filter name=immich-server --format '{{.Status}}'"
+# Should show "Up X seconds (healthy)" after ~30 seconds
+```
+
+**Prevention**: The Ansible playbook now includes tasks to create the directory structure automatically.
+
+---
+
+### Immich External Library Not Visible
+
+**Resolved**: December 21, 2025
+
+**Symptoms**:
+- Immich UI shows "Click to upload your first photo"
+- NFS mounts working on host but photos not visible in Immich
+
+**Root Cause**: Docker volume mappings missing from docker-compose.yml. The container couldn't see the mounted directories.
+
+**Diagnosis**:
+```bash
+# Check if container can see external library
+ssh hermes-admin@192.168.40.22 "sudo docker exec immich-server ls /usr/src/app/external/ 2>&1"
+# Returns "No such file or directory" if mapping missing
+```
+
+**Fix**: Update `/opt/immich/docker-compose.yml` volumes section:
+```yaml
+volumes:
+  - /mnt/immich-uploads:/usr/src/app/upload
+  - /mnt/synology-photos:/usr/src/app/external/synology:ro
+```
+
+Then restart:
+```bash
+ssh hermes-admin@192.168.40.22 "cd /opt/immich && sudo docker compose down && sudo docker compose up -d"
+```
+
+**Verification**:
+```bash
+ssh hermes-admin@192.168.40.22 "sudo docker exec immich-server ls /usr/src/app/external/synology/ | head -3"
+```
+
+---
+
+### Immich Bad Gateway - NFS Mounts Not Mounted After Boot
+
+**Resolved**: December 21, 2025
+
+**Symptoms**:
+- Browser shows "Bad Gateway" when accessing https://photos.hrmsmrflrii.xyz
+- Immich container in restart loop with status "health: starting"
+- Logs show: `Failed to read: "<UPLOAD_LOCATION>/encoded-video/.immich"`
+- `microservices worker exited with code 1`
+
+**Root Cause**: After VM reboot, NFS mounts (`/mnt/immich-uploads`, `/mnt/synology-photos`) did not mount automatically despite being in `/etc/fstab`. Immich's storage integrity check fails when the upload directory is empty or inaccessible.
+
+**Diagnosis**:
+```bash
+# Check if NFS mounts are active
+ssh -o ProxyJump=root@192.168.20.21 hermes-admin@192.168.40.22 "mount | grep nfs"
+# Empty output = mounts missing
+
+# Check upload directory
+ssh -o ProxyJump=root@192.168.20.21 hermes-admin@192.168.40.22 "ls -la /mnt/immich-uploads/"
+# If empty or shows local disk, mount is missing
+
+# Check container logs for storage errors
+ssh -o ProxyJump=root@192.168.20.21 hermes-admin@192.168.40.22 "docker logs immich-server --tail 30 2>&1 | grep -i 'error\|failed'"
+```
+
+**Fix**:
+```bash
+# Step 1: Mount all NFS shares from fstab
+ssh -o ProxyJump=root@192.168.20.21 hermes-admin@192.168.40.22 "sudo mount -a"
+
+# Step 2: Verify mounts are active
+ssh -o ProxyJump=root@192.168.20.21 hermes-admin@192.168.40.22 "mount | grep -E 'immich|synology'"
+
+# Step 3: Verify upload directory has content
+ssh -o ProxyJump=root@192.168.20.21 hermes-admin@192.168.40.22 "ls -la /mnt/immich-uploads/"
+
+# Step 4: Restart Immich server container
+ssh -o ProxyJump=root@192.168.20.21 hermes-admin@192.168.40.22 "cd /opt/immich && docker compose restart immich-server"
+```
+
+**Verification**:
+```bash
+# Wait 30 seconds for health check, then verify
+ssh -o ProxyJump=root@192.168.20.21 hermes-admin@192.168.40.22 "docker ps --format 'table {{.Names}}\t{{.Status}}' | grep immich"
+# Should show "Up X seconds (healthy)"
+
+# Test API endpoint
+ssh -o ProxyJump=root@192.168.20.21 hermes-admin@192.168.40.22 "curl -s -o /dev/null -w '%{http_code}' http://localhost:2283/api/server/ping"
+# Should return 200
+```
+
+**Prevention** (Implemented on immich-vm01):
+
+Create a systemd service that mounts NFS before Docker starts:
+
+```bash
+# Create the service file
+cat << 'EOF' | sudo tee /etc/systemd/system/mount-nfs-before-docker.service
+[Unit]
+Description=Mount NFS shares before Docker
+After=network-online.target remote-fs.target
+Before=docker.service
+Wants=network-online.target
+RequiresMountsFor=/mnt
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=/bin/sleep 5
+ExecStart=/bin/mount -a
+ExecStart=/bin/bash -c 'mount | grep -q immich-uploads && echo NFS mounts ready || (echo NFS mount failed && exit 1)'
+
+[Install]
+WantedBy=multi-user.target docker.service
+EOF
+
+# Enable the service
+sudo systemctl daemon-reload
+sudo systemctl enable mount-nfs-before-docker.service
+```
+
+This ensures NFS mounts are ready before Docker containers start, preventing the "Bad Gateway" issue after reboots or migrations.
+
+**Note**: If SSH to 192.168.40.22 times out from your workstation, use ProxyJump through a Proxmox node:
+```bash
+ssh -o ProxyJump=root@192.168.20.20 hermes-admin@192.168.40.22 "<command>"
+```
+
+---
+
 ### GitLab Unsupported Config Value (grafana)
 
 **Resolved**: December 20, 2025
@@ -471,10 +634,33 @@ print(f'Providers: {outpost.providers.count()}')
 
 ---
 
+### Immich
+
+```bash
+# Check container health
+ssh hermes-admin@192.168.40.22 "sudo docker ps --filter name=immich --format 'table {{.Names}}\t{{.Status}}'"
+
+# View Immich logs
+ssh hermes-admin@192.168.40.22 "sudo docker logs immich-server --tail 50"
+
+# Verify NFS mounts
+ssh hermes-admin@192.168.40.22 "mount | grep -E 'synology|immich'"
+
+# Check container volume access
+ssh hermes-admin@192.168.40.22 "sudo docker exec immich-server ls /usr/src/app/external/synology/ | head -5"
+ssh hermes-admin@192.168.40.22 "sudo docker exec immich-server ls /usr/src/app/upload/"
+
+# Test API health
+ssh hermes-admin@192.168.40.22 "curl -s http://localhost:2283/api/server/ping"
+```
+
+---
+
 ## Related Documentation
 
 - [Proxmox](./PROXMOX.md) - Cluster configuration
 - [Networking](./NETWORKING.md) - Network configuration
 - [Terraform](./TERRAFORM.md) - Deployment configuration
 - [Services](./SERVICES.md) - Docker services
+- [Application Configurations](./APPLICATION_CONFIGURATIONS.md) - Detailed app setup guides
 - [Ansible](./ANSIBLE.md) - Automation playbooks

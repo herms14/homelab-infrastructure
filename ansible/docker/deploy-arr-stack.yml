@@ -12,9 +12,11 @@
 # - Bazarr        (6767)  - Subtitle management
 # - Overseerr     (5055)  - Media request management (Plex)
 # - Jellyseerr    (5056)  - Media request management (Jellyfin)
-# - Lidarr        (8686)  - Music management (assuming "kidarr" meant Lidarr)
+# - Lidarr        (8686)  - Music management
 # - Tdarr         (8265)  - Transcoding automation
 # - Autobrr       (7474)  - Torrent automation
+# - Deluge        (8112)  - BitTorrent download client
+# - SABnzbd       (8081)  - Usenet download client
 #
 # Prerequisites:
 # - Docker and Docker Compose installed (use install-docker.yml first)
@@ -114,6 +116,8 @@
         - tdarr/logs
         - tdarr/transcode_cache
         - autobrr
+        - deluge
+        - sabnzbd
         - downloads/complete
         - downloads/incomplete
         - downloads/torrents
@@ -453,6 +457,52 @@
               networks:
                 - arr-network
 
+            # ============================================
+            # DELUGE - BitTorrent Client
+            # ============================================
+            # Web UI: http://host-ip:8112
+            # Purpose: Download torrents for Radarr/Sonarr/Lidarr
+            # Default password: deluge (change immediately!)
+            deluge:
+              image: lscr.io/linuxserver/deluge:latest
+              container_name: deluge
+              restart: unless-stopped
+              environment:
+                - PUID={{ puid }}
+                - PGID={{ pgid }}
+                - TZ={{ timezone }}
+                - DELUGE_LOGLEVEL=error
+              volumes:
+                - {{ arr_base_dir }}/deluge:/config
+                - {{ downloads_dir }}:/downloads
+              ports:
+                - 8112:8112      # Web UI
+                - 6881:6881      # Incoming connections
+                - 6881:6881/udp  # Incoming connections UDP
+              networks:
+                - arr-network
+
+            # ============================================
+            # SABNZBD - Usenet Client
+            # ============================================
+            # Web UI: http://host-ip:8081
+            # Purpose: Download from Usenet for Radarr/Sonarr/Lidarr
+            sabnzbd:
+              image: lscr.io/linuxserver/sabnzbd:latest
+              container_name: sabnzbd
+              restart: unless-stopped
+              environment:
+                - PUID={{ puid }}
+                - PGID={{ pgid }}
+                - TZ={{ timezone }}
+              volumes:
+                - {{ arr_base_dir }}/sabnzbd:/config
+                - {{ downloads_dir }}:/downloads
+              ports:
+                - 8081:8080      # Web UI (mapped to avoid conflicts)
+              networks:
+                - arr-network
+
           # ============================================
           # NETWORKS
           # ============================================
@@ -525,6 +575,10 @@
             - Prowlarr:     http://{{ ansible_host }}:9696  (Indexers)
             - Autobrr:      http://{{ ansible_host }}:7474  (IRC/Automation)
 
+          Download Clients:
+            - Deluge:       http://{{ ansible_host }}:8112  (Torrents)
+            - SABnzbd:      http://{{ ansible_host }}:8081  (Usenet)
+
           Request Management:
             - Overseerr:    http://{{ ansible_host }}:5055  (Plex requests)
             - Jellyseerr:   http://{{ ansible_host }}:5056  (Jellyfin requests)
@@ -538,10 +592,13 @@
             - Downloads:    {{ downloads_dir }}
 
           Next Steps:
-          1. Configure Prowlarr first (add indexers)
-          2. Connect Prowlarr to Radarr/Sonarr/Lidarr
-          3. Set up Jellyfin libraries
-          4. Configure Jellyseerr with Jellyfin connection
-          5. (Optional) Set up Tdarr transcode rules
+          1. Configure Deluge (change default password: deluge)
+          2. Configure SABnzbd (complete setup wizard, add Usenet server)
+          3. Configure Prowlarr (add indexers)
+          4. Connect Prowlarr to Radarr/Sonarr/Lidarr
+          5. Add Deluge + SABnzbd as download clients in Radarr/Sonarr/Lidarr
+          6. Set up Jellyfin libraries
+          7. Configure Jellyseerr with Jellyfin connection
+          8. (Optional) Set up Tdarr transcode rules
 
           ============================================

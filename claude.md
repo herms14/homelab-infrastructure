@@ -11,10 +11,13 @@ Terraform infrastructure-as-code for deploying VMs and LXC containers on a Proxm
 | **Storage** | [docs/STORAGE.md](./docs/STORAGE.md) - NFS, Synology, storage pools |
 | **Terraform** | [docs/TERRAFORM.md](./docs/TERRAFORM.md) - Modules, deployment |
 | **Services** | [docs/SERVICES.md](./docs/SERVICES.md) - Docker services |
+| **App Config** | [docs/APPLICATION_CONFIGURATIONS.md](./docs/APPLICATION_CONFIGURATIONS.md) - Detailed app setup |
 | **Ansible** | [docs/ANSIBLE.md](./docs/ANSIBLE.md) - Automation, playbooks |
 | **Inventory** | [docs/INVENTORY.md](./docs/INVENTORY.md) - Deployed infrastructure |
 | **Observability** | [docs/OBSERVABILITY.md](./docs/OBSERVABILITY.md) - Tracing, metrics |
 | **Watchtower** | [docs/WATCHTOWER.md](./docs/WATCHTOWER.md) - Interactive container updates |
+| **CI/CD** | [docs/CICD.md](./docs/CICD.md) - Automated service onboarding |
+| **Service Onboarding** | [docs/SERVICE_ONBOARDING.md](./docs/SERVICE_ONBOARDING.md) - Automated status checker |
 | **Troubleshooting** | [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md) - Common issues |
 
 ## Infrastructure Overview
@@ -36,12 +39,12 @@ Terraform infrastructure-as-code for deploying VMs and LXC containers on a Proxm
 
 ### Deployed Infrastructure
 
-**17 VMs Total**: 1 Ansible + 9 Kubernetes + 7 Services
+**18 VMs Total**: 1 Ansible + 9 Kubernetes + 8 Services
 
 | Category | Hosts | Details |
 |----------|-------|---------|
 | Kubernetes | 9 VMs | 3 controllers + 6 workers (v1.28.15) |
-| Services | 7 VMs | Traefik, Authentik, Immich, GitLab, Arr Stack, n8n |
+| Services | 8 VMs | Traefik, Authentik, Immich, GitLab, GitLab Runner, Arr Stack, n8n |
 | Ansible | 1 VM | Configuration management controller |
 
 See [docs/INVENTORY.md](./docs/INVENTORY.md) for full details.
@@ -111,6 +114,8 @@ ssh hermes-admin@192.168.20.30
 | Immich | https://photos.hrmsmrflrii.xyz |
 | GitLab | https://gitlab.hrmsmrflrii.xyz |
 | Jellyfin | https://jellyfin.hrmsmrflrii.xyz |
+| Deluge | https://deluge.hrmsmrflrii.xyz |
+| SABnzbd | https://sabnzbd.hrmsmrflrii.xyz |
 | n8n | https://n8n.hrmsmrflrii.xyz |
 | **Monitoring** | |
 | Uptime Kuma | https://uptime.hrmsmrflrii.xyz |
@@ -140,10 +145,12 @@ tf-proxmox/
 │   ├── STORAGE.md          # Storage configuration
 │   ├── TERRAFORM.md        # IaC deployment
 │   ├── SERVICES.md         # Docker services
+│   ├── APPLICATION_CONFIGURATIONS.md  # Detailed app setup guides
 │   ├── ANSIBLE.md          # Automation
 │   ├── INVENTORY.md        # Deployed resources
 │   ├── OBSERVABILITY.md    # Tracing & metrics
 │   ├── WATCHTOWER.md       # Container updates
+│   ├── CICD.md             # GitLab CI/CD automation
 │   ├── TROUBLESHOOTING.md  # Issue resolution
 │   └── legacy/             # Extended documentation
 ├── Proxmox-TerraformDeployments.wiki/  # GitHub wiki (synced)
@@ -247,10 +254,12 @@ C:\Users\herms\OneDrive\Obsidian Vault\Hermes's Life Knowledge Base\07 HomeLab T
 | STORAGE.md | Storage-Architecture.md | 03 - Storage Architecture.md |
 | TERRAFORM.md | Terraform-Basics.md | 05 - Terraform Configuration.md |
 | SERVICES.md | Services-Overview.md | 07 - Deployed Services.md |
+| APPLICATION_CONFIGURATIONS.md | Application-Configurations.md | 21 - Application Configurations.md |
 | ANSIBLE.md | Ansible-Basics.md | 06 - Ansible Automation.md |
 | INVENTORY.md | Inventory-Management.md | (embedded in Index) |
 | OBSERVABILITY.md | Observability.md | 18 - Observability Stack.md |
 | WATCHTOWER.md | Watchtower.md | 19 - Watchtower Updates.md |
+| CICD.md | GitLab-CICD.md | 20 - GitLab CI-CD Automation.md |
 | TROUBLESHOOTING.md | Troubleshooting.md | 12 - Troubleshooting.md |
 | - | - | 11 - Credentials.md (private) |
 

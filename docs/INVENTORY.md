@@ -8,10 +8,10 @@
 |----------|-------|-------|-----|---------|
 | Ansible | 1 | 2 | 8GB | 20GB |
 | Kubernetes | 9 | 18 | 72GB | 180GB |
-| Services | 7 | 16 | 56GB | 170GB |
-| **Total** | **17** | **36** | **136GB** | **370GB** |
+| Services | 8 | 18 | 58GB | 190GB |
+| **Total** | **18** | **38** | **138GB** | **390GB** |
 
-*Last updated: December 20, 2025*
+*Last updated: December 21, 2025*
 
 ## VLAN 20 - Infrastructure (192.168.20.0/24)
 
@@ -59,11 +59,12 @@
 |----------|------|----|-------|-----|------|---------|
 | linux-syslog-server01 | node02 | 192.168.40.5 | 8 | 8GB | 50GB | Centralized logging |
 | docker-vm-utilities01 | node02 | 192.168.40.10 | 2 | 8GB | 20GB | Docker utilities (n8n, Paperless, Glance, OpenSpeedTest) |
-| docker-vm-media01 | node02 | 192.168.40.11 | 2 | 8GB | 20GB | Arr media stack |
+| docker-vm-media01 | node02 | 192.168.40.11 | 2 | 8GB | 20GB | Arr media stack (12 services) |
 | traefik-vm01 | node02 | 192.168.40.20 | 2 | 8GB | 20GB | Reverse proxy |
 | authentik-vm01 | node02 | 192.168.40.21 | 2 | 8GB | 20GB | Identity/SSO |
 | immich-vm01 | node02 | 192.168.40.22 | 2 | 8GB | 20GB | Photo management |
 | gitlab-vm01 | node02 | 192.168.40.23 | 2 | 8GB | 20GB | DevOps platform |
+| gitlab-runner-vm01 | node02 | 192.168.40.24 | 2 | 2GB | 20GB | CI/CD job executor |
 
 ## LXC Containers
 
@@ -108,3 +109,4 @@ Currently disabled. Will be enabled after VM infrastructure is stable.
 - [Networking](./NETWORKING.md) - IP allocation details
 - [Services](./SERVICES.md) - Service details
 - [Terraform](./TERRAFORM.md) - Deployment configuration
+- [CI/CD](./CICD.md) - GitLab automation pipeline

@@ -272,6 +272,8 @@ All `*.hrmsmrflrii.xyz` subdomains resolve to `192.168.40.20` (Traefik)
 | Jellyseerr | https://jellyseerr.hrmsmrflrii.xyz | 192.168.40.11:5056 |
 | Tdarr | https://tdarr.hrmsmrflrii.xyz | 192.168.40.11:8265 |
 | Autobrr | https://autobrr.hrmsmrflrii.xyz | 192.168.40.11:7474 |
+| Deluge | https://deluge.hrmsmrflrii.xyz | 192.168.40.11:8112 |
+| SABnzbd | https://sabnzbd.hrmsmrflrii.xyz | 192.168.40.11:8081 |
 
 ### Utility Services (docker-vm-utilities01)
 

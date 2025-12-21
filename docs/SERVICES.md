@@ -12,8 +12,10 @@ All services deployed via Docker Compose, managed by Ansible automation from `an
 | Identity | authentik-vm01 | Authentik |
 | Photos | immich-vm01 | Immich |
 | DevOps | gitlab-vm01 | GitLab CE |
-| Media | docker-vm-media01 | Arr Stack (10 services) |
+| CI/CD | gitlab-runner-vm01 | GitLab Runner, Ansible |
+| Media | docker-vm-media01 | Arr Stack (12 services) |
 | Utilities | docker-vm-utilities01 | n8n, Paperless, Glance, OpenSpeedTest |
+| Update Management | docker-vm-utilities01 | Watchtower, Update Manager (Discord bot) |
 
 ## Traefik Reverse Proxy
 
@@ -76,6 +78,8 @@ ssh hermes-admin@192.168.40.20 "cd /opt/traefik && sudo docker compose restart"
 | Jellyseerr | 5056 | Media requests (Jellyfin) |
 | Tdarr | 8265 | Transcoding automation |
 | Autobrr | 7474 | Torrent automation |
+| Deluge | 8112 | BitTorrent download client |
+| SABnzbd | 8081 | Usenet download client |
 
 ### Storage
 
@@ -95,6 +99,46 @@ ssh hermes-admin@192.168.40.20 "cd /opt/traefik && sudo docker compose restart"
 | Bazarr -> Radarr | Configured | Container: `radarr:7878` |
 | Bazarr -> Sonarr | Configured | Container: `sonarr:8989` |
 | Jellyseerr -> Jellyfin | Pending | Needs setup wizard |
+| Radarr -> Deluge | Pending | Container: `deluge:8112` |
+| Radarr -> SABnzbd | Pending | Container: `sabnzbd:8080` |
+| Sonarr -> Deluge | Pending | Container: `deluge:8112` |
+| Sonarr -> SABnzbd | Pending | Container: `sabnzbd:8080` |
+| Lidarr -> Deluge | Pending | Container: `deluge:8112` |
+| Lidarr -> SABnzbd | Pending | Container: `sabnzbd:8080` |
+
+### Download Clients
+
+**Deluge** (BitTorrent):
+- Web UI: http://192.168.40.11:8112 | https://deluge.hrmsmrflrii.xyz
+- Default password: `deluge` (change immediately)
+- Enable label plugin for category support
+- Ports: 8112 (web), 6881 (incoming TCP/UDP)
+- Download paths (NFS mounted):
+  - Downloading: `/downloads/downloading`
+  - Completed: `/downloads/completed`
+  - Incomplete: `/downloads/incomplete`
+
+**SABnzbd** (Usenet):
+- Web UI: http://192.168.40.11:8081 | https://sabnzbd.hrmsmrflrii.xyz
+- Complete setup wizard on first access
+- Add Usenet server credentials in Config
+- Get API key from Config → General → Security
+- Configure categories: `radarr`, `sonarr`, `lidarr`
+- Download paths (NFS mounted):
+  - Temporary: `/downloads/incomplete`
+  - Completed: `/downloads/complete`
+  - Downloading: `/downloads/downloading`
+
+### Download Storage (NFS)
+
+Both download clients store files on the NAS via NFS mounts:
+
+| Container Path | NAS Location |
+|---------------|--------------|
+| `/downloads/completed` (deluge) | NAS:/MediaFiles/Completed |
+| `/downloads/complete` (sabnzbd) | NAS:/MediaFiles/Completed |
+| `/downloads/downloading` | NAS:/MediaFiles/Downloading |
+| `/downloads/incomplete` | NAS:/MediaFiles/Incomplete |
 
 ### API Keys
 
@@ -146,7 +190,7 @@ API keys are stored in your internal documentation. Access Settings > General > 
 ## Immich Photo Management
 
 **Host**: immich-vm01 (192.168.40.22)
-**Status**: Deployed December 19, 2025
+**Status**: Deployed December 19, 2025, Updated December 21, 2025
 
 | Port | URL | Purpose |
 |------|-----|---------|
@@ -159,15 +203,24 @@ API keys are stored in your internal documentation. Access Settings > General > 
 - PostgreSQL with pgvecto-rs (vector database)
 - Redis (cache and job queue)
 
-### Storage
+### Storage Architecture
 
-- Config & Database: `/opt/immich/` (local)
-  - Docker Compose: `/opt/immich/docker-compose.yml`
-  - PostgreSQL: `/opt/immich/postgres/`
-  - ML Models: `/opt/immich/model-cache/`
-- Photos & Videos: `/mnt/appdata/immich/` (NFS - 7TB)
-  - Uploads: `/mnt/appdata/immich/upload/`
-  - Library: `/mnt/appdata/immich/library/`
+Immich uses a dual-storage architecture with Synology NAS:
+
+| Zone | Host Mount | Container Path | Mode | Purpose |
+|------|------------|----------------|------|---------|
+| Active Uploads | `/mnt/immich-uploads` | `/usr/src/app/upload` | RW | New photos from Immich |
+| Legacy Photos | `/mnt/synology-photos` | `/usr/src/app/external/synology` | RO | Historical archive |
+| Local Config | `/opt/immich/` | Various | RW | PostgreSQL, ML models |
+
+**NAS Configuration** (192.168.20.31):
+- Active uploads: `/volume2/Immich Photos` (dedicated share)
+- Legacy photos: `/volume2/homes/hermes-admin/Photos` (bind mount from homes)
+
+**Local Storage**:
+- Docker Compose: `/opt/immich/docker-compose.yml`
+- PostgreSQL: `/opt/immich/postgres/`
+- ML Models: `/opt/immich/model-cache/`
 
 ### Features
 
@@ -177,6 +230,7 @@ API keys are stored in your internal documentation. Access Settings > General > 
 - Timeline and map view
 - Album sharing
 - Duplicate detection
+- External library support (read-only legacy photos)
 
 ### Initial Setup
 
@@ -184,6 +238,7 @@ API keys are stored in your internal documentation. Access Settings > General > 
 2. Create admin account
 3. Download Immich mobile app (iOS/Android)
 4. Server URL for mobile: `http://192.168.40.22:2283/api`
+5. Add external library: Admin → External Libraries → Path: `/usr/src/app/external/synology`
 
 ### Management
 
@@ -193,9 +248,13 @@ ssh hermes-admin@192.168.40.22 "cd /opt/immich && sudo docker compose logs -f"
 
 # Update
 ssh hermes-admin@192.168.40.22 "cd /opt/immich && sudo docker compose pull && sudo docker compose up -d"
+
+# Verify mounts
+ssh hermes-admin@192.168.40.22 "mount | grep -E 'synology|immich'"
 ```
 
 **Ansible**: `~/ansible/immich/deploy-immich.yml`
+**Detailed Config**: [APPLICATION_CONFIGURATIONS.md](./APPLICATION_CONFIGURATIONS.md#immich-photo-management)
 
 ---
 
@@ -263,6 +322,55 @@ ssh hermes-admin@192.168.40.23 "sudo docker exec gitlab gitlab-ctl reconfigure"
 ```
 
 **Ansible**: `~/ansible/gitlab/deploy-gitlab.yml`
+
+---
+
+## GitLab Runner CI/CD
+
+**Host**: gitlab-runner-vm01 (192.168.40.24)
+**Status**: Deployed December 21, 2025
+
+### Purpose
+
+Dedicated CI/CD job executor for GitLab pipelines. Automates the entire service onboarding workflow when `service.yml` is committed to a repository.
+
+### Components
+
+- **GitLab Runner**: Shell executor registered with GitLab
+- **Ansible**: Playbook execution for container deployment
+- **Python Automation Scripts**: 9 scripts for pipeline stages
+
+### Automation Pipeline
+
+When a `service.yml` is committed, the pipeline:
+
+1. Validates configuration
+2. Deploys container via Ansible
+3. Configures Traefik reverse proxy
+4. Adds DNS record in OPNsense
+5. Registers with Watchtower
+6. Sends Discord notification
+7. (Optional) Configures Authentik SSO
+
+### Storage
+
+- Scripts: `/opt/gitlab-runner/scripts/`
+- Ansible: `/home/gitlab-runner/ansible/`
+
+### Management
+
+```bash
+# Check runner status
+ssh hermes-admin@192.168.40.24 "sudo gitlab-runner status"
+
+# Verify runner registration
+ssh hermes-admin@192.168.40.24 "sudo gitlab-runner verify"
+
+# Test Ansible connectivity
+ssh hermes-admin@192.168.40.24 "sudo -u gitlab-runner ansible docker-vm-utilities01 -m ping"
+```
+
+**Full Guide**: [CICD.md](./CICD.md)
 
 ---
 
@@ -430,9 +538,109 @@ ssh hermes-admin@192.168.40.10 "cd /opt/observability && sudo docker compose pul
 
 ---
 
+## Watchtower & Update Manager
+
+**Host**: docker-vm-utilities01 (192.168.40.10) + All Docker hosts
+**Status**: Deployed December 2025
+
+| Service | Port | Purpose |
+|---------|------|---------|
+| Watchtower | - | Container update monitoring (6 hosts) |
+| Update Manager | 5050 | Discord bot for interactive approvals + onboarding checker |
+
+### Overview
+
+Watchtower monitors all Docker containers across 6 hosts for available updates. Instead of auto-updating, it sends notifications to a Discord channel where the user can approve or reject updates with emoji reactions.
+
+### Components
+
+- **Watchtower**: Deployed on all 6 Docker hosts in monitor-only mode
+- **Update Manager**: Python Discord bot + Flask webhook receiver + Service Onboarding Checker
+
+### Discord Bot Commands
+
+| Command | Description |
+|---------|-------------|
+| `check versions` | Scan all services for available updates |
+| `update all` | Update all pending services |
+| `update <service>` | Update specific service |
+| `help` | Show available commands |
+
+### Service Onboarding Checker (Slash Commands)
+
+| Command | Description |
+|---------|-------------|
+| `/onboard <service>` | Check onboarding status for a specific service |
+| `/onboard-all` | Check all services and show status table |
+| `/onboard-services` | List all discovered services from Traefik |
+
+### Onboarding Checks
+
+The checker validates these configurations for each service:
+
+| Check | Method |
+|-------|--------|
+| Terraform | Searches `main.tf` for VM definition |
+| Ansible | Searches playbooks in `~/ansible/` |
+| DNS | Resolves `service.hrmsmrflrii.xyz` |
+| Traefik | Parses `/opt/traefik/config/dynamic/services.yml` |
+| SSL | Checks for `certResolver` in Traefik config |
+| Authentik | Queries Authentik API for application (optional) |
+| Documentation | Searches `docs/SERVICES.md` |
+
+### Output Format
+
+```
+Service         | TF  | Ans | DNS | Traf | SSL | Auth | Docs
+----------------|-----|-----|-----|------|-----|------|-----
+jellyfin        |  ✓  |  ✓  |  ✓  |   ✓  |  ✓  |   -  |   ✓
+radarr          |  ✓  |  ✓  |  ✓  |   ✓  |  ✓  |   -  |   ✓
+```
+
+### Scheduled Reports
+
+- **Daily 9am EST**: Automatic status report posted to #new-service-onboarding-workflow channel
+- **CI/CD Trigger**: Webhook endpoint `/onboard-check` called after successful deployments
+
+### Workflow
+
+1. Watchtower detects update at 3 AM daily
+2. Webhook sent to Update Manager
+3. Discord notification with 👍/👎 reactions
+4. User approves → SSH update executed
+5. Completion notification sent
+
+### Storage
+
+- Watchtower Config: `/opt/watchtower/` (each host)
+- Update Manager: `/opt/update-manager/` (utilities host)
+
+### Management
+
+```bash
+# Check Update Manager status
+ssh hermes-admin@192.168.40.10 "docker ps --filter name=update-manager"
+
+# View Update Manager logs
+ssh hermes-admin@192.168.40.10 "docker logs update-manager --tail 50"
+
+# Trigger manual update check (media host)
+ssh hermes-admin@192.168.40.11 "docker exec watchtower /watchtower --run-once"
+
+# Rebuild after code changes
+ssh hermes-admin@192.168.40.10 "cd /opt/update-manager && sudo docker compose build --no-cache && sudo docker compose up -d"
+```
+
+**Full Guide**: [WATCHTOWER.md](./WATCHTOWER.md)
+
+---
+
 ## Related Documentation
 
 - [Networking](./NETWORKING.md) - Service URLs and routing
 - [Storage](./STORAGE.md) - Service storage configuration
 - [Ansible](./ANSIBLE.md) - Deployment playbooks
+- [CI/CD](./CICD.md) - GitLab automation pipeline
+- [Watchtower](./WATCHTOWER.md) - Interactive container updates
+- [Observability](./OBSERVABILITY.md) - Tracing and metrics
 - [SERVICES_GUIDE.md](./legacy/SERVICES_GUIDE.md) - Learning resources
