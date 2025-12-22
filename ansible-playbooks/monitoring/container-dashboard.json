@@ -1,0 +1,99 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "custom": {"align": "auto", "displayMode": "auto", "inspect": false},
+          "mappings": [],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}
+        },
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "Memory %"}, "properties": [{"id": "custom.displayMode", "value": "gradient-gauge"}, {"id": "max", "value": 100}, {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 60}, {"color": "red", "value": 80}]}}]},
+          {"matcher": {"id": "byName", "options": "CPU %"}, "properties": [{"id": "custom.displayMode", "value": "gradient-gauge"}, {"id": "max", "value": 100}, {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 50}, {"color": "red", "value": 80}]}}]},
+          {"matcher": {"id": "byName", "options": "Memory Used"}, "properties": [{"id": "unit", "value": "bytes"}]},
+          {"matcher": {"id": "byName", "options": "Memory Limit"}, "properties": [{"id": "unit", "value": "bytes"}]},
+          {"matcher": {"id": "byName", "options": "Network RX"}, "properties": [{"id": "unit", "value": "bytes"}]},
+          {"matcher": {"id": "byName", "options": "Network TX"}, "properties": [{"id": "unit", "value": "bytes"}]}
+        ]
+      },
+      "gridPos": {"h": 16, "w": 24, "x": 0, "y": 0},
+      "id": 1,
+      "options": {"cellHeight": "sm", "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false}, "showHeader": true, "sortBy": [{"desc": true, "displayName": "Memory Used"}]},
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "docker_container_memory_usage_bytes", "format": "table", "instant": true, "legendFormat": "", "refId": "memory_used"},
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "docker_container_memory_limit_bytes", "format": "table", "instant": true, "legendFormat": "", "refId": "memory_limit"},
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "docker_container_memory_percent", "format": "table", "instant": true, "legendFormat": "", "refId": "memory_pct"},
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "docker_container_cpu_percent", "format": "table", "instant": true, "legendFormat": "", "refId": "cpu_pct"},
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "docker_container_network_rx_bytes", "format": "table", "instant": true, "legendFormat": "", "refId": "net_rx"},
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "docker_container_network_tx_bytes", "format": "table", "instant": true, "legendFormat": "", "refId": "net_tx"}
+      ],
+      "title": "All Containers",
+      "transformations": [
+        {"id": "merge", "options": {}},
+        {"id": "organize", "options": {"excludeByName": {"Time": true, "__name__": true, "id": true, "instance": true, "job": true}, "indexByName": {"host": 0, "name": 1, "image": 2, "Value #memory_used": 3, "Value #memory_limit": 4, "Value #memory_pct": 5, "Value #cpu_pct": 6, "Value #net_rx": 7, "Value #net_tx": 8}, "renameByName": {"Value #memory_used": "Memory Used", "Value #memory_limit": "Memory Limit", "Value #memory_pct": "Memory %", "Value #cpu_pct": "CPU %", "Value #net_rx": "Network RX", "Value #net_tx": "Network TX", "host": "Host", "image": "Image", "name": "Container"}}}
+      ],
+      "type": "table"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "max": 100, "min": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 60}, {"color": "red", "value": 80}]}, "unit": "percent"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 16},
+      "id": 2,
+      "options": {"orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showThresholdLabels": false, "showThresholdMarkers": true},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(docker_container_memory_usage_bytes) / sum(docker_host_memory_total_bytes) * 100", "legendFormat": "Memory Used", "refId": "A"}],
+      "title": "Total Memory Usage",
+      "type": "gauge"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 16},
+      "id": 3,
+      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(docker_host_containers_running)", "legendFormat": "Running", "refId": "A"}],
+      "title": "Running Containers",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "bytes"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 16},
+      "id": 4,
+      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(docker_host_memory_total_bytes)", "legendFormat": "Total", "refId": "A"}],
+      "title": "Total Host Memory",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "bytes"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 16},
+      "id": 5,
+      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(docker_container_memory_usage_bytes)", "legendFormat": "Used", "refId": "A"}],
+      "title": "Container Memory Used",
+      "type": "stat"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["docker", "containers"],
+  "templating": {"list": []},
+  "time": {"from": "now-1h", "to": "now"},
+  "timepicker": {},
+  "timezone": "",
+  "title": "Container Monitoring",
+  "uid": "container-monitoring",
+  "version": 1,
+  "weekStart": ""
+}

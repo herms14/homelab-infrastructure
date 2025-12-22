@@ -1,20 +1,35 @@
 # Service Onboarding Workflow
 
-This document explains the automated service onboarding checker - a system that verifies new services are properly configured across all infrastructure components.
+This document explains the automated service onboarding checker and the complete workflow for deploying new services to the homelab.
 
 ## What This System Does
 
 When you deploy a new service to your homelab, there are several things that need to be set up:
 
 1. **Virtual Machine** - The server where the service runs
-2. **Configuration Scripts** - Instructions for setting up the service
+2. **Configuration Scripts** - Ansible playbooks for setting up the service
 3. **Domain Name** - A friendly URL like `jellyfin.hrmsmrflrii.xyz`
 4. **Reverse Proxy** - Routes traffic from the internet to your service
 5. **SSL Certificate** - Secures connections with HTTPS (the padlock icon)
 6. **Single Sign-On** - Optional login protection via Authentik
-7. **Documentation** - Written instructions for managing the service
+7. **Discord Integration** - Add to Update Manager for update notifications
+8. **Documentation** - Written instructions for managing the service
 
 The Service Onboarding Checker automatically verifies each of these components and reports the status in Discord.
+
+## Discord Bot Ecosystem
+
+The homelab uses three Discord bots for different purposes:
+
+| Bot | Channel | Purpose |
+|-----|---------|---------|
+| **Update Manager** | #update-manager | Container update notifications, onboarding checks |
+| **Argus SysAdmin** | #argus-assistant | Infrastructure management (VMs, containers, Proxmox) |
+| **Download Monitor** | #media-downloads | Radarr/Sonarr download notifications |
+
+When onboarding a new service:
+- **All services**: Add to Update Manager's `CONTAINER_HOSTS` mapping for update monitoring
+- **Media services**: Configure webhooks to Download Monitor if applicable
 
 ## How to Use
 
@@ -245,11 +260,43 @@ The bot uses SSH to check remote servers. If SSH checks are failing:
 | Component | Location |
 |-----------|----------|
 | Update Manager Bot | `/opt/update-manager/` on docker-vm-utilities01 (192.168.40.10) |
-| Docker Compose | `/opt/update-manager/docker-compose.yml` |
+| Argus SysAdmin Bot | `/opt/sysadmin-bot/` on docker-vm-utilities01 (192.168.40.10) |
+| Download Monitor | `/opt/download-monitor/` on docker-vm-media01 (192.168.40.11) |
+| Docker Compose | `/opt/<service>/docker-compose.yml` |
 | Environment File | `/opt/update-manager/.env` |
 | CI/CD Script | `/opt/gitlab-runner/scripts/notify_discord.py` on gitlab-runner-vm01 |
 | Traefik Config | `/opt/traefik/config/dynamic/services.yml` on traefik-vm01 |
 | Service Documentation | `docs/SERVICES.md` in the tf-proxmox repository |
+
+## Complete Onboarding Checklist
+
+When deploying a new service, complete all applicable items:
+
+### Infrastructure
+- [ ] Add VM definition to `main.tf` (if new VM needed)
+- [ ] Run `terraform apply` to create VM
+- [ ] Create Ansible playbook in `ansible-playbooks/`
+
+### Routing & Security
+- [ ] Add Traefik route to `/opt/traefik/config/dynamic/services.yml`
+- [ ] Add DNS entry in OPNsense (or via Ansible playbook)
+- [ ] Create Authentik provider + application (if SSO protected)
+- [ ] Assign provider to Embedded Outpost (critical for ForwardAuth!)
+
+### Discord Integration
+- [ ] Add container to `CONTAINER_HOSTS` in Update Manager (`/opt/update-manager/update_manager.py`)
+- [ ] Add VM to `VM_MAPPING` in Argus bot (`/opt/sysadmin-bot/sysadmin-bot.py`) if applicable
+- [ ] Configure webhooks to Download Monitor (for media services only)
+
+### Documentation (All Three Locations)
+- [ ] Update `docs/SERVICES.md`
+- [ ] Update corresponding wiki page
+- [ ] Update Obsidian vault file
+
+### Verification
+- [ ] Run `/onboard <service>` to verify all checks pass
+- [ ] Test service URL: `https://<service>.hrmsmrflrii.xyz`
+- [ ] Verify Authentik SSO works (if applicable)
 
 ## Related Documentation
 

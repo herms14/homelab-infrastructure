@@ -13,10 +13,12 @@ All services deployed via Docker Compose, managed by Ansible automation from `an
 | Photos | immich-vm01 | Immich |
 | DevOps | gitlab-vm01 | GitLab CE |
 | CI/CD | gitlab-runner-vm01 | GitLab Runner, Ansible |
-| Media | docker-vm-media01 | Arr Stack (12 services) |
+| Media | docker-vm-media01 | Arr Stack (12 services), Download Monitor |
 | Dashboard | docker-vm-utilities01 | Glance, Life Progress API |
 | Utilities | docker-vm-utilities01 | n8n, Paperless, OpenSpeedTest |
 | Update Management | docker-vm-utilities01 | Watchtower, Update Manager (Discord bot) |
+| Discord Bots | docker-vm-utilities01 | Argus SysAdmin Bot |
+| Container Metrics | Both Docker hosts | Docker Stats Exporter |
 
 ## Traefik Reverse Proxy
 
@@ -762,6 +764,197 @@ ssh hermes-admin@192.168.40.10 "cd /opt/update-manager && sudo docker compose bu
 ```
 
 **Full Guide**: [WATCHTOWER.md](./WATCHTOWER.md)
+
+---
+
+## Argus SysAdmin Discord Bot
+
+**Host**: docker-vm-utilities01 (192.168.40.10)
+**Status**: Deployed December 22, 2025
+
+### Purpose
+
+Discord bot for comprehensive homelab management via slash commands. Named "Argus" after the all-seeing giant of Greek mythology.
+
+### Features
+
+- Proxmox cluster management (VMs, nodes)
+- Docker container operations
+- System monitoring and health checks
+- Media request integration (Radarr/Sonarr)
+- Infrastructure deployment via Ansible
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `/status` | Get Proxmox cluster status |
+| `/shutdown <node>` | Shutdown Proxmox node |
+| `/reboot <target>` | Reboot VM or node |
+| `/start <vm>` | Start a VM |
+| `/stop <vm>` | Stop a VM |
+| `/vms` | List all VMs with status |
+| `/uptime` | Show cluster uptime |
+| `/restart <container>` | Restart Docker container |
+| `/logs <container>` | View container logs |
+| `/containers <host>` | List containers on host |
+| `/deploy <playbook>` | Run Ansible playbook |
+| `/health` | System health check |
+| `/disk` | Show disk usage |
+| `/top` | Top resource consumers |
+| `/bandwidth` | Network bandwidth stats |
+| `/request <type> <title>` | Request movie/show |
+| `/media` | Media library stats |
+| `/help` | Show all commands |
+
+### Architecture
+
+Uses SSH for all Proxmox operations (no API token required):
+- Connects to nodes as `root` via SSH key
+- Connects to VMs as `hermes-admin`
+- All operations executed via paramiko SSH client
+
+### Discord Channel
+
+- **Channel**: `#argus-assistant` (1452673126314803338)
+- All commands and responses restricted to this channel
+
+### Storage
+
+- Bot Code: `/opt/sysadmin-bot/sysadmin-bot.py`
+- Docker Compose: `/opt/sysadmin-bot/docker-compose.yml`
+- SSH Keys: `/opt/sysadmin-bot/ssh/` (mounted read-only)
+
+### Management
+
+```bash
+# View bot logs
+ssh hermes-admin@192.168.40.10 "docker logs sysadmin-bot --tail 50"
+
+# Restart bot
+ssh hermes-admin@192.168.40.10 "cd /opt/sysadmin-bot && sudo docker compose restart"
+
+# Rebuild after code changes
+ssh hermes-admin@192.168.40.10 "cd /opt/sysadmin-bot && sudo docker compose build --no-cache && sudo docker compose up -d"
+```
+
+**Ansible**: `~/ansible-playbooks/sysadmin-bot/deploy-sysadmin-bot.yml`
+
+---
+
+## Download Monitor
+
+**Host**: docker-vm-media01 (192.168.40.11)
+**Status**: Deployed December 22, 2025
+
+| Port | Purpose |
+|------|---------|
+| 5052 | Flask API & webhook receiver |
+
+### Purpose
+
+Monitors Radarr and Sonarr for download completions and sends formatted Discord notifications with media details including poster images.
+
+### Features
+
+- Real-time download completion notifications
+- Poster images embedded in Discord messages
+- Movie details: title, year, quality, size, runtime
+- TV show details: series, season, episode, quality
+- Webhook integration with Radarr/Sonarr
+
+### Discord Channel
+
+- **Channel**: `#media-downloads` (1452132982436401346)
+- All download notifications posted here
+
+### Radarr/Sonarr Configuration
+
+Add webhook in each application:
+- **URL**: `http://download-monitor:5052/webhook/radarr` or `/webhook/sonarr`
+- **Trigger**: On Download / On Upgrade
+
+### Storage
+
+- Flask App: `/opt/download-monitor/download-monitor.py`
+- Docker Compose: `/opt/download-monitor/docker-compose.yml`
+
+### Management
+
+```bash
+# View logs
+ssh hermes-admin@192.168.40.11 "docker logs download-monitor --tail 50"
+
+# Test webhook
+curl -X POST http://192.168.40.11:5052/webhook/radarr -H "Content-Type: application/json" -d '{"eventType": "Test"}'
+
+# Restart
+ssh hermes-admin@192.168.40.11 "cd /opt/download-monitor && sudo docker compose restart"
+```
+
+**Ansible**: `~/ansible-playbooks/arr-stack/deploy-download-monitor.yml`
+
+---
+
+## Docker Stats Exporter
+
+**Hosts**: docker-vm-utilities01 (192.168.40.10), docker-vm-media01 (192.168.40.11)
+**Status**: Deployed December 22, 2025
+
+| Port | Purpose |
+|------|---------|
+| 9417 | Prometheus metrics endpoint |
+
+### Purpose
+
+Exports Docker container metrics to Prometheus for monitoring in Grafana dashboards.
+
+### Metrics Exported
+
+| Metric | Description |
+|--------|-------------|
+| `container_cpu_usage_percent` | CPU usage percentage |
+| `container_memory_usage_bytes` | Memory usage in bytes |
+| `container_memory_limit_bytes` | Memory limit |
+| `container_network_rx_bytes` | Network bytes received |
+| `container_network_tx_bytes` | Network bytes transmitted |
+| `container_block_read_bytes` | Block I/O read |
+| `container_block_write_bytes` | Block I/O write |
+| `container_running` | Running status (1/0) |
+
+### Prometheus Scrape Config
+
+```yaml
+- job_name: 'docker-stats'
+  static_configs:
+    - targets:
+      - 192.168.40.10:9417
+      - 192.168.40.11:9417
+```
+
+### Storage
+
+- Exporter: `/opt/docker-stats-exporter/`
+- Docker Compose: Part of monitoring stack
+
+### Management
+
+```bash
+# View metrics
+curl http://192.168.40.10:9417/metrics
+
+# Check status
+ssh hermes-admin@192.168.40.10 "docker ps --filter name=docker-stats-exporter"
+```
+
+### Grafana Dashboard
+
+Container metrics displayed in Grafana at:
+- Dashboard: "Container Monitoring"
+- Datasource: Prometheus
+- Refresh: 30s
+
+**Ansible**: Deployed with monitoring stack
 
 ---
 

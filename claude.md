@@ -117,6 +117,8 @@ ssh hermes-admin@192.168.20.30
 | Deluge | https://deluge.hrmsmrflrii.xyz |
 | SABnzbd | https://sabnzbd.hrmsmrflrii.xyz |
 | n8n | https://n8n.hrmsmrflrii.xyz |
+| **Dashboards** | |
+| Glance | https://glance.hrmsmrflrii.xyz |
 | **Monitoring** | |
 | Uptime Kuma | https://uptime.hrmsmrflrii.xyz |
 | Prometheus | https://prometheus.hrmsmrflrii.xyz |
@@ -124,6 +126,10 @@ ssh hermes-admin@192.168.20.30
 | **Observability** | |
 | Jaeger | https://jaeger.hrmsmrflrii.xyz |
 | Demo App | https://demo.hrmsmrflrii.xyz |
+| **Discord Bots** | |
+| Argus (SysAdmin) | Discord: #argus-assistant |
+| Update Manager | Discord: #update-manager |
+| Download Monitor | Discord: #media-downloads |
 
 See [docs/NETWORKING.md](./docs/NETWORKING.md) for complete URL list.
 
@@ -166,6 +172,7 @@ Troubleshooting docs are organized by category in [docs/TROUBLESHOOTING.md](./do
 - **Authentication Issues** - Authentik, ForwardAuth, SSO
 - **Container & Docker Issues** - Watchtower, build cache, SSH keys
 - **Service-Specific Issues** - GitLab, individual service problems
+- **Dashboard Issues** - Glance configuration, monitoring endpoints
 - **Network Issues** - VLAN, NFS, connectivity
 - **Common Issues** - Terraform, templates, general errors
 - **Diagnostic Commands** - Quick reference commands
@@ -224,10 +231,25 @@ See [docs/TERRAFORM.md](./docs/TERRAFORM.md) for complete guide.
    - Create Proxy Provider in Authentik Admin
    - Create Application linked to provider
    - **Assign provider to Embedded Outpost** (critical!)
-6. **Update Discord Bot**: Add container to `CONTAINER_HOSTS` mapping in Update Manager
+6. **Update Discord Bots**:
+   - Add container to `CONTAINER_HOSTS` in Update Manager (`/opt/update-manager/update_manager.py`)
+   - Add VM to `VM_MAPPING` in Argus bot (`/opt/sysadmin-bot/sysadmin-bot.py`)
+   - Configure webhooks to Download Monitor (for media services)
 7. **Update Documentation**: All three locations (docs/, wiki, Obsidian)
 
-See [docs/SERVICES.md](./docs/SERVICES.md) and [docs/ANSIBLE.md](./docs/ANSIBLE.md).
+See [docs/SERVICES.md](./docs/SERVICES.md) and [docs/SERVICE_ONBOARDING.md](./docs/SERVICE_ONBOARDING.md).
+
+### Discord Bot Ecosystem
+
+Three Discord bots manage different aspects of the homelab:
+
+| Bot | Channel | Purpose | Config Location |
+|-----|---------|---------|-----------------|
+| **Update Manager** | #update-manager | Container updates, onboarding | `/opt/update-manager/` |
+| **Argus SysAdmin** | #argus-assistant | VM/container control | `/opt/sysadmin-bot/` |
+| **Download Monitor** | #media-downloads | Radarr/Sonarr notifications | `/opt/download-monitor/` |
+
+See [docs/SERVICE_ONBOARDING.md](./docs/SERVICE_ONBOARDING.md) for complete onboarding checklist.
 
 ## Documentation Sync Guide
 
@@ -332,3 +354,7 @@ Obsidian vault syncs automatically via OneDrive. No manual push needed.
 - LXC containers use Ubuntu 22.04 or Debian 12
 - Auto-start enabled on production infrastructure
 - Proxmox node02 dedicated to service VMs
+- Glance v0.7.0+ requires config directory mount (`./config:/app/config`), not single file mount
+- Traefik uses ping entrypoint on port 8082 for health checks
+- Kubelet healthz endpoint binds to 0.0.0.0:10248 on all workers for external monitoring
+- Life Progress API runs on docker-vm-utilities01:5051 (see [APPLICATION_CONFIGURATIONS.md](./docs/APPLICATION_CONFIGURATIONS.md))

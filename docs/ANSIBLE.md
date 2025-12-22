@@ -45,7 +45,12 @@ cd ~/ansible
 ├── monitoring/
 │   ├── deploy-monitoring-stack.yml     # Prometheus, Grafana, Uptime Kuma
 │   └── deploy-observability-stack.yml  # OTEL Collector, Jaeger, Demo App
-└── ...
+├── sysadmin-bot/
+│   └── deploy-sysadmin-bot.yml         # Argus Discord bot
+├── arr-stack/
+│   └── deploy-download-monitor.yml     # Download notifications
+└── glance/
+    └── deploy-life-progress-api.yml    # Life progress widget API
 ```
 
 ## Common Operations
@@ -89,6 +94,9 @@ See [Kubernetes_Setup.md](./legacy/Kubernetes_Setup.md) for complete guide.
 | n8n | `n8n/deploy-n8n.yml` | docker-vm-utilities01 |
 | Monitoring Stack | `monitoring/deploy-monitoring-stack.yml` | docker-vm-utilities01 |
 | Observability Stack | `monitoring/deploy-observability-stack.yml` | docker-vm-utilities01 |
+| Argus SysAdmin Bot | `sysadmin-bot/deploy-sysadmin-bot.yml` | docker-vm-utilities01 |
+| Download Monitor | `arr-stack/deploy-download-monitor.yml` | docker-vm-media01 |
+| Life Progress API | `glance/deploy-life-progress-api.yml` | docker-vm-utilities01 |
 
 ## OPNsense DNS Automation
 
