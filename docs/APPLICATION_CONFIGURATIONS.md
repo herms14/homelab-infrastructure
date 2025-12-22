@@ -15,6 +15,13 @@ This document provides detailed configuration guides for applications in the hom
   - [Docker Volume Mappings](#docker-volume-mappings)
   - [External Library Setup](#external-library-setup)
   - [Troubleshooting](#immich-troubleshooting)
+- [Life Progress Widget (Glance)](#life-progress-widget-glance)
+  - [Overview](#life-progress-overview)
+  - [Architecture](#life-progress-architecture)
+  - [API Service Setup](#api-service-setup)
+  - [Glance Widget Configuration](#glance-widget-configuration)
+  - [Customization](#life-progress-customization)
+  - [Maintenance](#life-progress-maintenance)
 
 ---
 
@@ -411,6 +418,358 @@ immich_local_dir: "/opt/immich"
 ```bash
 cd ~/ansible
 ansible-playbook immich/deploy-immich.yml -l immich-vm01 -v
+```
+
+---
+
+## Life Progress Widget (Glance)
+
+**Host**: docker-vm-utilities01 (192.168.40.10)
+**API Port**: 5051
+**Configured**: December 22, 2025
+
+### Life Progress Overview
+
+The Life Progress widget displays visual progress bars showing how much of the current year, month, day, and life has passed. It includes daily motivational quotes about time and mortality to encourage mindful living.
+
+**Features**:
+- Horizontal progress bars with percentage display
+- Year progress (red gradient)
+- Month progress (yellow gradient)
+- Day progress (green gradient)
+- Life progress based on target age (green gradient)
+- Daily rotating motivational quotes
+- Updates every hour (configurable cache)
+
+### Life Progress Architecture
+
+The widget consists of two components:
+
+| Component | Purpose | Location |
+|-----------|---------|----------|
+| Flask API | Calculates progress percentages and serves quotes | docker-vm-utilities01:5051 |
+| Glance Widget | Renders HTML progress bars using API data | Glance dashboard |
+
+**Data Flow**:
+1. Glance dashboard requests `/progress` endpoint from Flask API
+2. API calculates current progress for year/month/day/life
+3. API selects quote based on day of year (consistent daily)
+4. Glance renders HTML template with progress bar styling
+
+### API Service Setup
+
+#### Step 1: Create Service Directory
+
+```bash
+ssh hermes-admin@192.168.40.10 "sudo mkdir -p /opt/life-progress"
+```
+
+#### Step 2: Create Flask Application
+
+Create `/opt/life-progress/app.py`:
+
+```python
+from flask import Flask, jsonify
+from datetime import datetime, date
+import calendar
+
+app = Flask(__name__)
+
+# Configuration - MODIFY THESE VALUES TO CUSTOMIZE
+BIRTH_DATE = date(1989, 2, 14)  # Your birth date (YYYY, MM, DD)
+TARGET_AGE = 75                  # Target lifespan in years
+
+# Motivational quotes about time and mortality
+QUOTES = [
+    "Time is the most valuable thing a man can spend. - Theophrastus",
+    "Lost time is never found again. - Benjamin Franklin",
+    "The trouble is, you think you have time. - Buddha",
+    "Your time is limited, don't waste it living someone else's life. - Steve Jobs",
+    "Time flies over us, but leaves its shadow behind. - Nathaniel Hawthorne",
+    "The way we spend our time defines who we are. - Jonathan Estrin",
+    "Time is what we want most, but what we use worst. - William Penn",
+    "Don't count the days, make the days count. - Muhammad Ali",
+    "The only way to do great work is to love what you do. - Steve Jobs",
+    "Life is what happens when you're busy making other plans. - John Lennon",
+    "In the end, it's not the years in your life that count. It's the life in your years. - Abraham Lincoln",
+    "Time is the coin of your life. Only you can determine how it will be spent. - Carl Sandburg",
+    "Yesterday is gone. Tomorrow has not yet come. We have only today. - Mother Teresa",
+    "The future is something which everyone reaches at the rate of 60 minutes an hour. - C.S. Lewis",
+    "Time is a created thing. To say 'I don't have time' is to say 'I don't want to.' - Lao Tzu",
+    "You may delay, but time will not. - Benjamin Franklin",
+    "Time flies. It's up to you to be the navigator. - Robert Orben",
+    "Better three hours too soon than a minute too late. - William Shakespeare",
+    "The key is in not spending time, but in investing it. - Stephen R. Covey",
+    "Time is the wisest counselor of all. - Pericles",
+    "We must use time wisely and forever realize that the time is always ripe to do right. - Nelson Mandela",
+    "Time waits for no one. - Folklore",
+    "The two most powerful warriors are patience and time. - Leo Tolstoy",
+    "How did it get so late so soon? - Dr. Seuss",
+    "Time is a game played beautifully by children. - Heraclitus",
+    "Forever is composed of nows. - Emily Dickinson",
+    "Time and tide wait for no man. - Geoffrey Chaucer",
+    "They always say time changes things, but you actually have to change them yourself. - Andy Warhol",
+    "The bad news is time flies. The good news is you're the pilot. - Michael Altshuler",
+    "Enjoy life. There's plenty of time to be dead. - Hans Christian Andersen"
+]
+
+def get_daily_quote():
+    """Get a consistent quote for the day based on date"""
+    today = date.today()
+    day_of_year = today.timetuple().tm_yday
+    return QUOTES[day_of_year % len(QUOTES)]
+
+def calculate_progress():
+    now = datetime.now()
+    today = date.today()
+
+    # Year progress (0-100)
+    year_start = datetime(now.year, 1, 1)
+    year_end = datetime(now.year + 1, 1, 1)
+    year_progress = ((now - year_start).total_seconds() / (year_end - year_start).total_seconds()) * 100
+
+    # Month progress (0-100)
+    days_in_month = calendar.monthrange(now.year, now.month)[1]
+    month_progress = ((now.day - 1 + now.hour/24 + now.minute/1440) / days_in_month) * 100
+
+    # Day progress (0-100)
+    day_progress = ((now.hour * 3600 + now.minute * 60 + now.second) / 86400) * 100
+
+    # Life progress (0-100)
+    target_date = date(BIRTH_DATE.year + TARGET_AGE, BIRTH_DATE.month, BIRTH_DATE.day)
+    total_life_days = (target_date - BIRTH_DATE).days
+    days_lived = (today - BIRTH_DATE).days
+    life_progress = (days_lived / total_life_days) * 100
+
+    return {
+        "year": round(year_progress, 1),
+        "month": round(month_progress, 1),
+        "day": round(day_progress, 1),
+        "life": round(life_progress, 1),
+        "age": round(days_lived / 365.25, 1),
+        "remaining_years": round((total_life_days - days_lived) / 365.25, 1),
+        "remaining_days": total_life_days - days_lived,
+        "quote": get_daily_quote(),
+        "target_age": TARGET_AGE
+    }
+
+@app.route('/progress')
+def progress():
+    return jsonify(calculate_progress())
+
+@app.route('/health')
+def health():
+    return jsonify({"status": "healthy"})
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5051)
+```
+
+**Configuration Variables**:
+
+| Variable | Description | How to Change |
+|----------|-------------|---------------|
+| `BIRTH_DATE` | Your birth date | Edit `date(YYYY, MM, DD)` format |
+| `TARGET_AGE` | Target lifespan for life progress | Change integer value |
+| `QUOTES` | List of daily motivational quotes | Add/remove/modify strings |
+
+#### Step 3: Create Dockerfile
+
+Create `/opt/life-progress/Dockerfile`:
+
+```dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+RUN pip install flask gunicorn
+COPY app.py .
+CMD ["gunicorn", "-w", "2", "-b", "0.0.0.0:5051", "app:app"]
+```
+
+#### Step 4: Create Docker Compose
+
+Create `/opt/life-progress/docker-compose.yml`:
+
+```yaml
+services:
+  life-progress:
+    build: .
+    container_name: life-progress
+    restart: unless-stopped
+    ports:
+      - "5051:5051"
+    environment:
+      - TZ=Asia/Manila
+```
+
+#### Step 5: Deploy the Service
+
+```bash
+ssh hermes-admin@192.168.40.10 "cd /opt/life-progress && sudo docker compose up -d --build"
+```
+
+#### Step 6: Verify API
+
+```bash
+# Test the API endpoint
+curl http://192.168.40.10:5051/progress
+```
+
+**Expected Response**:
+```json
+{
+  "year": 98.3,
+  "month": 70.5,
+  "day": 45.2,
+  "life": 47.8,
+  "age": 35.9,
+  "remaining_years": 39.1,
+  "remaining_days": 14289,
+  "quote": "Time is the most valuable thing a man can spend. - Theophrastus",
+  "target_age": 75
+}
+```
+
+### Glance Widget Configuration
+
+The widget is configured in `/opt/glance/config/glance.yml` on docker-vm-utilities01.
+
+**Widget Configuration**:
+
+```yaml
+- type: custom-api
+  title: Life Progress
+  cache: 1h
+  url: http://192.168.40.10:5051/progress
+  template: |
+    <div style="font-family: sans-serif; padding: 10px;">
+      <div style="display: flex; align-items: center; margin-bottom: 12px;">
+        <span style="width: 60px; font-weight: bold; color: #fff;">Year</span>
+        <div style="flex: 1; height: 24px; background: #444; border-radius: 4px; position: relative; margin: 0 15px;">
+          <div style="width: {{ .JSON.Float "year" }}%; height: 100%; background: linear-gradient(90deg, #ff4444, #ff6666); border-radius: 4px;"></div>
+          <span style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #fff; font-weight: bold; text-shadow: 1px 1px 2px #000;">{{ .JSON.Float "year" | printf "%.1f" }}%</span>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; margin-bottom: 12px;">
+        <span style="width: 60px; font-weight: bold; color: #fff;">Month</span>
+        <div style="flex: 1; height: 24px; background: #444; border-radius: 4px; position: relative; margin: 0 15px;">
+          <div style="width: {{ .JSON.Float "month" }}%; height: 100%; background: linear-gradient(90deg, #ffaa00, #ffcc44); border-radius: 4px;"></div>
+          <span style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #fff; font-weight: bold; text-shadow: 1px 1px 2px #000;">{{ .JSON.Float "month" | printf "%.1f" }}%</span>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; margin-bottom: 12px;">
+        <span style="width: 60px; font-weight: bold; color: #fff;">Day</span>
+        <div style="flex: 1; height: 24px; background: #444; border-radius: 4px; position: relative; margin: 0 15px;">
+          <div style="width: {{ .JSON.Float "day" }}%; height: 100%; background: linear-gradient(90deg, #44aa44, #66cc66); border-radius: 4px;"></div>
+          <span style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #fff; font-weight: bold; text-shadow: 1px 1px 2px #000;">{{ .JSON.Float "day" | printf "%.1f" }}%</span>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; margin-bottom: 12px;">
+        <span style="width: 60px; font-weight: bold; color: #fff;">Life</span>
+        <div style="flex: 1; height: 24px; background: #444; border-radius: 4px; position: relative; margin: 0 15px;">
+          <div style="width: {{ .JSON.Float "life" }}%; height: 100%; background: linear-gradient(90deg, #44aa44, #66cc66); border-radius: 4px;"></div>
+          <span style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #fff; font-weight: bold; text-shadow: 1px 1px 2px #000;">{{ .JSON.Float "life" | printf "%.1f" }}%</span>
+        </div>
+      </div>
+      <div style="text-align: center; margin-top: 15px; padding: 10px; background: rgba(255,255,255,0.1); border-radius: 8px;">
+        <em style="color: #aaa; font-size: 14px;">"{{ .JSON.String "quote" }}"</em>
+      </div>
+    </div>
+```
+
+**Template Syntax Notes**:
+
+| Syntax | Purpose |
+|--------|---------|
+| `{{ .JSON.Float "field" }}` | Access float/number fields from JSON |
+| `{{ .JSON.String "field" }}` | Access string fields from JSON |
+| `{{ .JSON.Int "field" }}` | Access integer fields from JSON |
+| `| printf "%.1f"` | Format number to 1 decimal place |
+
+### Life Progress Customization
+
+#### Changing Birth Date
+
+Edit `/opt/life-progress/app.py` line 9:
+
+```python
+BIRTH_DATE = date(1989, 2, 14)  # Change to your birth date (YYYY, MM, DD)
+```
+
+Then rebuild the container:
+
+```bash
+ssh hermes-admin@192.168.40.10 "cd /opt/life-progress && sudo docker compose up -d --build"
+```
+
+#### Changing Target Age
+
+Edit `/opt/life-progress/app.py` line 10:
+
+```python
+TARGET_AGE = 75  # Change to your target age
+```
+
+Then rebuild the container.
+
+#### Adding or Modifying Quotes
+
+Edit the `QUOTES` list in `/opt/life-progress/app.py`. The quote is selected based on the day of year using `day_of_year % len(QUOTES)`, so each day consistently shows the same quote.
+
+To add a quote, append to the list:
+
+```python
+QUOTES = [
+    # ... existing quotes ...
+    "Your new quote here. - Author",
+]
+```
+
+#### Changing Colors
+
+Edit the Glance widget template in `/opt/glance/config/glance.yml`:
+
+| Progress Bar | Gradient Colors |
+|--------------|-----------------|
+| Year | `#ff4444` to `#ff6666` (red) |
+| Month | `#ffaa00` to `#ffcc44` (yellow/orange) |
+| Day | `#44aa44` to `#66cc66` (green) |
+| Life | `#44aa44` to `#66cc66` (green) |
+
+Modify the `background: linear-gradient(...)` values to change colors.
+
+#### Changing Cache Duration
+
+Edit the `cache` value in the widget configuration:
+
+```yaml
+- type: custom-api
+  cache: 1h  # Options: 30s, 1m, 5m, 1h, etc.
+```
+
+### Life Progress Maintenance
+
+#### Rebuild Container After Changes
+
+```bash
+ssh hermes-admin@192.168.40.10 "cd /opt/life-progress && sudo docker compose up -d --build"
+```
+
+#### View Logs
+
+```bash
+ssh hermes-admin@192.168.40.10 "sudo docker logs life-progress"
+```
+
+#### Restart Service
+
+```bash
+ssh hermes-admin@192.168.40.10 "sudo docker restart life-progress"
+```
+
+#### Test API
+
+```bash
+curl http://192.168.40.10:5051/progress | jq
 ```
 
 ---

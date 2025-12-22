@@ -14,7 +14,7 @@ locals {
       template      = "tpl-ubuntuv24.04-v1"
       cores         = 2
       sockets       = 1
-      memory        = 4096   # 4GB
+      memory        = 8192   # 8GB
       disk_size     = "20G"
       storage       = "VMDisks"
       vlan_tag      = null   # VLAN 20
@@ -32,7 +32,7 @@ locals {
       template      = "tpl-ubuntuv24.04-v1"
       cores         = 2
       sockets       = 1
-      memory        = 4096   # 4GB
+      memory        = 8192   # 8GB
       disk_size     = "20G"
       storage       = "VMDisks"
       vlan_tag      = null   # VLAN 20
@@ -47,7 +47,7 @@ locals {
       template      = "tpl-ubuntuv24.04-v1"
       cores         = 2
       sockets       = 1
-      memory        = 4096   # 4GB
+      memory        = 8192   # 8GB
       disk_size     = "20G"
       storage       = "VMDisks"
       vlan_tag      = null   # VLAN 20
@@ -65,7 +65,7 @@ locals {
       template      = "tpl-ubuntu-shared-v1"
       cores         = 4
       sockets       = 2
-      memory        = 6144   # 6GB
+      memory        = 8192   # 8GB
       disk_size     = "50G"
       storage       = "VMDisks"
       vlan_tag      = 40     # VLAN 40
@@ -80,7 +80,7 @@ locals {
       template      = "tpl-ubuntu-shared-v1"
       cores         = 2
       sockets       = 1
-      memory        = 4096   # 4GB
+      memory        = 8192   # 8GB
       disk_size     = "20G"
       storage       = "VMDisks"
       vlan_tag      = 40     # VLAN 40
@@ -95,7 +95,7 @@ locals {
       template      = "tpl-ubuntu-shared-v1"
       cores         = 2
       sockets       = 1
-      memory        = 4096   # 4GB
+      memory        = 8192   # 8GB
       disk_size     = "20G"
       storage       = "VMDisks"
       vlan_tag      = 40     # VLAN 40
@@ -110,7 +110,7 @@ locals {
       template      = "tpl-ubuntu-shared-v1"
       cores         = 2
       sockets       = 1
-      memory        = 4096   # 4GB
+      memory        = 8192   # 8GB
       disk_size     = "20G"
       storage       = "VMDisks"
       vlan_tag      = 40     # VLAN 40
@@ -125,7 +125,7 @@ locals {
       template      = "tpl-ubuntu-shared-v1"
       cores         = 2
       sockets       = 1
-      memory        = 4096   # 4GB
+      memory        = 8192   # 8GB
       disk_size     = "20G"
       storage       = "VMDisks"
       vlan_tag      = 40     # VLAN 40
@@ -140,7 +140,7 @@ locals {
       template      = "tpl-ubuntu-shared-v1"
       cores         = 2
       sockets       = 1
-      memory        = 4096   # 4GB
+      memory        = 8192   # 8GB
       disk_size     = "20G"
       storage       = "VMDisks"
       vlan_tag      = 40     # VLAN 40
@@ -155,7 +155,25 @@ locals {
       template      = "tpl-ubuntu-shared-v1"
       cores         = 2
       sockets       = 1
-      memory        = 4096   # 4GB
+      memory        = 8192   # 8GB
+      disk_size     = "20G"
+      storage       = "VMDisks"
+      vlan_tag      = 40     # VLAN 40
+      gateway       = "192.168.40.1"
+      nameserver    = "192.168.20.1"
+    }
+
+    # ============================================
+    # GitLab CI/CD Runner for service automation
+    # ============================================
+    gitlab-runner-vm = {
+      count         = 1
+      starting_ip   = "192.168.40.24"
+      target_node   = "node02"
+      template      = "tpl-ubuntu-shared-v1"
+      cores         = 2
+      sockets       = 1
+      memory        = 2048   # 2GB - lightweight runner
       disk_size     = "20G"
       storage       = "VMDisks"
       vlan_tag      = 40     # VLAN 40

@@ -29,14 +29,24 @@
     # Timezone
     timezone: "America/New_York"
 
-    # NFS Configuration
+    # NFS Configuration - Synology NAS
     nas_ip: "192.168.20.31"
-    nas_data_share: "/volume2/ProxmoxData"
-    data_mount_point: "/mnt/appdata"
+
+    # Synology mount points
+    # 1. Synology homes export (for legacy photos access)
+    synology_homes_share: "/volume2/homes"
+    synology_homes_mount: "/mnt/synology-root"
+
+    # 2. Legacy photos bind mount (read-only)
+    legacy_photos_source: "{{ synology_homes_mount }}/hermes-admin/Photos"
+    legacy_photos_mount: "/mnt/synology-photos"
+
+    # 3. Immich uploads share (read-write)
+    immich_uploads_share: "/volume2/Immich Photos"
+    immich_uploads_mount: "/mnt/immich-uploads"
 
     # Immich Configuration
     immich_local_dir: "/opt/immich"
-    immich_nfs_dir: "{{ data_mount_point }}/immich"
 
     # Immich version (use release tag)
     immich_version: "release"
@@ -62,47 +72,63 @@
         update_cache: yes
 
     # ============================================
-    # DIRECTORY STRUCTURE
+    # SYNOLOGY NFS MOUNTS
     # ============================================
 
-    - name: Check if mount point exists
-      stat:
-        path: "{{ data_mount_point }}"
-      register: mount_point_stat
-
-    - name: Create NFS mount point
+    - name: Create mount point directories
       file:
-        path: "{{ data_mount_point }}"
+        path: "{{ item }}"
         state: directory
-      when: not mount_point_stat.stat.exists
+        mode: "0755"
+      loop:
+        - "{{ synology_homes_mount }}"
+        - "{{ legacy_photos_mount }}"
+        - "{{ immich_uploads_mount }}"
 
-    - name: Add NFS mount to fstab
-      lineinfile:
-        path: /etc/fstab
-        line: "{{ nas_ip }}:{{ nas_data_share }} {{ data_mount_point }} nfs rw,soft,intr,timeo=300,retrans=3,_netdev,nofail 0 0"
-        state: present
-        create: yes
-
-    - name: Mount NFS share
+    # Mount 1: Synology homes (RO) - for legacy photos access
+    - name: Add Synology homes NFS mount to fstab (RO)
       mount:
-        path: "{{ data_mount_point }}"
-        src: "{{ nas_ip }}:{{ nas_data_share }}"
-        fstype: nfs
-        opts: rw,soft,intr,timeo=300,retrans=3,_netdev,nofail
+        path: "{{ synology_homes_mount }}"
+        src: "{{ nas_ip }}:{{ synology_homes_share }}"
+        fstype: nfs4
+        opts: ro,vers=4,_netdev,nofail
         state: mounted
-      register: nfs_mount_result
-      ignore_errors: yes
+      register: synology_homes_mount_result
 
-    - name: Verify NFS mount
-      command: df -h {{ data_mount_point }}
+    # Mount 2: Bind mount legacy photos (RO)
+    - name: Add legacy photos bind mount to fstab (RO)
+      mount:
+        path: "{{ legacy_photos_mount }}"
+        src: "{{ legacy_photos_source }}"
+        fstype: none
+        opts: bind,ro
+        state: mounted
+      register: legacy_photos_mount_result
+
+    # Mount 3: Immich uploads share (RW)
+    - name: Add Immich uploads NFS mount to fstab (RW)
+      mount:
+        path: "{{ immich_uploads_mount }}"
+        src: "{{ nas_ip }}:{{ immich_uploads_share }}"
+        fstype: nfs4
+        opts: rw,vers=4,_netdev,nofail
+        state: mounted
+      register: immich_uploads_mount_result
+
+    - name: Verify NFS mounts
+      command: mount | grep -E "synology|immich"
       register: nfs_mount_check
       changed_when: false
-      when: not (nfs_mount_result.failed | default(false))
+      ignore_errors: yes
 
     - name: Display NFS mount status
       debug:
-        msg: "{{ nfs_mount_check.stdout }}"
-      when: not (nfs_mount_result.failed | default(false))
+        msg: "{{ nfs_mount_check.stdout_lines }}"
+      when: nfs_mount_check.stdout_lines | length > 0
+
+    # ============================================
+    # DIRECTORY STRUCTURE
+    # ============================================
 
     - name: Create local Immich directories
       # PostgreSQL and ML models need local storage
@@ -115,18 +141,52 @@
         - "{{ immich_local_dir }}/postgres"
         - "{{ immich_local_dir }}/model-cache"
 
-    - name: Create Immich directories on NFS
-      # Photo uploads on NFS for persistence and large storage
+    - name: Verify legacy photos are accessible (RO)
+      stat:
+        path: "{{ legacy_photos_mount }}"
+      register: legacy_photos_stat
+      failed_when: not legacy_photos_stat.stat.exists
+
+    - name: Verify Immich uploads mount is writable
       file:
-        path: "{{ item }}"
-        state: directory
-        mode: "0777"
-      loop:
-        - "{{ immich_nfs_dir }}"
-        - "{{ immich_nfs_dir }}/upload"
-        - "{{ immich_nfs_dir }}/library"
-        - "{{ immich_nfs_dir }}/profile"
+        path: "{{ immich_uploads_mount }}/.ansible_write_test"
+        state: touch
+        mode: "0644"
+      register: uploads_write_test
       ignore_errors: yes
+
+    - name: Clean up write test file
+      file:
+        path: "{{ immich_uploads_mount }}/.ansible_write_test"
+        state: absent
+      when: uploads_write_test is succeeded
+
+    - name: Create Immich upload directory structure
+      # Immich requires these directories with marker files for integrity checks
+      file:
+        path: "{{ immich_uploads_mount }}/{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - thumbs
+        - upload
+        - backups
+        - library
+        - profile
+        - encoded-video
+
+    - name: Create Immich integrity marker files
+      file:
+        path: "{{ immich_uploads_mount }}/{{ item }}/.immich"
+        state: touch
+        mode: "0644"
+      loop:
+        - thumbs
+        - upload
+        - backups
+        - library
+        - profile
+        - encoded-video
 
     # ============================================
     # SECRETS MANAGEMENT
@@ -182,8 +242,10 @@
               image: ghcr.io/immich-app/immich-server:{{ immich_version }}
               restart: unless-stopped
               volumes:
-                # Photo/video uploads on NFS
-                - {{ immich_nfs_dir }}/upload:/usr/src/app/upload
+                # Active uploads on Synology (RW)
+                - {{ immich_uploads_mount }}:/usr/src/app/upload
+                # Legacy photos from Synology (RO external library)
+                - {{ legacy_photos_mount }}:/usr/src/app/external/synology:ro
                 - /etc/localtime:/etc/localtime:ro
               environment:
                 DB_PASSWORD: {{ postgres_password }}
@@ -328,10 +390,21 @@
               - ML Models: {{ immich_local_dir }}/model-cache
               - Secrets: {{ immich_local_dir }}/.secrets
 
-            NFS ({{ immich_nfs_dir }}):
-              - Photo Uploads: {{ immich_nfs_dir }}/upload
-              - Library: {{ immich_nfs_dir }}/library
-              - Profiles: {{ immich_nfs_dir }}/profile
+            Synology NAS (Active Uploads - RW):
+              - Host: {{ immich_uploads_mount }}
+              - Container: /usr/src/app/upload
+              - NAS Path: {{ nas_ip }}:{{ immich_uploads_share }}
+
+            Synology NAS (Legacy Photos - RO):
+              - Host: {{ legacy_photos_mount }}
+              - Container: /usr/src/app/external/synology
+              - NAS Path: {{ nas_ip }}:{{ synology_homes_share }}/hermes-admin/Photos
+
+          External Library Setup:
+            1. Go to Admin → External Libraries
+            2. Add library with path: /usr/src/app/external/synology
+            3. Click "Scan" to import legacy photos
+            4. Monitor progress in Admin → Jobs
 
           Mobile App Setup:
             1. Download Immich app

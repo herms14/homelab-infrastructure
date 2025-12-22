@@ -167,6 +167,59 @@ done
 
 ---
 
+### Kubelet Health Endpoint Not Accessible Externally (Glance Monitoring)
+
+**Resolved**: December 22, 2025
+
+**Symptoms**:
+- Glance dashboard shows K8s workers as "ERROR" (red)
+- K8s controllers show OK (green)
+- Workers are actually healthy, just not reachable from Glance monitoring
+
+**Root Cause**: By default, kubelet binds its health endpoint (`/healthz`) to `127.0.0.1:10248`, making it inaccessible from external monitoring tools like Glance running on a different host.
+
+**Diagnosis**:
+```bash
+# Check kubelet bind address
+ssh hermes-admin@192.168.20.40 "cat /var/lib/kubelet/config.yaml | grep healthzBindAddress"
+# Output: healthzBindAddress: 127.0.0.1
+
+# Verify kubelet only listens on localhost
+ssh hermes-admin@192.168.20.40 "ss -tlnp | grep 10248"
+# Output: LISTEN 127.0.0.1:10248 (only localhost)
+
+# Test external access fails
+curl -s --connect-timeout 3 http://192.168.20.40:10248/healthz
+# Timeout or connection refused
+```
+
+**Fix**:
+```bash
+# Update all worker nodes to bind healthz to 0.0.0.0
+for ip in 192.168.20.40 192.168.20.41 192.168.20.42 192.168.20.43 192.168.20.44 192.168.20.45; do
+  echo "=== $ip ==="
+  ssh hermes-admin@$ip "sudo sed -i 's/healthzBindAddress: 127.0.0.1/healthzBindAddress: 0.0.0.0/' /var/lib/kubelet/config.yaml && sudo systemctl restart kubelet"
+done
+```
+
+**Verification**:
+```bash
+# Verify kubelet now listens on all interfaces
+ssh hermes-admin@192.168.20.40 "ss -tlnp | grep 10248"
+# Output: LISTEN *:10248 (all interfaces)
+
+# Test external access works
+for ip in 192.168.20.40 192.168.20.41 192.168.20.42 192.168.20.43 192.168.20.44 192.168.20.45; do
+  echo -n "$ip: "
+  curl -s --connect-timeout 3 http://$ip:10248/healthz
+done
+# All should return: ok
+```
+
+**Prevention**: Add kubelet healthz bind address configuration to Kubernetes Ansible deployment playbook.
+
+---
+
 ## Authentication Issues
 
 ### Authentik ForwardAuth "Not Found" Error
@@ -469,6 +522,145 @@ docker exec gitlab gitlab-ctl status
 ```
 
 **Prevention**: Review GitLab release notes for deprecated options before updates.
+
+---
+
+### Glance Dashboard "Migration should take around 5 minutes" Message
+
+**Resolved**: December 22, 2025
+
+**Symptoms**:
+- Accessing https://glance.hrmsmrflrii.xyz shows "Migration should take around 5 minutes"
+- Dashboard never loads, stuck on migration message
+- Container logs show: `!!! WARNING !!! The default location of glance.yml in the Docker image has changed starting from v0.7.0.`
+
+**Root Cause**: Glance v0.7.0 changed the config file location from `/app/glance.yml` (single file mount) to `/app/config/` (directory mount). The old docker-compose.yml was using the deprecated single-file mount format.
+
+**Diagnosis**:
+```bash
+ssh hermes-admin@192.168.40.10 "docker logs glance 2>&1 | head -10"
+# Look for: "The default location of glance.yml in the Docker image has changed"
+```
+
+**Fix**:
+```bash
+# Update docker-compose.yml to use directory mount format
+ssh hermes-admin@192.168.40.10 "cat > /opt/glance/docker-compose.yml << 'EOF'
+services:
+  glance:
+    image: glanceapp/glance:latest
+    container_name: glance
+    restart: unless-stopped
+    ports:
+      - 8080:8080
+    volumes:
+      - ./config:/app/config
+      - ./assets:/app/assets:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - TZ=America/New_York
+EOF"
+
+# Restart the container
+ssh hermes-admin@192.168.40.10 "cd /opt/glance && sudo docker compose down && sudo docker compose up -d"
+```
+
+**Key Changes**:
+- Volume mount changed from `./glance.yml:/app/glance.yml` to `./config:/app/config`
+- Config file must be at `/opt/glance/config/glance.yml` (not `/opt/glance/glance.yml`)
+- Assets directory must also be mounted if `assets-path` is configured
+
+**Verification**:
+```bash
+# Check logs for successful startup
+ssh hermes-admin@192.168.40.10 "docker logs glance 2>&1"
+# Should show: "Starting server on :8080"
+
+# Test dashboard access
+curl -s -o /dev/null -w "%{http_code}" https://glance.hrmsmrflrii.xyz
+# Should return 200
+```
+
+**Prevention**:
+- Monitor Glance release notes for breaking changes
+- Ansible playbook `ansible-playbooks/glance/deploy-glance-dashboard.yml` has been updated to use the v0.7.0+ format
+- See: https://github.com/glanceapp/glance/blob/main/docs/v0.7.0-upgrade.md
+
+---
+
+### Glance Service Health Showing ERROR for Traefik
+
+**Resolved**: December 22, 2025
+
+**Symptoms**: Glance dashboard shows Traefik as "ERROR" even though Traefik is running fine.
+
+**Root Cause**: Glance was configured to use `http://192.168.40.20:8080/api/overview` which doesn't exist because Traefik's API is not exposed on port 8080 (insecure mode disabled).
+
+**Fix**:
+1. Enable Traefik ping endpoint on a dedicated entrypoint:
+```bash
+# Update traefik.yml to add ping entrypoint
+ssh hermes-admin@192.168.40.20 "sudo cat >> /opt/traefik/config/traefik.yml << 'EOF'
+ping:
+  entryPoint: traefik
+EOF"
+
+# Add traefik entrypoint to entryPoints section:
+#   traefik:
+#     address: ":8082"
+
+# Update docker-compose.yml to expose port 8082
+# ports:
+#   - "8082:8082"
+
+# Restart Traefik
+ssh hermes-admin@192.168.40.20 "cd /opt/traefik && sudo docker compose restart"
+```
+
+2. Update Glance config to use ping endpoint:
+```bash
+ssh hermes-admin@192.168.40.10 "sudo sed -i 's|url: http://192.168.40.20:8080/api/overview|url: http://192.168.40.20:8082/ping|' /opt/glance/config/glance.yml"
+```
+
+**Verification**:
+```bash
+curl -s http://192.168.40.20:8082/ping
+# Should return: OK
+```
+
+---
+
+### Glance Service Health Showing ERROR for GitLab
+
+**Resolved**: December 22, 2025
+
+**Symptoms**: Glance dashboard shows GitLab as "ERROR" or "Not Found".
+
+**Root Cause**: Multiple issues:
+1. GitLab's health endpoints (`/-/health`, `/-/readiness`) are restricted by `monitoring_whitelist` (default: localhost only)
+2. DNS resolution fails on docker-vm-utilities01 for `gitlab.hrmsmrflrii.xyz`
+
+**Fix**:
+1. Use direct HTTP URL that returns 200:
+```bash
+ssh hermes-admin@192.168.40.10 "sudo sed -i 's|url: http://192.168.40.23/-/health|url: http://192.168.40.23/users/sign_in|' /opt/glance/config/glance.yml"
+```
+
+Note: Using `/users/sign_in` returns 200 without requiring health endpoint access.
+
+**Alternative (if health endpoint needed)**:
+```bash
+# Enable monitoring from infrastructure network
+ssh hermes-admin@192.168.40.23 "sudo docker exec gitlab sh -c \"echo \\\"gitlab_rails['monitoring_whitelist'] = ['127.0.0.0/8', '::1/128', '192.168.40.0/24', '192.168.20.0/24']\\\" >> /etc/gitlab/gitlab.rb\""
+ssh hermes-admin@192.168.40.23 "sudo docker exec gitlab gitlab-ctl reconfigure"
+```
+
+**Verification**:
+```bash
+ssh hermes-admin@192.168.40.10 "curl -s -o /dev/null -w '%{http_code}' http://192.168.40.23/users/sign_in"
+# Should return: 200
+```
 
 ---
 

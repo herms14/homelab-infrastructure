@@ -335,6 +335,57 @@ ssh hermes-admin@192.168.40.10 "cd /opt/monitoring && docker compose pull && doc
 - Grafana dashboards: Exported as JSON or provisioned via files
 - Jaeger: In-memory, no persistent backup needed
 
+## Synology NAS Monitoring
+
+The monitoring stack includes SNMP-based monitoring for the Synology NAS (192.168.20.31).
+
+### Components
+
+| Component | Purpose |
+|-----------|---------|
+| SNMP Exporter | Collects SNMP metrics from Synology NAS |
+| Prometheus | Scrapes SNMP exporter on synology job |
+| Grafana | Synology NAS dashboard |
+| Glance | Embedded Grafana dashboard on Storage page |
+
+### Metrics Collected
+
+| Category | Metrics |
+|----------|---------|
+| Disk Health | SMART status, temperature, health status |
+| Storage | RAID total/free/used, volume usage |
+| CPU | Processor load per core, system stats |
+| Memory | Total, available, cached, buffer |
+| System | Status, temperature, fan status |
+
+### Prerequisites
+
+SNMP must be enabled on the Synology NAS:
+
+1. Log into DSM at http://192.168.20.31:5000
+2. Go to **Control Panel** → **Terminal & SNMP** → **SNMP** tab
+3. Enable **SNMPv1, SNMPv2c service**
+4. Set Community: `homelab`
+5. Click **Apply**
+
+### Verification
+
+```bash
+# Test SNMP connectivity
+curl "http://192.168.40.10:9116/snmp?target=192.168.20.31&module=synology"
+
+# Check Prometheus target
+curl -s http://192.168.40.10:9090/api/v1/targets | jq '.data.activeTargets[] | select(.labels.job=="synology")'
+```
+
+### Dashboard URLs
+
+| Dashboard | URL |
+|-----------|-----|
+| Grafana (full) | https://grafana.hrmsmrflrii.xyz/d/synology-nas/synology-nas |
+| Grafana (kiosk) | http://192.168.40.10:3030/d/synology-nas/synology-nas?kiosk |
+| Glance (embedded) | https://glance.hrmsmrflrii.xyz → Storage page |
+
 ## Related Documentation
 
 - [Services](./SERVICES.md) - Service deployment details

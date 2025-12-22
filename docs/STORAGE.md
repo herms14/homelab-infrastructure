@@ -178,8 +178,38 @@ Special NFS mount for Immich photo management:
   - Library: `/mnt/appdata/immich/library/`
   - Profiles: `/mnt/appdata/immich/profile/`
 
+## NAS Monitoring
+
+The Synology NAS is monitored via SNMP with metrics displayed in Grafana and embedded in the Glance dashboard.
+
+### Metrics Available
+
+| Metric | Description |
+|--------|-------------|
+| Storage Usage | RAID total, used, free space |
+| Disk Health | SMART status, temperature per disk |
+| CPU Usage | Per-core processor load |
+| Memory Usage | Total, available, cached RAM |
+| System Status | Overall health, temperature, fan status |
+
+### Dashboard Access
+
+| Location | URL |
+|----------|-----|
+| Grafana | https://grafana.hrmsmrflrii.xyz/d/synology-nas/synology-nas |
+| Glance | https://glance.hrmsmrflrii.xyz → Storage page |
+
+### SNMP Configuration
+
+SNMP must be enabled on the NAS (Control Panel → Terminal & SNMP → SNMP):
+- SNMPv2c enabled
+- Community: `homelab`
+
+See [Observability](./OBSERVABILITY.md#synology-nas-monitoring) for full setup details.
+
 ## Related Documentation
 
 - [Proxmox](./PROXMOX.md) - Cluster configuration
 - [Services](./SERVICES.md) - Service storage paths
 - [Terraform](./TERRAFORM.md) - IaC storage configuration
+- [Observability](./OBSERVABILITY.md) - NAS monitoring details

@@ -7,11 +7,13 @@
 #   - Prometheus: Metrics collection (port 9090)
 #   - Grafana: Visualization dashboards (port 3030)
 #   - PVE Exporter: Proxmox metrics for Prometheus
+#   - SNMP Exporter: Synology NAS metrics for Prometheus
 #
 # Integrations:
 #   - Jaeger datasource for distributed tracing
 #   - Traefik metrics scraping
 #   - OTEL Collector metrics scraping
+#   - Synology NAS SNMP metrics
 #
 # Usage:
 #   ansible-playbook monitoring/deploy-monitoring-stack.yml
@@ -31,9 +33,13 @@
     prometheus_port: 9090
     grafana_port: 3030
     pve_exporter_port: 9221
+    snmp_exporter_port: 9116
     # External service IPs
     traefik_ip: "192.168.40.20"
     utilities_ip: "192.168.40.10"
+    # Synology NAS
+    synology_ip: "192.168.20.31"
+    snmp_community: "homelab"
 
   tasks:
     - name: Create monitoring directory structure
@@ -53,6 +59,7 @@
         - "{{ monitoring_dir }}/grafana/dashboards"
         - "{{ monitoring_dir }}/uptime-kuma"
         - "{{ monitoring_dir }}/pve-exporter"
+        - "{{ monitoring_dir }}/snmp-exporter"
 
     - name: Set Grafana data directory permissions
       file:
@@ -153,6 +160,23 @@
               static_configs:
                 - targets: ['host.docker.internal:9100']
 
+            # Synology NAS metrics via SNMP Exporter
+            - job_name: 'synology'
+              static_configs:
+                - targets:
+                  - {{ synology_ip }}  # Synology NAS
+              metrics_path: /snmp
+              params:
+                module: [synology]
+                auth: [homelab_v2]
+              relabel_configs:
+                - source_labels: [__address__]
+                  target_label: __param_target
+                - source_labels: [__param_target]
+                  target_label: instance
+                - target_label: __address__
+                  replacement: snmp-exporter:{{ snmp_exporter_port }}
+
     - name: Create PVE Exporter configuration
       copy:
         dest: "{{ monitoring_dir }}/pve-exporter/pve.yml"
@@ -162,6 +186,249 @@
             user: {{ pve_user }}
             password: {{ pve_password }}
             verify_ssl: false
+
+    - name: Create SNMP Exporter configuration for Synology
+      copy:
+        dest: "{{ monitoring_dir }}/snmp-exporter/snmp.yml"
+        mode: '0644'
+        content: |
+          # SNMP Exporter configuration for Synology NAS
+          # Monitors disk health, storage, CPU, and memory
+          auths:
+            homelab_v2:
+              community: {{ snmp_community }}
+              security_level: noAuthNoPriv
+              auth_protocol: MD5
+              priv_protocol: DES
+              version: 2
+
+          modules:
+            synology:
+              walk:
+                # System information
+                - 1.3.6.1.2.1.1                          # system (sysDescr, sysUpTime, etc.)
+                - 1.3.6.1.2.1.25.1                       # hrSystem
+                - 1.3.6.1.2.1.25.2                       # hrStorage (disk usage)
+                - 1.3.6.1.2.1.25.3.3                     # hrProcessorLoad (CPU)
+                # Synology specific
+                - 1.3.6.1.4.1.6574.1                     # synology system
+                - 1.3.6.1.4.1.6574.2                     # synology disk
+                - 1.3.6.1.4.1.6574.3                     # synology raid
+                - 1.3.6.1.4.1.6574.5                     # synology storageIO
+                - 1.3.6.1.4.1.6574.101                   # synology spaceIO
+                - 1.3.6.1.4.1.6574.104                   # synology services
+                # UCD-SNMP-MIB (CPU, Memory, Load)
+                - 1.3.6.1.4.1.2021.4                     # memory
+                - 1.3.6.1.4.1.2021.10                    # laTable (load average)
+                - 1.3.6.1.4.1.2021.11                    # systemStats (CPU)
+              metrics:
+                # System Info
+                - name: sysUpTime
+                  oid: 1.3.6.1.2.1.1.3
+                  type: gauge
+                  help: System uptime in hundredths of seconds
+                # Storage metrics
+                - name: hrStorageDescr
+                  oid: 1.3.6.1.2.1.25.2.3.1.3
+                  type: DisplayString
+                  indexes:
+                    - labelname: hrStorageIndex
+                      type: gauge
+                  help: Storage description
+                - name: hrStorageAllocationUnits
+                  oid: 1.3.6.1.2.1.25.2.3.1.4
+                  type: gauge
+                  indexes:
+                    - labelname: hrStorageIndex
+                      type: gauge
+                  help: Storage allocation unit size in bytes
+                - name: hrStorageSize
+                  oid: 1.3.6.1.2.1.25.2.3.1.5
+                  type: gauge
+                  indexes:
+                    - labelname: hrStorageIndex
+                      type: gauge
+                  help: Storage size in allocation units
+                - name: hrStorageUsed
+                  oid: 1.3.6.1.2.1.25.2.3.1.6
+                  type: gauge
+                  indexes:
+                    - labelname: hrStorageIndex
+                      type: gauge
+                  help: Storage used in allocation units
+                # CPU Load
+                - name: hrProcessorLoad
+                  oid: 1.3.6.1.2.1.25.3.3.1.2
+                  type: gauge
+                  indexes:
+                    - labelname: hrProcessorIndex
+                      type: gauge
+                  help: Processor load percentage
+                # Synology System
+                - name: synologySystemStatus
+                  oid: 1.3.6.1.4.1.6574.1.1
+                  type: gauge
+                  help: System status (1=Normal, 2=Failed)
+                - name: synologySystemTemperature
+                  oid: 1.3.6.1.4.1.6574.1.2
+                  type: gauge
+                  help: System temperature in Celsius
+                - name: synologySystemPowerStatus
+                  oid: 1.3.6.1.4.1.6574.1.3
+                  type: gauge
+                  help: Power status (1=Normal, 2=Failed)
+                - name: synologySystemFanStatus
+                  oid: 1.3.6.1.4.1.6574.1.4.1
+                  type: gauge
+                  help: Fan status (1=Normal, 2=Failed)
+                - name: synologySystemCpuFanStatus
+                  oid: 1.3.6.1.4.1.6574.1.4.2
+                  type: gauge
+                  help: CPU Fan status (1=Normal, 2=Failed)
+                - name: synologySystemModel
+                  oid: 1.3.6.1.4.1.6574.1.5.1
+                  type: DisplayString
+                  help: Synology model name
+                - name: synologySystemSerialNumber
+                  oid: 1.3.6.1.4.1.6574.1.5.2
+                  type: DisplayString
+                  help: Synology serial number
+                - name: synologySystemDSMVersion
+                  oid: 1.3.6.1.4.1.6574.1.5.3
+                  type: DisplayString
+                  help: DSM version
+                - name: synologySystemUpgradeAvailable
+                  oid: 1.3.6.1.4.1.6574.1.5.4
+                  type: gauge
+                  help: Upgrade available (1=Available, 2=Unavailable, 3=Connecting, 4=Disconnected, 5=Other)
+                # Synology Disk
+                - name: synologyDiskID
+                  oid: 1.3.6.1.4.1.6574.2.1.1.2
+                  type: DisplayString
+                  indexes:
+                    - labelname: diskIndex
+                      type: gauge
+                  help: Disk identifier
+                - name: synologyDiskModel
+                  oid: 1.3.6.1.4.1.6574.2.1.1.3
+                  type: DisplayString
+                  indexes:
+                    - labelname: diskIndex
+                      type: gauge
+                  help: Disk model name
+                - name: synologyDiskType
+                  oid: 1.3.6.1.4.1.6574.2.1.1.4
+                  type: DisplayString
+                  indexes:
+                    - labelname: diskIndex
+                      type: gauge
+                  help: Disk type (SATA, SAS, etc.)
+                - name: synologyDiskStatus
+                  oid: 1.3.6.1.4.1.6574.2.1.1.5
+                  type: gauge
+                  indexes:
+                    - labelname: diskIndex
+                      type: gauge
+                  help: Disk status (1=Normal, 2=Initialized, 3=NotInitialized, 4=SystemPartitionFailed, 5=Crashed)
+                - name: synologyDiskTemperature
+                  oid: 1.3.6.1.4.1.6574.2.1.1.6
+                  type: gauge
+                  indexes:
+                    - labelname: diskIndex
+                      type: gauge
+                  help: Disk temperature in Celsius
+                - name: synologyDiskHealthStatus
+                  oid: 1.3.6.1.4.1.6574.2.1.1.13
+                  type: gauge
+                  indexes:
+                    - labelname: diskIndex
+                      type: gauge
+                  help: Disk SMART health (1=Normal, 2=Warning, 3=Critical, 4=Failing)
+                # Synology RAID
+                - name: synologyRaidName
+                  oid: 1.3.6.1.4.1.6574.3.1.1.2
+                  type: DisplayString
+                  indexes:
+                    - labelname: raidIndex
+                      type: gauge
+                  help: RAID name
+                - name: synologyRaidStatus
+                  oid: 1.3.6.1.4.1.6574.3.1.1.3
+                  type: gauge
+                  indexes:
+                    - labelname: raidIndex
+                      type: gauge
+                  help: RAID status (1=Normal, 2=Repairing, 3=Migrating, 4=Expanding, 5=Deleting, 6=Creating, 7=RaidSyncing, 8=RaidParityChecking, 9=RaidAssembling, 10=Canceling, 11=Degraded, 12=Crashed)
+                - name: synologyRaidFreeSize
+                  oid: 1.3.6.1.4.1.6574.3.1.1.4
+                  type: gauge
+                  indexes:
+                    - labelname: raidIndex
+                      type: gauge
+                  help: RAID free size in bytes
+                - name: synologyRaidTotalSize
+                  oid: 1.3.6.1.4.1.6574.3.1.1.5
+                  type: gauge
+                  indexes:
+                    - labelname: raidIndex
+                      type: gauge
+                  help: RAID total size in bytes
+                # UCD Memory
+                - name: memTotalReal
+                  oid: 1.3.6.1.4.1.2021.4.5
+                  type: gauge
+                  help: Total RAM in KB
+                - name: memAvailReal
+                  oid: 1.3.6.1.4.1.2021.4.6
+                  type: gauge
+                  help: Available RAM in KB
+                - name: memTotalFree
+                  oid: 1.3.6.1.4.1.2021.4.11
+                  type: gauge
+                  help: Total free memory in KB
+                - name: memBuffer
+                  oid: 1.3.6.1.4.1.2021.4.14
+                  type: gauge
+                  help: Buffer memory in KB
+                - name: memCached
+                  oid: 1.3.6.1.4.1.2021.4.15
+                  type: gauge
+                  help: Cached memory in KB
+                # UCD Load Average
+                - name: laLoad
+                  oid: 1.3.6.1.4.1.2021.10.1.3
+                  type: DisplayString
+                  indexes:
+                    - labelname: laIndex
+                      type: gauge
+                  help: Load average (1, 5, 15 min)
+                # UCD CPU
+                - name: ssCpuRawUser
+                  oid: 1.3.6.1.4.1.2021.11.50
+                  type: counter
+                  help: User CPU time
+                - name: ssCpuRawNice
+                  oid: 1.3.6.1.4.1.2021.11.51
+                  type: counter
+                  help: Nice CPU time
+                - name: ssCpuRawSystem
+                  oid: 1.3.6.1.4.1.2021.11.52
+                  type: counter
+                  help: System CPU time
+                - name: ssCpuRawIdle
+                  oid: 1.3.6.1.4.1.2021.11.53
+                  type: counter
+                  help: Idle CPU time
+                - name: ssCpuRawWait
+                  oid: 1.3.6.1.4.1.2021.11.54
+                  type: counter
+                  help: I/O Wait CPU time
+
+    - name: Remove stale datasource files
+      file:
+        path: "{{ monitoring_dir }}/grafana/provisioning/datasources/prometheus.yml"
+        state: absent
+      ignore_errors: yes
 
     - name: Create Grafana datasource provisioning
       copy:
@@ -601,7 +868,7 @@
                   {
                     "datasource": {"type": "prometheus", "uid": "prometheus"},
                     "expr": "pve_node_memory_usage_percentage",
-                    "legendFormat": "{{instance}}",
+                    "legendFormat": "{{ '{{' }}instance{{ '}}' }}",
                     "refId": "A"
                   }
                 ],
@@ -655,7 +922,7 @@
                   {
                     "datasource": {"type": "prometheus", "uid": "prometheus"},
                     "expr": "pve_node_cpu_usage_percentage",
-                    "legendFormat": "{{instance}}",
+                    "legendFormat": "{{ '{{' }}instance{{ '}}' }}",
                     "refId": "A"
                   }
                 ],
@@ -847,6 +1114,280 @@
             "weekStart": ""
           }
 
+    - name: Create Synology NAS monitoring dashboard
+      copy:
+        dest: "{{ monitoring_dir }}/grafana/dashboards/synology-nas.json"
+        mode: '0644'
+        content: |
+          {
+            "annotations": {"list": []},
+            "editable": true,
+            "fiscalYearStartMonth": 0,
+            "graphTooltip": 1,
+            "id": null,
+            "links": [],
+            "liveNow": false,
+            "panels": [
+              {
+                "datasource": {"type": "prometheus", "uid": "prometheus"},
+                "fieldConfig": {
+                  "defaults": {
+                    "color": {"mode": "thresholds"},
+                    "mappings": [
+                      {"options": {"1": {"color": "green", "index": 0, "text": "Normal"}}, "type": "value"},
+                      {"options": {"2": {"color": "red", "index": 1, "text": "Failed"}}, "type": "value"}
+                    ],
+                    "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+                    "unit": "none"
+                  },
+                  "overrides": []
+                },
+                "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0},
+                "id": 1,
+                "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+                "pluginVersion": "10.0.0",
+                "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "synologySystemStatus", "refId": "A"}],
+                "title": "System Status",
+                "type": "stat"
+              },
+              {
+                "datasource": {"type": "prometheus", "uid": "prometheus"},
+                "fieldConfig": {
+                  "defaults": {
+                    "color": {"mode": "thresholds"},
+                    "mappings": [],
+                    "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 50}, {"color": "red", "value": 60}]},
+                    "unit": "celsius"
+                  },
+                  "overrides": []
+                },
+                "gridPos": {"h": 4, "w": 4, "x": 4, "y": 0},
+                "id": 2,
+                "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+                "pluginVersion": "10.0.0",
+                "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "synologySystemTemperature", "refId": "A"}],
+                "title": "System Temp",
+                "type": "stat"
+              },
+              {
+                "datasource": {"type": "prometheus", "uid": "prometheus"},
+                "fieldConfig": {
+                  "defaults": {
+                    "color": {"mode": "thresholds"},
+                    "mappings": [],
+                    "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 70}, {"color": "red", "value": 90}]},
+                    "unit": "percent"
+                  },
+                  "overrides": []
+                },
+                "gridPos": {"h": 4, "w": 4, "x": 8, "y": 0},
+                "id": 3,
+                "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+                "pluginVersion": "10.0.0",
+                "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "avg(hrProcessorLoad)", "refId": "A"}],
+                "title": "CPU Usage",
+                "type": "stat"
+              },
+              {
+                "datasource": {"type": "prometheus", "uid": "prometheus"},
+                "fieldConfig": {
+                  "defaults": {
+                    "color": {"mode": "thresholds"},
+                    "mappings": [],
+                    "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 70}, {"color": "red", "value": 90}]},
+                    "unit": "percent"
+                  },
+                  "overrides": []
+                },
+                "gridPos": {"h": 4, "w": 4, "x": 12, "y": 0},
+                "id": 4,
+                "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+                "pluginVersion": "10.0.0",
+                "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "100 - ((memAvailReal / memTotalReal) * 100)", "refId": "A"}],
+                "title": "Memory Usage",
+                "type": "stat"
+              },
+              {
+                "datasource": {"type": "prometheus", "uid": "prometheus"},
+                "fieldConfig": {
+                  "defaults": {
+                    "color": {"mode": "thresholds"},
+                    "mappings": [],
+                    "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+                    "unit": "bytes"
+                  },
+                  "overrides": []
+                },
+                "gridPos": {"h": 4, "w": 4, "x": 16, "y": 0},
+                "id": 5,
+                "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+                "pluginVersion": "10.0.0",
+                "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "memTotalReal * 1024", "refId": "A"}],
+                "title": "Total RAM",
+                "type": "stat"
+              },
+              {
+                "datasource": {"type": "prometheus", "uid": "prometheus"},
+                "fieldConfig": {
+                  "defaults": {
+                    "color": {"mode": "thresholds"},
+                    "mappings": [],
+                    "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+                    "unit": "bytes"
+                  },
+                  "overrides": []
+                },
+                "gridPos": {"h": 4, "w": 4, "x": 20, "y": 0},
+                "id": 6,
+                "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+                "pluginVersion": "10.0.0",
+                "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "memAvailReal * 1024", "refId": "A"}],
+                "title": "Available RAM",
+                "type": "stat"
+              },
+              {
+                "datasource": {"type": "prometheus", "uid": "prometheus"},
+                "fieldConfig": {
+                  "defaults": {
+                    "color": {"mode": "thresholds"},
+                    "mappings": [
+                      {"options": {"1": {"color": "green", "index": 0, "text": "Normal"}}, "type": "value"},
+                      {"options": {"2": {"color": "yellow", "index": 1, "text": "Warning"}}, "type": "value"},
+                      {"options": {"3": {"color": "orange", "index": 2, "text": "Critical"}}, "type": "value"},
+                      {"options": {"4": {"color": "red", "index": 3, "text": "Failing"}}, "type": "value"}
+                    ],
+                    "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+                    "unit": "none"
+                  },
+                  "overrides": []
+                },
+                "gridPos": {"h": 6, "w": 12, "x": 0, "y": 4},
+                "id": 7,
+                "options": {"displayMode": "lcd", "minVizHeight": 10, "minVizWidth": 0, "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showUnfilled": true, "valueMode": "color"},
+                "pluginVersion": "10.0.0",
+                "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "synologyDiskHealthStatus", "legendFormat": "Disk {{ '{{' }}diskIndex{{ '}}' }}", "refId": "A"}],
+                "title": "Disk Health Status",
+                "type": "bargauge"
+              },
+              {
+                "datasource": {"type": "prometheus", "uid": "prometheus"},
+                "fieldConfig": {
+                  "defaults": {
+                    "color": {"mode": "thresholds"},
+                    "mappings": [],
+                    "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 45}, {"color": "red", "value": 55}]},
+                    "unit": "celsius"
+                  },
+                  "overrides": []
+                },
+                "gridPos": {"h": 6, "w": 12, "x": 12, "y": 4},
+                "id": 8,
+                "options": {"displayMode": "lcd", "minVizHeight": 10, "minVizWidth": 0, "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showUnfilled": true, "valueMode": "color"},
+                "pluginVersion": "10.0.0",
+                "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "synologyDiskTemperature", "legendFormat": "Disk {{ '{{' }}diskIndex{{ '}}' }}", "refId": "A"}],
+                "title": "Disk Temperatures",
+                "type": "bargauge"
+              },
+              {
+                "datasource": {"type": "prometheus", "uid": "prometheus"},
+                "fieldConfig": {
+                  "defaults": {
+                    "color": {"mode": "thresholds"},
+                    "mappings": [],
+                    "max": 100,
+                    "min": 0,
+                    "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 70}, {"color": "red", "value": 90}]},
+                    "unit": "percent"
+                  },
+                  "overrides": []
+                },
+                "gridPos": {"h": 8, "w": 12, "x": 0, "y": 10},
+                "id": 9,
+                "options": {"displayMode": "gradient", "minVizHeight": 10, "minVizWidth": 0, "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showUnfilled": true, "valueMode": "color"},
+                "pluginVersion": "10.0.0",
+                "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "100 - ((synologyRaidFreeSize / synologyRaidTotalSize) * 100)", "legendFormat": "{{ '{{' }}raidIndex{{ '}}' }}", "refId": "A"}],
+                "title": "Storage Usage %",
+                "type": "bargauge"
+              },
+              {
+                "datasource": {"type": "prometheus", "uid": "prometheus"},
+                "fieldConfig": {
+                  "defaults": {
+                    "color": {"mode": "palette-classic"},
+                    "custom": {"axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 20, "gradientMode": "none", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}},
+                    "mappings": [],
+                    "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+                    "unit": "bytes"
+                  },
+                  "overrides": []
+                },
+                "gridPos": {"h": 8, "w": 12, "x": 12, "y": 10},
+                "id": 10,
+                "options": {"legend": {"calcs": ["lastNotNull"], "displayMode": "table", "placement": "right", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+                "pluginVersion": "10.0.0",
+                "targets": [
+                  {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "synologyRaidTotalSize", "legendFormat": "Total", "refId": "A"},
+                  {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "synologyRaidTotalSize - synologyRaidFreeSize", "legendFormat": "Used", "refId": "B"},
+                  {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "synologyRaidFreeSize", "legendFormat": "Free", "refId": "C"}
+                ],
+                "title": "Storage Capacity",
+                "type": "timeseries"
+              },
+              {
+                "datasource": {"type": "prometheus", "uid": "prometheus"},
+                "fieldConfig": {
+                  "defaults": {
+                    "color": {"mode": "palette-classic"},
+                    "custom": {"axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 20, "gradientMode": "none", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}},
+                    "mappings": [],
+                    "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+                    "unit": "percent"
+                  },
+                  "overrides": []
+                },
+                "gridPos": {"h": 8, "w": 12, "x": 0, "y": 18},
+                "id": 11,
+                "options": {"legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+                "pluginVersion": "10.0.0",
+                "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "hrProcessorLoad", "legendFormat": "CPU {{ '{{' }}hrProcessorIndex{{ '}}' }}", "refId": "A"}],
+                "title": "CPU Usage Over Time",
+                "type": "timeseries"
+              },
+              {
+                "datasource": {"type": "prometheus", "uid": "prometheus"},
+                "fieldConfig": {
+                  "defaults": {
+                    "color": {"mode": "palette-classic"},
+                    "custom": {"axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 20, "gradientMode": "none", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}},
+                    "mappings": [],
+                    "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+                    "unit": "percent"
+                  },
+                  "overrides": []
+                },
+                "gridPos": {"h": 8, "w": 12, "x": 12, "y": 18},
+                "id": 12,
+                "options": {"legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+                "pluginVersion": "10.0.0",
+                "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "100 - ((memAvailReal / memTotalReal) * 100)", "legendFormat": "Memory Used %", "refId": "A"}],
+                "title": "Memory Usage Over Time",
+                "type": "timeseries"
+              }
+            ],
+            "refresh": "30s",
+            "schemaVersion": 38,
+            "style": "dark",
+            "tags": ["synology", "nas", "storage"],
+            "templating": {"list": []},
+            "time": {"from": "now-3h", "to": "now"},
+            "timepicker": {},
+            "timezone": "",
+            "title": "Synology NAS",
+            "uid": "synology-nas",
+            "version": 1,
+            "weekStart": ""
+          }
+
     - name: Create Docker Compose file for monitoring stack
       copy:
         dest: "{{ monitoring_dir }}/docker-compose.yml"
@@ -899,6 +1440,20 @@
               networks:
                 - monitoring
 
+            # SNMP Exporter - Synology NAS metrics
+            snmp-exporter:
+              image: prom/snmp-exporter:latest
+              container_name: snmp-exporter
+              restart: unless-stopped
+              ports:
+                - "{{ snmp_exporter_port }}:9116"
+              volumes:
+                - ./snmp-exporter/snmp.yml:/etc/snmp_exporter/snmp.yml:ro
+              command:
+                - '--config.file=/etc/snmp_exporter/snmp.yml'
+              networks:
+                - monitoring
+
             # Grafana - Visualization and dashboards
             grafana:
               image: grafana/grafana:latest
@@ -915,6 +1470,11 @@
                 - GF_SECURITY_ADMIN_PASSWORD=admin
                 - GF_USERS_ALLOW_SIGN_UP=false
                 - GF_SERVER_ROOT_URL=https://grafana.hrmsmrflrii.xyz
+                # Enable iframe embedding for Glance dashboard
+                - GF_SECURITY_ALLOW_EMBEDDING=true
+                - GF_AUTH_ANONYMOUS_ENABLED=true
+                - GF_AUTH_ANONYMOUS_ORG_NAME=Main Org.
+                - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
               depends_on:
                 - prometheus
               networks:
@@ -941,6 +1501,7 @@
         - "{{ uptime_kuma_port }}"
         - "{{ prometheus_port }}"
         - "{{ grafana_port }}"
+        - "{{ snmp_exporter_port }}"
 
     - name: Display deployment summary
       debug:
@@ -950,10 +1511,11 @@
           - "============================================"
           - ""
           - "Services:"
-          - "  Uptime Kuma:  http://{{ utilities_ip }}:{{ uptime_kuma_port }}"
-          - "  Prometheus:   http://{{ utilities_ip }}:{{ prometheus_port }}"
-          - "  Grafana:      http://{{ utilities_ip }}:{{ grafana_port }}"
-          - "  PVE Exporter: http://{{ utilities_ip }}:{{ pve_exporter_port }}"
+          - "  Uptime Kuma:   http://{{ utilities_ip }}:{{ uptime_kuma_port }}"
+          - "  Prometheus:    http://{{ utilities_ip }}:{{ prometheus_port }}"
+          - "  Grafana:       http://{{ utilities_ip }}:{{ grafana_port }}"
+          - "  PVE Exporter:  http://{{ utilities_ip }}:{{ pve_exporter_port }}"
+          - "  SNMP Exporter: http://{{ utilities_ip }}:{{ snmp_exporter_port }}"
           - ""
           - "External URLs (via Traefik):"
           - "  https://uptime.{{ domain }}"
@@ -964,6 +1526,10 @@
           - "  Username: admin"
           - "  Password: admin (change on first login!)"
           - ""
+          - "Grafana Embedding:"
+          - "  Anonymous access enabled for iframe embedding in Glance"
+          - "  Synology dashboard URL: http://{{ utilities_ip }}:{{ grafana_port }}/d/synology-nas/synology-nas?kiosk"
+          - ""
           - "Datasources Configured:"
           - "  - Prometheus (default)"
           - "  - Jaeger (distributed tracing)"
@@ -971,19 +1537,28 @@
           - "Dashboards Configured:"
           - "  - Proxmox Cluster Overview"
           - "  - Traefik Observability"
+          - "  - Synology NAS"
           - ""
           - "Prometheus Scrape Targets:"
           - "  - Prometheus (self)"
           - "  - Proxmox VE (via PVE Exporter)"
+          - "  - Synology NAS ({{ synology_ip }} via SNMP Exporter)"
           - "  - Traefik ({{ traefik_ip }}:8082)"
           - "  - OTEL Collector ({{ utilities_ip }}:8888, 8889)"
           - "  - Jaeger ({{ utilities_ip }}:14269)"
           - "  - Demo App ({{ utilities_ip }}:8080)"
           - ""
+          - "Synology NAS Monitoring:"
+          - "  IMPORTANT: Enable SNMP on Synology DSM first!"
+          - "  1. DSM > Control Panel > Terminal & SNMP > SNMP"
+          - "  2. Enable SNMPv1, SNMPv2c service"
+          - "  3. Set Community: {{ snmp_community }}"
+          - ""
           - "Next Steps:"
-          - "  1. Deploy observability stack (deploy-observability-stack.yml)"
-          - "  2. Deploy updated Traefik config (deploy-traefik-ssl.yml)"
-          - "  3. Set PVE_PASSWORD environment variable for Proxmox metrics"
-          - "  4. View dashboards in Grafana"
-          - "  5. Explore traces in Jaeger"
+          - "  1. Enable SNMP on Synology NAS (see above)"
+          - "  2. Deploy observability stack (deploy-observability-stack.yml)"
+          - "  3. Deploy updated Traefik config (deploy-traefik-ssl.yml)"
+          - "  4. Set PVE_PASSWORD environment variable for Proxmox metrics"
+          - "  5. View dashboards in Grafana"
+          - "  6. Update Glance config to embed Synology dashboard"
           - "============================================"
