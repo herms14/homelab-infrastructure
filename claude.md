@@ -495,6 +495,194 @@ The Media page has been carefully configured with the following structure and sh
 - Media Stats API: `temp-media-api-update.py`
 - API location: `/opt/media-stats-api/media-stats-api.py`
 
+## Glance Dashboard - Tab Structure
+
+The Glance dashboard has 7 tabs in this order:
+
+| Tab | Purpose | Protected |
+|-----|---------|-----------|
+| **Home** | Service monitors, bookmarks, markets | YES |
+| **Compute** | Proxmox cluster Grafana dashboard | No |
+| **Storage** | Synology NAS Grafana dashboard | No |
+| **Network** | Network overview + Speedtest | No |
+| **Media** | Media stats, downloads, queue | YES |
+| **Web** | Tech news, AI/ML, stocks, NBA | No |
+| **Reddit** | Dynamic Reddit feed | No |
+
+### Compute Tab
+
+Displays Proxmox cluster metrics and container monitoring via two embedded Grafana dashboards.
+
+#### Proxmox Cluster Dashboard
+
+**Grafana Dashboard**: `proxmox-compute` (UID)
+- URL: `https://grafana.hrmsmrflrii.xyz/d/proxmox-compute/proxmox-cluster-overview?kiosk&refresh=30s`
+- Iframe Height: 950px
+- Panels: Transparent backgrounds
+
+**Panels Include**:
+- Nodes Online (stat with green/red)
+- Avg CPU % (stat with thresholds)
+- Avg Memory % (stat with thresholds)
+- Running VMs / Total VMs / Stopped VMs
+- CPU Usage by Node (time series)
+- Memory Usage by Node (time series)
+- Local LVM Storage Usage % (bar gauge, red at 90%)
+- VM Disks Storage Usage % (bar gauge)
+- Proxmox Data Storage Usage % (bar gauge)
+- Storage totals (VMDisks, ProxmoxData, Local LVM)
+
+#### Container Monitoring Dashboard (Modern Visual Style)
+
+**Grafana Dashboard**: `containers-modern` (UID)
+- URL: `https://grafana.hrmsmrflrii.xyz/d/containers-modern/container-monitoring?kiosk&refresh=30s`
+- Iframe Height: 600px
+- Panels: Transparent backgrounds
+
+**Summary Stats Row** (colored tiles):
+- Total Containers (blue background)
+- Running Containers (green background)
+- Total Memory Used (orange background, bytes)
+- Total CPU (circular gauge with thresholds)
+
+**Memory Usage Bar Gauges** (horizontal gradient bars):
+- Utilities VM containers - Blue-Yellow-Red gradient
+- Media VM containers - Blue-Yellow-Red gradient
+- Shows container name with memory % per container
+
+**CPU Usage Bar Gauges** (horizontal gradient bars):
+- Utilities VM containers - Green-Yellow-Red gradient
+- Media VM containers - Green-Yellow-Red gradient
+- Shows container name with CPU % per container
+
+**Color Thresholds**:
+- Memory: Green <70%, Yellow 70-90%, Red >90%
+- CPU: Green <50%, Yellow 50-80%, Red >80%
+
+**Metrics Source**: docker-exporter on port 9417
+- `docker_container_running`
+- `docker_container_memory_percent`
+- `docker_container_cpu_percent`
+- `docker_container_memory_usage_bytes`
+
+**Sidebar Widgets**:
+- Proxmox Nodes Monitor (Node 01, 02, 03)
+- Quick Links Bookmarks (Proxmox UI, Grafana)
+
+### Storage Tab
+
+Displays Synology NAS metrics via embedded Grafana dashboard.
+
+**Grafana Dashboard**: `synology-storage` (UID)
+- URL: `https://grafana.hrmsmrflrii.xyz/d/synology-storage/synology-nas?kiosk&refresh=30s`
+- Iframe Height: 500px
+- Panels: Transparent backgrounds
+
+**Panels Include**:
+- CPU Load (stat)
+- Root Volume Usage % (stat with thresholds)
+- Total Storage (bytes)
+- Free Storage (bytes)
+- CPU Load per Core (time series)
+- Storage Usage Over Time (time series)
+
+### Network Tab
+
+Displays network metrics via Grafana + Speedtest widget.
+
+**Grafana Dashboard**: `network-overview` (UID)
+- URL: `https://grafana.hrmsmrflrii.xyz/d/network-overview/network-overview?kiosk&refresh=30s`
+- Iframe Height: 750px
+- Panels: Transparent backgrounds
+
+**Panels Include**:
+- OPNsense Gateway Status
+- OPNsense Services Running
+- TCP Connections (Established)
+- Firewall Blocked Packets
+- WAN Interface Traffic (time series)
+- Firewall Pass/Block Rate (time series)
+- OPNsense Services Status (bar gauge)
+- TCP Connection States (time series)
+- Protocol Packet Rates (time series)
+
+**Speedtest Widget**:
+- API: `http://192.168.40.10:3000/api/speedtest/latest`
+- Shows: Download (Mbps), Upload (Mbps), Ping (ms)
+- Gradient color tiles (blue/green/amber)
+
+### Web Tab
+
+Tech news, AI/ML feeds, enterprise tech, stocks, and NBA scores.
+
+**Widgets**:
+1. Tech News RSS (The Verge, Google Tech)
+2. AI & Machine Learning RSS (r/artificial, r/MachineLearning, r/LocalLLaMA)
+3. Enterprise Tech RSS (r/microsoft, r/github, r/NVIDIA)
+4. NBA Scores (ESPN API)
+5. Tech Stocks (MSFT, NVDA, ORCL, AMZN, CRM, GOOGL)
+6. Crypto (BTC, ETH, XRP)
+7. Crypto News RSS (r/cryptocurrency)
+
+### Prometheus Exporters
+
+| Exporter | Port | Target | Status |
+|----------|------|--------|--------|
+| OPNsense Exporter | 9198 | 192.168.91.30 | Active |
+| Omada Exporter | 9202 | 192.168.0.103 | Pending network rule |
+
+**OPNsense Exporter Location**: `/opt/opnsense-exporter/docker-compose.yml`
+**Omada Exporter Location**: `/opt/omada-exporter/docker-compose.yml`
+
+### Configuration Script
+- Full dashboard update: `temp-glance-update.py`
+- Updates all tabs while preserving Home and Media pages
+
+## Homelab Blog Series Project
+
+A blog series documenting the homelab journey for technical audiences.
+
+### Blog Status
+
+| # | Title | Status |
+|---|-------|--------|
+| 1 | My Accidental Journey Into Homelabbing | Draft |
+| 2 | How AI Jumpstarted My Homelab Journey | Planned |
+| 3-6 | Foundation Layer (Proxmox, VLANs, Terraform, Ansible) | Planned |
+| 7-10 | Containerization (Docker, Traefik, Authentik, Media Stack) | Planned |
+| 11-14 | Production Practices (Monitoring, Tracing, Watchtower, Discord Bots) | Planned |
+| 15-17 | Advanced (Kubernetes, Cloudflare Tunnel, CI/CD) | Planned |
+| 18-20 | Retrospectives (Mistakes, Costs, Lessons) | Planned |
+
+### Target Audience
+
+- Technical people wanting to start a homelab
+- Developers interested in Docker containerization
+- Self-hosters looking for production-grade patterns
+
+### Unique Angles
+
+1. **Real infrastructure** - Production patterns, not toy examples
+2. **Mistakes included** - Path mismatches, forgotten configs (learning content)
+3. **AI-assisted journey** - Using Claude as pair programmer
+4. **Three-tier documentation** - docs/, wiki, Obsidian sync
+5. **Discord integration** - Practical automation
+
+### Content Sources
+
+Real troubleshooting examples to reference:
+- Omada Exporter site name mismatch
+- Arr Stack unified path configuration
+- Jellyfin empty library issue
+- Authentik outpost assignment
+
+### Documentation
+
+- Full TODO: `Obsidian Vault/.../Claude Managed Homelab/TODO - Homelab Blog Series.md`
+- Post template included in TODO file
+
+---
+
 ## Notes
 
 - All VMs use Ubuntu 24.04 LTS cloud-init template
