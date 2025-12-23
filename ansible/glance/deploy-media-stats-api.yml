@@ -1,0 +1,117 @@
+---
+# Media Stats API Deployment
+# Aggregates Radarr/Sonarr statistics for Glance dashboard grid layout
+#
+# Usage:
+#   ansible-playbook glance/deploy-media-stats-api.yml
+
+- name: Deploy Media Stats API
+  hosts: docker-vm-utilities01
+  become: yes
+  vars:
+    app_path: /opt/media-stats-api
+    app_port: 5054
+    radarr_api_key: "21f807cf286941158e11ba6477853821"
+    sonarr_api_key: "50c598d01b294f929e5ecf36ae42ad2e"
+
+  tasks:
+    - name: Create application directory
+      file:
+        path: "{{ app_path }}"
+        state: directory
+        mode: '0755'
+
+    - name: Copy media-stats-api.py
+      copy:
+        src: media-stats-api.py
+        dest: "{{ app_path }}/media-stats-api.py"
+        mode: '0755'
+
+    - name: Create requirements.txt
+      copy:
+        dest: "{{ app_path }}/requirements.txt"
+        content: |
+          flask>=2.0.0
+          flask-cors>=3.0.0
+          requests>=2.28.0
+          gunicorn>=21.0.0
+        mode: '0644'
+
+    - name: Create Dockerfile
+      copy:
+        dest: "{{ app_path }}/Dockerfile"
+        content: |
+          FROM python:3.11-slim
+
+          WORKDIR /app
+
+          COPY requirements.txt .
+          RUN pip install --no-cache-dir -r requirements.txt
+
+          COPY media-stats-api.py .
+
+          EXPOSE 5054
+
+          CMD ["gunicorn", "--bind", "0.0.0.0:5054", "--workers", "2", "media-stats-api:app"]
+        mode: '0644'
+
+    - name: Create Docker Compose file
+      copy:
+        dest: "{{ app_path }}/docker-compose.yml"
+        content: |
+          services:
+            media-stats-api:
+              build: .
+              container_name: media-stats-api
+              restart: unless-stopped
+              ports:
+                - "{{ app_port }}:5054"
+              environment:
+                - RADARR_URL=http://192.168.40.11:7878
+                - RADARR_API_KEY={{ radarr_api_key }}
+                - SONARR_URL=http://192.168.40.11:8989
+                - SONARR_API_KEY={{ sonarr_api_key }}
+              healthcheck:
+                test: ["CMD", "curl", "-f", "http://localhost:5054/health"]
+                interval: 30s
+                timeout: 10s
+                retries: 3
+        mode: '0644'
+
+    - name: Build and deploy container
+      community.docker.docker_compose_v2:
+        project_src: "{{ app_path }}"
+        state: present
+        build: always
+
+    - name: Wait for API to be ready
+      uri:
+        url: "http://localhost:{{ app_port }}/health"
+        status_code: [200]
+      register: api_status
+      until: api_status.status == 200
+      retries: 30
+      delay: 2
+
+    - name: Test API endpoint
+      uri:
+        url: "http://localhost:{{ app_port }}/api/stats"
+        return_content: yes
+      register: stats_response
+
+    - name: Display deployment info
+      debug:
+        msg: |
+          =============================================
+          Media Stats API Deployed Successfully!
+          =============================================
+
+          Internal URL: http://192.168.40.10:{{ app_port }}
+          Health: http://192.168.40.10:{{ app_port }}/health
+          Stats: http://192.168.40.10:{{ app_port }}/api/stats
+
+          This API aggregates Radarr/Sonarr stats for the
+          Glance dashboard Media Stats grid widget.
+
+          Sample response:
+          {{ stats_response.json | to_nice_json }}

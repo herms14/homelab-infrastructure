@@ -1,0 +1,18 @@
+services:
+  reddit-manager:
+    build: .
+    container_name: reddit-manager
+    restart: unless-stopped
+    ports:
+      - "5053:5053"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DATA_DIR=/app/data
+      - POSTS_PER_SUBREDDIT=10
+      - CACHE_TTL=300
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5053/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

@@ -1,0 +1,139 @@
+---
+# SysAdmin Discord Bot Deployment
+# Comprehensive homelab management via Discord slash commands
+#
+# Usage:
+#   ansible-playbook sysadmin-bot/deploy-sysadmin-bot.yml
+
+- name: Deploy SysAdmin Discord Bot
+  hosts: docker-vm-utilities01
+  become: yes
+  vars:
+    bot_path: /opt/sysadmin-bot
+    # Discord Configuration
+    discord_token: "{{ lookup('env', 'SYSADMIN_DISCORD_TOKEN') }}"
+    sysadmin_channel_id: "{{ lookup('env', 'SYSADMIN_CHANNEL_ID') }}"
+    alerts_channel_id: "{{ lookup('env', 'SYSADMIN_CHANNEL_ID') }}"  # same as sysadmin channel (argus-assistant)
+
+    # Proxmox API Configuration
+    proxmox_host: "192.168.20.20"
+    proxmox_user: "root@pam"
+    proxmox_token_name: "terraform"
+    proxmox_token_value: "{{ lookup('env', 'PROXMOX_TOKEN_VALUE') | default('') }}"
+
+    # Media Services
+    radarr_api_key: "{{ lookup('env', 'RADARR_API_KEY') | default('') }}"
+    sonarr_api_key: "{{ lookup('env', 'SONARR_API_KEY') | default('') }}"
+    jellyfin_api_key: "{{ lookup('env', 'JELLYFIN_API_KEY') | default('') }}"
+
+  tasks:
+    - name: Create bot directory
+      file:
+        path: "{{ bot_path }}"
+        state: directory
+        mode: '0755'
+
+    - name: Create SSH directory for bot
+      file:
+        path: "{{ bot_path }}/ssh"
+        state: directory
+        mode: '0700'
+
+    - name: Copy SSH private key for bot
+      copy:
+        src: ~/.ssh/homelab_ed25519
+        dest: "{{ bot_path }}/ssh/homelab_ed25519"
+        mode: '0600'
+
+    - name: Copy bot script
+      copy:
+        src: sysadmin-bot.py
+        dest: "{{ bot_path }}/sysadmin-bot.py"
+        mode: '0755'
+
+    - name: Copy requirements file
+      copy:
+        src: requirements.txt
+        dest: "{{ bot_path }}/requirements.txt"
+        mode: '0644'
+
+    - name: Copy Dockerfile
+      copy:
+        src: Dockerfile
+        dest: "{{ bot_path }}/Dockerfile"
+        mode: '0644'
+
+    - name: Create Docker Compose file
+      copy:
+        dest: "{{ bot_path }}/docker-compose.yml"
+        content: |
+          services:
+            sysadmin-bot:
+              build: .
+              container_name: sysadmin-bot
+              restart: unless-stopped
+              volumes:
+                - ./ssh:/app/ssh:ro
+                - /var/run/docker.sock:/var/run/docker.sock:ro
+              environment:
+                - DISCORD_TOKEN={{ discord_token }}
+                - SYSADMIN_CHANNEL_ID={{ sysadmin_channel_id }}
+                - ALERTS_CHANNEL_ID={{ alerts_channel_id }}
+                - PROXMOX_HOST={{ proxmox_host }}
+                - PROXMOX_USER={{ proxmox_user }}
+                - PROXMOX_TOKEN_NAME={{ proxmox_token_name }}
+                - PROXMOX_TOKEN_VALUE={{ proxmox_token_value }}
+                - SSH_KEY_PATH=/app/ssh/homelab_ed25519
+                - SSH_USER=hermes-admin
+                - RADARR_URL=http://192.168.40.11:7878
+                - RADARR_API_KEY={{ radarr_api_key }}
+                - SONARR_URL=http://192.168.40.11:8989
+                - SONARR_API_KEY={{ sonarr_api_key }}
+                - JELLYFIN_URL=http://192.168.40.11:8096
+                - JELLYFIN_API_KEY={{ jellyfin_api_key }}
+              healthcheck:
+                test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+                interval: 60s
+                timeout: 10s
+                retries: 3
+        mode: '0644'
+
+    - name: Build and deploy bot
+      community.docker.docker_compose_v2:
+        project_src: "{{ bot_path }}"
+        state: present
+        build: always
+
+    - name: Wait for bot to start
+      pause:
+        seconds: 10
+
+    - name: Check bot status
+      command: docker logs sysadmin-bot --tail 20
+      register: bot_logs
+      changed_when: false
+
+    - name: Display bot status
+      debug:
+        msg: |
+          SysAdmin Bot deployed!
+
+          Bot logs:
+          {{ bot_logs.stdout }}
+
+          Available commands:
+          - /status - Get cluster status
+          - /shutdown - Shutdown Proxmox node
+          - /reboot - Reboot VM or node
+          - /backup - Trigger VM backup
+          - /restart - Restart container
+          - /logs - View container logs
+          - /containers - List containers
+          - /deploy - Run Ansible playbook
+          - /health - Health check
+          - /disk - Disk usage
+          - /top - Top resource consumers
+          - /bandwidth - Network bandwidth
+          - /request - Request movie/show
+          - /media - Media library stats
+          - /help - Show all commands

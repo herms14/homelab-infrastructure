@@ -1,0 +1,419 @@
+# Traefik Dynamic Configuration - hrmsmrflrii.xyz
+# Services with Authentik Forward Auth
+# Updated: December 22, 2025
+
+http:
+  routers:
+    traefik-dashboard:
+      rule: Host(`traefik.hrmsmrflrii.xyz`)
+      service: api@internal
+      entryPoints:
+      - websecure
+      middlewares:
+      - authentik-auth
+      tls:
+        certResolver: letsencrypt
+    proxmox:
+      rule: Host(`proxmox.hrmsmrflrii.xyz`)
+      service: proxmox
+      entryPoints:
+      - websecure
+      tls:
+        certResolver: letsencrypt
+    proxmox-node01:
+      rule: Host(`node01.hrmsmrflrii.xyz`)
+      service: proxmox-node01
+      entryPoints:
+      - websecure
+      tls:
+        certResolver: letsencrypt
+    proxmox-node02:
+      rule: Host(`node02.hrmsmrflrii.xyz`)
+      service: proxmox-node02
+      entryPoints:
+      - websecure
+      tls:
+        certResolver: letsencrypt
+    proxmox-node03:
+      rule: Host(`node03.hrmsmrflrii.xyz`)
+      service: proxmox-node03
+      entryPoints:
+      - websecure
+      tls:
+        certResolver: letsencrypt
+    authentik:
+      rule: Host(`auth.hrmsmrflrii.xyz`)
+      service: authentik
+      entryPoints:
+      - websecure
+      tls:
+        certResolver: letsencrypt
+    authentik-outpost:
+      rule: Host(`auth.hrmsmrflrii.xyz`) && PathPrefix(`/outpost.goauthentik.io/`)
+      service: authentik
+      entryPoints:
+      - websecure
+      tls:
+        certResolver: letsencrypt
+    immich:
+      rule: Host(`photos.hrmsmrflrii.xyz`)
+      service: immich
+      entryPoints:
+      - websecure
+      tls:
+        certResolver: letsencrypt
+    gitlab:
+      rule: Host(`gitlab.hrmsmrflrii.xyz`)
+      service: gitlab
+      entryPoints:
+      - websecure
+      tls:
+        certResolver: letsencrypt
+    jellyfin:
+      rule: Host(`jellyfin.hrmsmrflrii.xyz`)
+      service: jellyfin
+      entryPoints:
+      - websecure
+      middlewares:
+      - authentik-auth
+      tls:
+        certResolver: letsencrypt
+    radarr:
+      rule: Host(`radarr.hrmsmrflrii.xyz`)
+      service: radarr
+      entryPoints:
+      - websecure
+      middlewares:
+      - authentik-auth
+      tls:
+        certResolver: letsencrypt
+    sonarr:
+      rule: Host(`sonarr.hrmsmrflrii.xyz`)
+      service: sonarr
+      entryPoints:
+      - websecure
+      middlewares:
+      - authentik-auth
+      tls:
+        certResolver: letsencrypt
+    lidarr:
+      rule: Host(`lidarr.hrmsmrflrii.xyz`)
+      service: lidarr
+      entryPoints:
+      - websecure
+      middlewares:
+      - authentik-auth
+      tls:
+        certResolver: letsencrypt
+    prowlarr:
+      rule: Host(`prowlarr.hrmsmrflrii.xyz`)
+      service: prowlarr
+      entryPoints:
+      - websecure
+      middlewares:
+      - authentik-auth
+      tls:
+        certResolver: letsencrypt
+    bazarr:
+      rule: Host(`bazarr.hrmsmrflrii.xyz`)
+      service: bazarr
+      entryPoints:
+      - websecure
+      middlewares:
+      - authentik-auth
+      tls:
+        certResolver: letsencrypt
+    overseerr:
+      rule: Host(`overseerr.hrmsmrflrii.xyz`)
+      service: overseerr
+      entryPoints:
+      - websecure
+      middlewares:
+      - authentik-auth
+      tls:
+        certResolver: letsencrypt
+    jellyseerr:
+      rule: Host(`jellyseerr.hrmsmrflrii.xyz`)
+      service: jellyseerr
+      entryPoints:
+      - websecure
+      middlewares:
+      - authentik-auth
+      tls:
+        certResolver: letsencrypt
+    tdarr:
+      rule: Host(`tdarr.hrmsmrflrii.xyz`)
+      service: tdarr
+      entryPoints:
+      - websecure
+      middlewares:
+      - authentik-auth
+      tls:
+        certResolver: letsencrypt
+    autobrr:
+      rule: Host(`autobrr.hrmsmrflrii.xyz`)
+      service: autobrr
+      entryPoints:
+      - websecure
+      middlewares:
+      - authentik-auth
+      tls:
+        certResolver: letsencrypt
+    paperless:
+      rule: Host(`paperless.hrmsmrflrii.xyz`)
+      service: paperless
+      entryPoints:
+      - websecure
+      middlewares:
+      - authentik-auth
+      tls:
+        certResolver: letsencrypt
+    glance:
+      rule: Host(`glance.hrmsmrflrii.xyz`)
+      service: glance
+      entryPoints:
+      - websecure
+      middlewares:
+      - authentik-auth
+      tls:
+        certResolver: letsencrypt
+    n8n:
+      rule: Host(`n8n.hrmsmrflrii.xyz`)
+      service: n8n
+      entryPoints:
+      - websecure
+      middlewares:
+      - authentik-auth
+      tls:
+        certResolver: letsencrypt
+    speedtest-tracker:
+      rule: Host(`speedtest.hrmsmrflrii.xyz`)
+      service: speedtest-tracker
+      entryPoints:
+      - websecure
+      middlewares:
+      - authentik-auth
+      tls:
+        certResolver: letsencrypt
+    uptime-kuma:
+      rule: Host(`uptime.hrmsmrflrii.xyz`)
+      service: uptime-kuma
+      entryPoints:
+      - websecure
+      middlewares:
+      - authentik-auth
+      - proxy-headers
+      tls:
+        certResolver: letsencrypt
+    prometheus:
+      rule: Host(`prometheus.hrmsmrflrii.xyz`)
+      service: prometheus
+      entryPoints:
+      - websecure
+      middlewares:
+      - authentik-auth
+      tls:
+        certResolver: letsencrypt
+    grafana:
+      rule: Host(`grafana.hrmsmrflrii.xyz`)
+      service: grafana
+      entryPoints:
+      - websecure
+      middlewares:
+      - authentik-auth
+      tls:
+        certResolver: letsencrypt
+    jaeger:
+      rule: Host(`jaeger.hrmsmrflrii.xyz`)
+      service: jaeger
+      entryPoints:
+      - websecure
+      middlewares:
+      - authentik-auth
+      tls:
+        certResolver: letsencrypt
+    demo-app:
+      rule: Host(`demo.hrmsmrflrii.xyz`)
+      service: demo-app
+      entryPoints:
+      - websecure
+      middlewares:
+      - authentik-auth
+      tls:
+        certResolver: letsencrypt
+    deluge:
+      rule: Host(`deluge.hrmsmrflrii.xyz`)
+      service: deluge
+      entryPoints:
+      - websecure
+      middlewares:
+      - authentik-auth
+      tls:
+        certResolver: letsencrypt
+    sabnzbd:
+      rule: Host(`sabnzbd.hrmsmrflrii.xyz`)
+      service: sabnzbd
+      entryPoints:
+      - websecure
+      middlewares:
+      - authentik-auth
+      tls:
+        certResolver: letsencrypt
+  services:
+    proxmox:
+      loadBalancer:
+        servers:
+        - url: https://192.168.20.21:8006
+        serversTransport: insecure-transport
+    proxmox-node01:
+      loadBalancer:
+        servers:
+        - url: https://192.168.20.20:8006
+        serversTransport: insecure-transport
+    proxmox-node02:
+      loadBalancer:
+        servers:
+        - url: https://192.168.20.21:8006
+        serversTransport: insecure-transport
+    proxmox-node03:
+      loadBalancer:
+        servers:
+        - url: https://192.168.20.22:8006
+        serversTransport: insecure-transport
+    authentik:
+      loadBalancer:
+        servers:
+        - url: http://192.168.40.21:9000
+    immich:
+      loadBalancer:
+        servers:
+        - url: http://192.168.40.22:2283
+    gitlab:
+      loadBalancer:
+        servers:
+        - url: http://192.168.40.23:80
+    jellyfin:
+      loadBalancer:
+        servers:
+        - url: http://192.168.40.11:8096
+    radarr:
+      loadBalancer:
+        servers:
+        - url: http://192.168.40.11:7878
+    sonarr:
+      loadBalancer:
+        servers:
+        - url: http://192.168.40.11:8989
+    lidarr:
+      loadBalancer:
+        servers:
+        - url: http://192.168.40.11:8686
+    prowlarr:
+      loadBalancer:
+        servers:
+        - url: http://192.168.40.11:9696
+    bazarr:
+      loadBalancer:
+        servers:
+        - url: http://192.168.40.11:6767
+    overseerr:
+      loadBalancer:
+        servers:
+        - url: http://192.168.40.11:5055
+    jellyseerr:
+      loadBalancer:
+        servers:
+        - url: http://192.168.40.11:5056
+    tdarr:
+      loadBalancer:
+        servers:
+        - url: http://192.168.40.11:8265
+    autobrr:
+      loadBalancer:
+        servers:
+        - url: http://192.168.40.11:7474
+    paperless:
+      loadBalancer:
+        servers:
+        - url: http://192.168.40.10:8000
+    glance:
+      loadBalancer:
+        servers:
+        - url: http://192.168.40.10:8080
+    n8n:
+      loadBalancer:
+        servers:
+        - url: http://192.168.40.10:5678
+    speedtest-tracker:
+      loadBalancer:
+        servers:
+        - url: http://192.168.40.10:3000
+    uptime-kuma:
+      loadBalancer:
+        servers:
+        - url: http://192.168.40.10:3001
+    prometheus:
+      loadBalancer:
+        servers:
+        - url: http://192.168.40.10:9090
+    grafana:
+      loadBalancer:
+        servers:
+        - url: http://192.168.40.10:3030
+    jaeger:
+      loadBalancer:
+        servers:
+        - url: http://192.168.40.10:16686
+    demo-app:
+      loadBalancer:
+        servers:
+        - url: http://192.168.40.10:8080
+    deluge:
+      loadBalancer:
+        servers:
+        - url: http://192.168.40.11:8112
+    sabnzbd:
+      loadBalancer:
+        servers:
+        - url: http://192.168.40.11:8081
+  serversTransports:
+    insecure-transport:
+      insecureSkipVerify: true
+    websocket-transport:
+      forwardingTimeouts:
+        dialTimeout: 30s
+        responseHeaderTimeout: 0s
+        idleConnTimeout: 180s
+  middlewares:
+    authentik-auth:
+      forwardAuth:
+        address: http://192.168.40.21:9000/outpost.goauthentik.io/auth/traefik
+        trustForwardHeader: true
+        authResponseHeaders:
+        - X-authentik-username
+        - X-authentik-groups
+        - X-authentik-email
+        - X-authentik-name
+        - X-authentik-uid
+        - X-authentik-jwt
+        - X-authentik-meta-jwks
+        - X-authentik-meta-outpost
+        - X-authentik-meta-provider
+        - X-authentik-meta-app
+        - X-authentik-meta-version
+    secure-headers:
+      headers:
+        frameDeny: true
+        browserXssFilter: true
+        contentTypeNosniff: true
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+    proxy-headers:
+      headers:
+        customRequestHeaders:
+          X-Forwarded-Proto: https
+tls:
+  options:
+    default:
+      minVersion: VersionTLS12

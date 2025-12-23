@@ -1,0 +1,319 @@
+---
+# Uptime Kuma Monitor Configuration Playbook
+# Configures all homelab service monitors via API
+#
+# Usage:
+#   ansible-playbook monitoring/configure-uptime-kuma.yml \
+#     -e "uptime_kuma_username=herms14" \
+#     -e "uptime_kuma_password=YOUR_PASSWORD"
+
+- name: Configure Uptime Kuma Monitors
+  hosts: localhost
+  gather_facts: false
+  vars:
+    uptime_kuma_url: "http://192.168.40.10:3001"
+    uptime_kuma_username: "{{ lookup('env', 'UPTIME_KUMA_USERNAME') | default('admin', true) }}"
+    uptime_kuma_password: "{{ lookup('env', 'UPTIME_KUMA_PASSWORD') | default('', true) }}"
+
+    # Monitor definitions
+    ping_monitors:
+      - name: "Proxmox Node01"
+        hostname: "192.168.20.20"
+        description: "Proxmox VE Node 01"
+      - name: "Proxmox Node02"
+        hostname: "192.168.20.21"
+        description: "Proxmox VE Node 02"
+      - name: "Proxmox Node03"
+        hostname: "192.168.20.22"
+        description: "Proxmox VE Node 03"
+      - name: "Ansible Controller"
+        hostname: "192.168.20.30"
+        description: "Ansible automation controller"
+      - name: "K8s Controller01"
+        hostname: "192.168.20.32"
+        description: "Kubernetes control plane primary"
+      - name: "K8s Controller02"
+        hostname: "192.168.20.33"
+        description: "Kubernetes control plane HA"
+      - name: "K8s Controller03"
+        hostname: "192.168.20.34"
+        description: "Kubernetes control plane HA"
+      - name: "Docker Utilities"
+        hostname: "192.168.40.10"
+        description: "Docker utilities host"
+      - name: "Docker Media"
+        hostname: "192.168.40.11"
+        description: "Docker media stack host"
+      - name: "Traefik VM"
+        hostname: "192.168.40.20"
+        description: "Traefik reverse proxy"
+      - name: "Authentik VM"
+        hostname: "192.168.40.21"
+        description: "Authentik SSO"
+      - name: "Immich VM"
+        hostname: "192.168.40.22"
+        description: "Immich photo management"
+      - name: "GitLab VM"
+        hostname: "192.168.40.23"
+        description: "GitLab DevOps platform"
+
+    http_monitors:
+      # Infrastructure
+      - name: "Proxmox Cluster"
+        url: "https://proxmox.hrmsmrflrii.xyz"
+        description: "Proxmox cluster web UI"
+      - name: "Traefik Dashboard"
+        url: "https://traefik.hrmsmrflrii.xyz"
+        description: "Traefik reverse proxy dashboard"
+      # Core Services
+      - name: "Authentik SSO"
+        url: "https://auth.hrmsmrflrii.xyz"
+        description: "Authentik identity provider"
+      - name: "Immich Photos"
+        url: "https://photos.hrmsmrflrii.xyz"
+        description: "Immich photo management"
+      - name: "GitLab"
+        url: "https://gitlab.hrmsmrflrii.xyz"
+        description: "GitLab DevOps platform"
+      # Media Services
+      - name: "Jellyfin"
+        url: "https://jellyfin.hrmsmrflrii.xyz"
+        description: "Jellyfin media server"
+      - name: "Radarr"
+        url: "https://radarr.hrmsmrflrii.xyz"
+        description: "Radarr movie management"
+      - name: "Sonarr"
+        url: "https://sonarr.hrmsmrflrii.xyz"
+        description: "Sonarr TV series management"
+      - name: "Lidarr"
+        url: "https://lidarr.hrmsmrflrii.xyz"
+        description: "Lidarr music management"
+      - name: "Prowlarr"
+        url: "https://prowlarr.hrmsmrflrii.xyz"
+        description: "Prowlarr indexer manager"
+      - name: "Bazarr"
+        url: "https://bazarr.hrmsmrflrii.xyz"
+        description: "Bazarr subtitle management"
+      - name: "Jellyseerr"
+        url: "https://jellyseerr.hrmsmrflrii.xyz"
+        description: "Jellyseerr media requests"
+      - name: "Tdarr"
+        url: "https://tdarr.hrmsmrflrii.xyz"
+        description: "Tdarr transcoding automation"
+      - name: "Autobrr"
+        url: "https://autobrr.hrmsmrflrii.xyz"
+        description: "Autobrr torrent automation"
+      # Utility Services
+      - name: "n8n Automation"
+        url: "https://n8n.hrmsmrflrii.xyz"
+        description: "n8n workflow automation"
+      - name: "Paperless"
+        url: "https://paperless.hrmsmrflrii.xyz"
+        description: "Paperless document management"
+      - name: "Glance Dashboard"
+        url: "https://glance.hrmsmrflrii.xyz"
+        description: "Glance homelab dashboard"
+      - name: "OpenSpeedTest"
+        url: "https://speedtest.hrmsmrflrii.xyz"
+        description: "OpenSpeedTest network testing"
+      # Monitoring Services
+      - name: "Prometheus"
+        url: "https://prometheus.hrmsmrflrii.xyz"
+        description: "Prometheus metrics"
+      - name: "Grafana"
+        url: "https://grafana.hrmsmrflrii.xyz"
+        description: "Grafana dashboards"
+
+    port_monitors:
+      - name: "Proxmox API (Node01)"
+        hostname: "192.168.20.20"
+        port: 8006
+        description: "Proxmox API port"
+      - name: "Proxmox API (Node02)"
+        hostname: "192.168.20.21"
+        port: 8006
+        description: "Proxmox API port"
+      - name: "Proxmox API (Node03)"
+        hostname: "192.168.20.22"
+        port: 8006
+        description: "Proxmox API port"
+      - name: "K8s API"
+        hostname: "192.168.20.32"
+        port: 6443
+        description: "Kubernetes API server"
+
+  tasks:
+    - name: Check if Uptime Kuma is accessible
+      uri:
+        url: "{{ uptime_kuma_url }}"
+        method: GET
+        status_code: [200, 302]
+        validate_certs: false
+      register: kuma_check
+      ignore_errors: true
+
+    - name: Fail if Uptime Kuma is not accessible
+      fail:
+        msg: "Uptime Kuma is not accessible at {{ uptime_kuma_url }}"
+      when: kuma_check.failed
+
+    - name: Install python3-venv package
+      apt:
+        name: python3-venv
+        state: present
+      become: true
+
+    - name: Create virtual environment for Uptime Kuma API
+      command: python3 -m venv /tmp/uptime-kuma-venv
+      args:
+        creates: /tmp/uptime-kuma-venv
+
+    - name: Install uptime-kuma-api in virtual environment
+      pip:
+        name: uptime-kuma-api
+        virtualenv: /tmp/uptime-kuma-venv
+
+    - name: Create Python script for Uptime Kuma API
+      copy:
+        dest: /tmp/configure_uptime_kuma.py
+        mode: '0755'
+        content: |
+          #!/usr/bin/env python3
+          """
+          Uptime Kuma Monitor Configuration Script
+          Uses uptime-kuma-api to communicate with Uptime Kuma
+          """
+          import sys
+          from uptime_kuma_api import UptimeKumaApi, MonitorType
+
+          # Configuration
+          UPTIME_KUMA_URL = "{{ uptime_kuma_url }}"
+          USERNAME = "{{ uptime_kuma_username }}"
+          PASSWORD = "{{ uptime_kuma_password }}"
+
+          # Monitor definitions
+          PING_MONITORS = {{ ping_monitors | to_json }}
+          HTTP_MONITORS = {{ http_monitors | to_json }}
+          PORT_MONITORS = {{ port_monitors | to_json }}
+
+          def main():
+              print(f"Connecting to Uptime Kuma at {UPTIME_KUMA_URL}...")
+
+              try:
+                  api = UptimeKumaApi(UPTIME_KUMA_URL)
+                  api.login(USERNAME, PASSWORD)
+                  print(f"Logged in as {USERNAME}")
+              except Exception as e:
+                  print(f"Failed to connect/login: {e}")
+                  sys.exit(1)
+
+              # Get existing monitors
+              existing_monitors = api.get_monitors()
+              existing_names = [m['name'] for m in existing_monitors]
+              print(f"Found {len(existing_names)} existing monitors")
+
+              monitors_added = 0
+              monitors_skipped = 0
+
+              # Add PING monitors
+              print("\n=== Adding PING Monitors ===")
+              for monitor in PING_MONITORS:
+                  if monitor['name'] in existing_names:
+                      print(f"  Skipping {monitor['name']} (already exists)")
+                      monitors_skipped += 1
+                      continue
+
+                  try:
+                      api.add_monitor(
+                          type=MonitorType.PING,
+                          name=monitor['name'],
+                          hostname=monitor['hostname'],
+                          interval=60,
+                          retryInterval=60,
+                          maxretries=3,
+                          description=monitor.get('description', '')
+                      )
+                      print(f"  Added: {monitor['name']}")
+                      monitors_added += 1
+                  except Exception as e:
+                      print(f"  Failed: {monitor['name']} - {e}")
+
+              # Add HTTP monitors
+              print("\n=== Adding HTTP Monitors ===")
+              for monitor in HTTP_MONITORS:
+                  if monitor['name'] in existing_names:
+                      print(f"  Skipping {monitor['name']} (already exists)")
+                      monitors_skipped += 1
+                      continue
+
+                  try:
+                      api.add_monitor(
+                          type=MonitorType.HTTP,
+                          name=monitor['name'],
+                          url=monitor['url'],
+                          interval=60,
+                          retryInterval=60,
+                          maxretries=3,
+                          description=monitor.get('description', ''),
+                          accepted_statuscodes=['200-299', '301', '302', '401', '403']
+                      )
+                      print(f"  Added: {monitor['name']}")
+                      monitors_added += 1
+                  except Exception as e:
+                      print(f"  Failed: {monitor['name']} - {e}")
+
+              # Add PORT monitors
+              print("\n=== Adding PORT Monitors ===")
+              for monitor in PORT_MONITORS:
+                  if monitor['name'] in existing_names:
+                      print(f"  Skipping {monitor['name']} (already exists)")
+                      monitors_skipped += 1
+                      continue
+
+                  try:
+                      api.add_monitor(
+                          type=MonitorType.PORT,
+                          name=monitor['name'],
+                          hostname=monitor['hostname'],
+                          port=monitor['port'],
+                          interval=60,
+                          retryInterval=60,
+                          maxretries=3,
+                          description=monitor.get('description', '')
+                      )
+                      print(f"  Added: {monitor['name']}")
+                      monitors_added += 1
+                  except Exception as e:
+                      print(f"  Failed: {monitor['name']} - {e}")
+
+              api.disconnect()
+
+              print(f"\n=== Summary ===")
+              print(f"Monitors added: {monitors_added}")
+              print(f"Monitors skipped: {monitors_skipped}")
+              print("Configuration complete!")
+
+          if __name__ == '__main__':
+              main()
+
+    - name: Run Uptime Kuma configuration script
+      command: /tmp/uptime-kuma-venv/bin/python3 /tmp/configure_uptime_kuma.py
+      register: config_result
+      ignore_errors: true
+
+    - name: Display configuration results
+      debug:
+        var: config_result.stdout_lines
+
+    - name: Display any errors
+      debug:
+        var: config_result.stderr_lines
+      when: config_result.stderr_lines is defined and config_result.stderr_lines | length > 0
+
+    - name: Cleanup temporary files
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /tmp/configure_uptime_kuma.py
+        - /tmp/uptime-kuma-venv

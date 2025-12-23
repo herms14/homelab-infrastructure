@@ -1,0 +1,212 @@
+---
+# Life Progress API Deployment
+# Deploys a Flask API that calculates life progress percentages
+#
+# Features:
+# - Year/Month/Day/Life progress calculations
+# - Daily rotating motivational quotes (30 quotes)
+# - Configurable birth date and target age
+# - JSON API for Glance custom-api widget
+#
+# Usage:
+#   ansible-playbook glance/deploy-life-progress-api.yml
+
+- name: Deploy Life Progress API
+  hosts: docker-vm-utilities01
+  become: yes
+  vars:
+    life_progress_path: /opt/life-progress
+    life_progress_port: 5051
+    birth_date: "1989, 2, 14"  # YYYY, MM, DD format
+    target_age: 75
+
+  tasks:
+    - name: Create Life Progress directory
+      file:
+        path: "{{ life_progress_path }}"
+        state: directory
+        mode: '0755'
+
+    - name: Create Flask application
+      copy:
+        dest: "{{ life_progress_path }}/app.py"
+        mode: '0644'
+        content: |
+          from flask import Flask, jsonify
+          from datetime import datetime, date
+          import calendar
+
+          app = Flask(__name__)
+
+          # Configuration
+          BIRTH_DATE = date({{ birth_date }})
+          TARGET_AGE = {{ target_age }}
+
+          # 30 motivational quotes about time and mortality
+          QUOTES = [
+              "Time is the most valuable thing a man can spend. - Theophrastus",
+              "Lost time is never found again. - Benjamin Franklin",
+              "The trouble is, you think you have time. - Buddha",
+              "The way we spend our days is the way we spend our lives. - Annie Dillard",
+              "You may delay, but time will not. - Benjamin Franklin",
+              "Time flies over us, but leaves its shadow behind. - Nathaniel Hawthorne",
+              "The cost of a thing is the amount of life required to be exchanged for it. - Henry David Thoreau",
+              "It is not that we have a short time to live, but that we waste a lot of it. - Seneca",
+              "Life is short, and it is up to you to make it sweet. - Sarah Louise Delany",
+              "Do not dwell in the past, do not dream of the future, concentrate the mind on the present moment. - Buddha",
+              "In the end, it is not the years in your life that count. It is the life in your years. - Abraham Lincoln",
+              "Time is what we want most, but what we use worst. - William Penn",
+              "Yesterday is gone. Tomorrow has not yet come. We have only today. Let us begin. - Mother Teresa",
+              "The only way to do great work is to love what you do. - Steve Jobs",
+              "Memento mori - Remember that you will die. - Ancient Stoic Wisdom",
+              "Every moment is a fresh beginning. - T.S. Eliot",
+              "Time is a created thing. To say 'I don't have time' is to say 'I don't want to'. - Lao Tzu",
+              "The two most powerful warriors are patience and time. - Leo Tolstoy",
+              "Time takes it all, whether you want it to or not. - Stephen King",
+              "Your time is limited, don't waste it living someone else's life. - Steve Jobs",
+              "The bad news is time flies. The good news is you're the pilot. - Michael Altshuler",
+              "Time is more valuable than money. You can get more money, but you cannot get more time. - Jim Rohn",
+              "Don't count the days, make the days count. - Muhammad Ali",
+              "Time is the coin of your life. Only you can determine how it will be spent. - Carl Sandburg",
+              "The present time has one advantage over every other: it is our own. - Charles Caleb Colton",
+              "How we spend our days is how we spend our lives. - Annie Dillard",
+              "Time is the wisest counselor of all. - Pericles",
+              "Better three hours too soon than a minute too late. - William Shakespeare",
+              "Time flies like an arrow; fruit flies like a banana. - Groucho Marx",
+              "The future is something which everyone reaches at the rate of 60 minutes an hour. - C.S. Lewis"
+          ]
+
+          def get_daily_quote():
+              today = date.today()
+              day_of_year = today.timetuple().tm_yday
+              return QUOTES[day_of_year % len(QUOTES)]
+
+          def calculate_progress():
+              now = datetime.now()
+              today = date.today()
+
+              # Year progress
+              year_start = datetime(now.year, 1, 1)
+              year_end = datetime(now.year + 1, 1, 1)
+              year_progress = ((now - year_start).total_seconds() / (year_end - year_start).total_seconds()) * 100
+
+              # Month progress
+              days_in_month = calendar.monthrange(now.year, now.month)[1]
+              month_progress = ((now.day - 1 + now.hour/24 + now.minute/1440) / days_in_month) * 100
+
+              # Day progress
+              day_progress = ((now.hour * 3600 + now.minute * 60 + now.second) / 86400) * 100
+
+              # Life progress
+              target_date = date(BIRTH_DATE.year + TARGET_AGE, BIRTH_DATE.month, BIRTH_DATE.day)
+              total_life_days = (target_date - BIRTH_DATE).days
+              days_lived = (today - BIRTH_DATE).days
+              life_progress = (days_lived / total_life_days) * 100
+
+              return {
+                  "year": round(year_progress, 1),
+                  "month": round(month_progress, 1),
+                  "day": round(day_progress, 1),
+                  "life": round(life_progress, 1),
+                  "age": round(days_lived / 365.25, 1),
+                  "remaining_years": round((total_life_days - days_lived) / 365.25, 1),
+                  "remaining_days": total_life_days - days_lived,
+                  "quote": get_daily_quote(),
+                  "target_age": TARGET_AGE
+              }
+
+          @app.route('/progress')
+          def progress():
+              return jsonify(calculate_progress())
+
+          @app.route('/health')
+          def health():
+              return jsonify({"status": "healthy"})
+
+          if __name__ == '__main__':
+              app.run(host='0.0.0.0', port=5051)
+
+    - name: Create Dockerfile
+      copy:
+        dest: "{{ life_progress_path }}/Dockerfile"
+        mode: '0644'
+        content: |
+          FROM python:3.11-slim
+          WORKDIR /app
+          RUN pip install --no-cache-dir flask gunicorn
+          COPY app.py .
+          EXPOSE 5051
+          CMD ["gunicorn", "-w", "2", "-b", "0.0.0.0:5051", "app:app"]
+
+    - name: Create Docker Compose file
+      copy:
+        dest: "{{ life_progress_path }}/docker-compose.yml"
+        mode: '0644'
+        content: |
+          services:
+            life-progress:
+              build: .
+              container_name: life-progress
+              restart: unless-stopped
+              ports:
+                - "{{ life_progress_port }}:5051"
+              environment:
+                - TZ=Asia/Manila
+              healthcheck:
+                test: ["CMD", "curl", "-f", "http://localhost:5051/health"]
+                interval: 30s
+                timeout: 10s
+                retries: 3
+
+    - name: Build and deploy Life Progress container
+      community.docker.docker_compose_v2:
+        project_src: "{{ life_progress_path }}"
+        state: present
+        build: always
+
+    - name: Wait for Life Progress API to be ready
+      uri:
+        url: "http://localhost:{{ life_progress_port }}/health"
+        status_code: [200]
+      register: api_status
+      until: api_status.status == 200
+      retries: 30
+      delay: 2
+
+    - name: Test API response
+      uri:
+        url: "http://localhost:{{ life_progress_port }}/progress"
+        return_content: yes
+      register: progress_response
+
+    - name: Display deployment information
+      debug:
+        msg: |
+          ===========================================
+          Life Progress API Deployed Successfully!
+          ===========================================
+
+          API Endpoint: http://192.168.40.10:{{ life_progress_port }}/progress
+          Health Check: http://192.168.40.10:{{ life_progress_port }}/health
+
+          Current Progress:
+          -----------------
+          Year:  {{ progress_response.json.year }}%
+          Month: {{ progress_response.json.month }}%
+          Day:   {{ progress_response.json.day }}%
+          Life:  {{ progress_response.json.life }}%
+
+          Age: {{ progress_response.json.age }} years
+          Days Remaining: {{ progress_response.json.remaining_days }}
+
+          Quote of the Day:
+          "{{ progress_response.json.quote }}"
+
+          Files:
+          ------
+          Flask App: {{ life_progress_path }}/app.py
+          Dockerfile: {{ life_progress_path }}/Dockerfile
+          Docker Compose: {{ life_progress_path }}/docker-compose.yml
+
+          To rebuild after changes:
+          cd {{ life_progress_path }} && docker compose up -d --build

@@ -1,0 +1,15 @@
+services:
+  download-monitor:
+    build: .
+    container_name: download-monitor
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "5052:5052"
+    network_mode: host
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

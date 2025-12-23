@@ -1,0 +1,143 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'homelab'
+    env: 'production'
+
+scrape_configs:
+# BEGIN DOCKER EXPORTER SCRAPE JOBS
+  - job_name: 'docker-stats-media'
+    static_configs:
+      - targets: ['192.168.40.11:9417']
+        labels:
+          host: 'docker-vm-media01'
+
+  - job_name: 'docker-stats-utilities'
+    static_configs:
+      - targets: ['192.168.40.10:9417']
+        labels:
+          host: 'docker-vm-utilities01'
+# END DOCKER EXPORTER SCRAPE JOBS
+# BEGIN CADVISOR SCRAPE JOBS
+  - job_name: 'cadvisor-media'
+    static_configs:
+      - targets: ['192.168.40.11:8083']
+        labels:
+          host: 'docker-vm-media01'
+
+  - job_name: 'cadvisor-utilities'
+    static_configs:
+      - targets: ['192.168.40.10:8081']
+        labels:
+          host: 'docker-vm-utilities01'
+# END CADVISOR SCRAPE JOBS
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          instance: 'prometheus'
+
+  # Proxmox VE metrics via PVE Exporter
+  - job_name: 'proxmox'
+    static_configs:
+      - targets:
+        - 192.168.20.20:8006  # node01 (cluster API)
+    metrics_path: /pve
+    params:
+      module: [default]
+      cluster: ['1']
+      node: ['1']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: pve-exporter:9221
+
+  # Traefik Metrics
+  - job_name: 'traefik'
+    static_configs:
+      - targets: ['192.168.40.20:8083']
+        labels:
+          instance: 'traefik-primary'
+    metrics_path: /metrics
+    scheme: http
+
+  # OpenTelemetry Collector Metrics
+  - job_name: 'otel-collector'
+    static_configs:
+      - targets: ['192.168.40.10:8888']
+        labels:
+          instance: 'otel-collector'
+    metrics_path: /metrics
+    scheme: http
+
+  # OTEL Collector Prometheus Exporter (pipeline metrics)
+  - job_name: 'otel-collector-pipeline'
+    static_configs:
+      - targets: ['192.168.40.10:8889']
+        labels:
+          instance: 'otel-pipeline'
+    metrics_path: /metrics
+    scheme: http
+
+  # Jaeger Metrics
+  - job_name: 'jaeger'
+    static_configs:
+      - targets: ['192.168.40.10:14269']
+        labels:
+          instance: 'jaeger'
+    metrics_path: /metrics
+    scheme: http
+
+  # Demo Application
+  - job_name: 'demo-app'
+    static_configs:
+      - targets: ['192.168.40.10:8080']
+        labels:
+          instance: 'demo-app'
+    metrics_path: /metrics
+    scheme: http
+
+  # Node Exporter for host metrics (optional, if installed)
+  - job_name: 'node'
+    static_configs:
+      - targets: ['host.docker.internal:9100']
+
+  # Synology NAS metrics via SNMP Exporter
+  - job_name: 'synology'
+    static_configs:
+      - targets:
+        - 192.168.20.31  # Synology NAS
+    metrics_path: /snmp
+    params:
+      module: [synology]
+      auth: [homelab_v2]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: snmp-exporter:9116
+
+  # OPNsense metrics via OPNsense Exporter
+  - job_name: opnsense
+    static_configs:
+      - targets: [192.168.40.10:9198]
+        labels:
+          instance: opnsense-main
+    metrics_path: /metrics
+    scheme: http
+
+  # Omada Controller metrics (requires network access to 192.168.0.103)
+  - job_name: omada
+    static_configs:
+      - targets: [192.168.40.10:9202]
+        labels:
+          instance: omada-controller
+    metrics_path: /metrics
+    scheme: http

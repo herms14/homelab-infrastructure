@@ -1,0 +1,10 @@
+# Proxmox API Configuration
+proxmox_api_url          = "https://proxmox.your-domain.xyz:8006/api2/json"
+proxmox_api_token_id     = "user@pve!token-name"
+proxmox_api_token_secret = "your-api-token-secret"
+
+# Cloud-init User Password
+ci_password = "your-vm-password"
+
+# SSH Public Key (for cloud-init)
+ssh_public_key = "ssh-ed25519 AAAAC3... user@host"

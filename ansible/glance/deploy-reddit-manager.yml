@@ -1,0 +1,102 @@
+---
+# Reddit Manager Deployment
+# Dynamic subreddit management for Glance dashboard
+#
+# Usage:
+#   ansible-playbook reddit-manager/deploy-reddit-manager.yml
+
+- name: Deploy Reddit Manager
+  hosts: docker-vm-utilities01
+  become: yes
+  vars:
+    app_path: /opt/reddit-manager
+
+  tasks:
+    - name: Create app directory
+      file:
+        path: "{{ app_path }}"
+        state: directory
+        mode: '0755'
+
+    - name: Create data directory
+      file:
+        path: "{{ app_path }}/data"
+        state: directory
+        mode: '0755'
+
+    - name: Copy Flask application
+      copy:
+        src: reddit-manager.py
+        dest: "{{ app_path }}/reddit-manager.py"
+        mode: '0755'
+
+    - name: Copy requirements file
+      copy:
+        src: requirements.txt
+        dest: "{{ app_path }}/requirements.txt"
+        mode: '0644'
+
+    - name: Copy Dockerfile
+      copy:
+        src: Dockerfile
+        dest: "{{ app_path }}/Dockerfile"
+        mode: '0644'
+
+    - name: Create Docker Compose file
+      copy:
+        dest: "{{ app_path }}/docker-compose.yml"
+        content: |
+          services:
+            reddit-manager:
+              build: .
+              container_name: reddit-manager
+              restart: unless-stopped
+              ports:
+                - "5053:5053"
+              volumes:
+                - ./data:/app/data
+              environment:
+                - DATA_DIR=/app/data
+                - POSTS_PER_SUBREDDIT=10
+                - CACHE_TTL=300
+              healthcheck:
+                test: ["CMD", "curl", "-f", "http://localhost:5053/health"]
+                interval: 30s
+                timeout: 10s
+                retries: 3
+        mode: '0644'
+
+    - name: Build and deploy Reddit Manager
+      community.docker.docker_compose_v2:
+        project_src: "{{ app_path }}"
+        state: present
+        build: always
+
+    - name: Wait for service to start
+      pause:
+        seconds: 5
+
+    - name: Check service health
+      uri:
+        url: http://localhost:5053/health
+        return_content: yes
+      register: health_check
+      retries: 5
+      delay: 2
+      until: health_check.status == 200
+
+    - name: Display deployment status
+      debug:
+        msg: |
+          Reddit Manager deployed successfully!
+
+          Management UI: http://192.168.40.10:5053
+          API Endpoint:  http://192.168.40.10:5053/api/feed
+
+          Available endpoints:
+          - GET  /api/subreddits     - List configured subreddits
+          - POST /api/subreddits     - Add a subreddit
+          - DELETE /api/subreddits/X - Remove a subreddit
+          - GET  /api/feed           - Get combined feed with thumbnails
+          - GET  /api/feed/X         - Get single subreddit feed
+          - GET  /                   - Management UI

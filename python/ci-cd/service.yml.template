@@ -1,0 +1,137 @@
+# service.yml - Service Definition Template
+# Copy this file to your service repository as 'service.yml' and customize
+#
+# This file defines how your service will be deployed to the homelab infrastructure.
+# The GitLab CI/CD pipeline will read this file and:
+#   1. Deploy the Docker container
+#   2. Configure Traefik reverse proxy
+#   3. Add DNS record in OPNsense
+#   4. Register with Watchtower for updates
+#   5. (Optional) Configure Authentik SSO
+#   6. Send Discord notification
+
+# =============================================================================
+# Service Information (Required)
+# =============================================================================
+service:
+  # Unique identifier - used for container name, DNS, and Traefik routes
+  # Must be lowercase, no spaces, alphanumeric with hyphens allowed
+  name: "myservice"
+
+  # Human-readable name for notifications and documentation
+  display_name: "My Service"
+
+  # Brief description of the service
+  description: "A brief description of what this service does"
+
+# =============================================================================
+# Deployment Configuration (Required)
+# =============================================================================
+deployment:
+  # Target Docker host where the container will run
+  # Options:
+  #   - docker-vm-utilities01 (192.168.40.10) - Utility services
+  #   - docker-vm-media01 (192.168.40.11) - Media services
+  #   - traefik-vm01 (192.168.40.20) - Traefik only
+  #   - authentik-vm01 (192.168.40.21) - Authentik only
+  #   - immich-vm01 (192.168.40.22) - Immich only
+  #   - gitlab-vm01 (192.168.40.23) - GitLab only
+  target_host: "docker-vm-utilities01"
+
+  # Port mapping: host_port:container_port
+  port: 8080           # Port exposed on the host
+  container_port: 8080  # Port inside the container
+
+  # Docker image (required)
+  image: "myorg/myservice:latest"
+
+  # Installation path (optional, default: /opt/{service_name})
+  # install_path: "/opt/myservice"
+
+  # Container restart policy (optional, default: unless-stopped)
+  # restart_policy: "unless-stopped"
+
+  # Volume mounts (optional)
+  # volumes:
+  #   - "/opt/myservice/config:/config"
+  #   - "/opt/myservice/data:/data"
+  #   - "/mnt/nfs/media:/media:ro"
+
+  # Environment variables (optional)
+  environment:
+    TZ: "America/New_York"
+    # Add more environment variables as needed
+    # DATABASE_URL: "postgres://..."
+    # API_KEY: "${MY_SECRET_API_KEY}"  # Use CI/CD variables for secrets
+
+  # Health check endpoint (optional, default: /)
+  # healthcheck_path: "/health"
+  # healthcheck_status: [200]
+
+# =============================================================================
+# Traefik Reverse Proxy (Optional)
+# =============================================================================
+traefik:
+  # Enable Traefik routing (default: true)
+  enabled: true
+
+  # Subdomain (default: service name)
+  # Final URL will be: https://{subdomain}.hrmsmrflrii.xyz
+  subdomain: "myservice"
+
+  # Entry points (optional, default: [websecure])
+  # entrypoints:
+  #   - websecure
+
+  # Enable WebSocket support (optional, default: false)
+  # websocket: true
+
+# =============================================================================
+# DNS Configuration (Optional)
+# =============================================================================
+dns:
+  # Enable DNS record creation (default: true)
+  enabled: true
+
+  # Hostname (default: service name)
+  # hostname: "myservice"
+
+  # IP address (default: 192.168.40.20 - Traefik)
+  # Only change if the service is NOT proxied through Traefik
+  # ip: "192.168.40.20"
+
+# =============================================================================
+# Watchtower/Update Manager (Optional)
+# =============================================================================
+watchtower:
+  # Register with Update Manager for Discord update notifications (default: true)
+  enabled: true
+
+  # Container name to monitor (default: service name)
+  # container_name: "myservice"
+
+# =============================================================================
+# Authentik SSO (Optional)
+# =============================================================================
+authentik:
+  # Enable Authentik SSO integration (default: false)
+  enabled: false
+
+  # SSO method (default: forward_auth)
+  # Options:
+  #   - forward_auth: Use Traefik forward auth middleware (most common)
+  #   - native_oidc: Service has native OIDC support (requires manual config)
+  # method: "forward_auth"
+
+  # Groups allowed to access (optional, empty = all authenticated users)
+  # allowed_groups:
+  #   - "admins"
+  #   - "users"
+
+# =============================================================================
+# Notifications (Optional)
+# =============================================================================
+notifications:
+  discord:
+    # Send Discord notifications on deploy/failure (default: true)
+    enabled: true

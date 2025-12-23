@@ -1,0 +1,602 @@
+server:
+  port: 8080
+  assets-path: /app/assets
+
+theme:
+  background-color: 240 21 15
+  contrast-multiplier: 1.2
+  primary-color: 267 84 81
+  positive-color: 115 54 76
+  negative-color: 343 81 75
+  custom-css-file: /app/assets/custom-themes.css
+
+  presets:
+    midnight-blue:
+      background-color: 213 58 10
+      primary-color: 227 95 67
+      positive-color: 162 82 40
+      negative-color: 0 94 65
+      contrast-multiplier: 1.2
+    nord:
+      background-color: 220 16 22
+      primary-color: 193 43 67
+      positive-color: 92 28 65
+      negative-color: 354 42 56
+      contrast-multiplier: 1.1
+    dracula:
+      background-color: 231 15 18
+      primary-color: 265 89 78
+      positive-color: 135 94 65
+      negative-color: 0 100 67
+      contrast-multiplier: 1.2
+    monokai:
+      background-color: 70 8 15
+      primary-color: 338 95 56
+      positive-color: 80 76 53
+      negative-color: 338 95 56
+      contrast-multiplier: 1.3
+    catppuccin-mocha:
+      background-color: 240 21 15
+      primary-color: 267 84 81
+      positive-color: 115 54 76
+      negative-color: 343 81 75
+      contrast-multiplier: 1.2
+    gruvbox-dark:
+      background-color: 0 0 16
+      primary-color: 43 95 58
+      positive-color: 61 66 44
+      negative-color: 5 96 59
+      contrast-multiplier: 1.2
+    solarized-dark:
+      background-color: 192 100 11
+      primary-color: 205 69 49
+      positive-color: 68 100 30
+      negative-color: 1 71 52
+      contrast-multiplier: 1.1
+    tokyo-night:
+      background-color: 235 21 13
+      primary-color: 218 87 73
+      positive-color: 85 56 61
+      negative-color: 348 86 70
+      contrast-multiplier: 1.2
+    cyberpunk:
+      background-color: 240 33 8
+      primary-color: 300 100 50
+      positive-color: 158 100 50
+      negative-color: 340 100 50
+      contrast-multiplier: 1.4
+    classic-dark:
+      background-color: 240 8 9
+      primary-color: 43 50 70
+      positive-color: 43 50 70
+      negative-color: 0 70 70
+      contrast-multiplier: 1.0
+
+pages:
+  - name: Home
+    columns:
+      - size: small
+        widgets:
+          - type: clock
+            hour-format: "24h"
+            timezone: Asia/Manila
+
+          - type: weather
+            location: Manila, Philippines
+            units: metric
+            hour-format: "24h"
+
+          - type: calendar
+
+          - type: bookmarks
+            title: Infrastructure
+            groups:
+              - links:
+                  - title: Authentik
+                    url: https://auth.hrmsmrflrii.xyz
+                    icon: si:authentik
+                  - title: Omada Controller
+                    url: https://omada.tplinkcloud.com
+                    icon: di:tp-link
+                  - title: Proxmox
+                    url: https://proxmox.hrmsmrflrii.xyz
+                    icon: si:proxmox
+                  - title: Traefik
+                    url: https://traefik.hrmsmrflrii.xyz
+                    icon: si:traefikproxy
+                  - title: OPNsense
+                    url: https://192.168.91.30
+                    icon: di:opnsense
+                  - title: Portainer
+                    url: https://portainer.hrmsmrflrii.xyz
+                    icon: si:portainer
+
+          - type: bookmarks
+            title: Media Services
+            groups:
+              - links:
+                  - title: Jellyfin
+                    url: https://jellyfin.hrmsmrflrii.xyz
+                    icon: si:jellyfin
+                  - title: Jellyseerr
+                    url: https://jellyseerr.hrmsmrflrii.xyz
+                    icon: di:jellyseerr
+                  - title: Radarr
+                    url: https://radarr.hrmsmrflrii.xyz
+                    icon: di:radarr
+                  - title: Sonarr
+                    url: https://sonarr.hrmsmrflrii.xyz
+                    icon: di:sonarr
+                  - title: Lidarr
+                    url: https://lidarr.hrmsmrflrii.xyz
+                    icon: di:lidarr
+                  - title: Prowlarr
+                    url: https://prowlarr.hrmsmrflrii.xyz
+                    icon: di:prowlarr
+                  - title: Bazarr
+                    url: https://bazarr.hrmsmrflrii.xyz
+                    icon: di:bazarr
+                  - title: Overseerr
+                    url: https://overseerr.hrmsmrflrii.xyz
+                    icon: di:overseerr
+                  - title: Tdarr
+                    url: https://tdarr.hrmsmrflrii.xyz
+                    icon: https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/tdarr.png
+                  - title: Autobrr
+                    url: https://autobrr.hrmsmrflrii.xyz
+                    icon: di:autobrr
+                  - title: Deluge
+                    url: https://deluge.hrmsmrflrii.xyz
+                    icon: di:deluge
+                  - title: SABnzbd
+                    url: https://sabnzbd.hrmsmrflrii.xyz
+                    icon: di:sabnzbd
+
+          - type: bookmarks
+            title: Productivity
+            groups:
+              - links:
+                  - title: GitLab
+                    url: https://gitlab.hrmsmrflrii.xyz
+                    icon: si:gitlab
+                  - title: Immich
+                    url: https://photos.hrmsmrflrii.xyz
+                    icon: di:immich
+                  - title: Paperless
+                    url: https://paperless.hrmsmrflrii.xyz
+                    icon: di:paperless-ngx
+                  - title: n8n
+                    url: https://n8n.hrmsmrflrii.xyz
+                    icon: si:n8n
+
+          - type: bookmarks
+            title: Monitoring
+            groups:
+              - links:
+                  - title: Glance
+                    url: https://glance.hrmsmrflrii.xyz
+                    icon: di:glance
+                  - title: Grafana
+                    url: https://grafana.hrmsmrflrii.xyz
+                    icon: si:grafana
+                  - title: Prometheus
+                    url: https://prometheus.hrmsmrflrii.xyz
+                    icon: si:prometheus
+                  - title: Uptime Kuma
+                    url: https://uptime.hrmsmrflrii.xyz
+                    icon: di:uptime-kuma
+                  - title: Jaeger
+                    url: https://jaeger.hrmsmrflrii.xyz
+                    icon: di:jaeger
+                  - title: Speedtest
+                    url: https://speedtest.hrmsmrflrii.xyz
+                    icon: di:speedtest-tracker
+
+      - size: full
+        widgets:
+          - type: custom-api
+            title: Hermes Miraflor II Life Progress
+            cache: 1h
+            url: http://192.168.40.10:5051/progress
+            template: |
+              <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 10px;">
+                <div style="text-align: center; margin-bottom: 15px;">
+                  <span style="color: #f87171; font-weight: 600; font-size: 18px;">{{ .JSON.Int "remaining_days" | formatNumber }}</span>
+                  <span style="color: #888; font-size: 14px;"> days remaining until age {{ .JSON.Int "target_age" }}</span>
+                </div>
+                <div style="display: flex; align-items: center; margin-bottom: 12px;">
+                  <span style="width: 60px; font-weight: bold; color: #f87171;">Year</span>
+                  <div style="flex: 1; height: 24px; background: #333; border-radius: 4px; position: relative; margin: 0 15px; overflow: hidden;">
+                    <div style="width: {{ .JSON.Float "year" }}%; height: 100%; background: linear-gradient(90deg, #ef4444, #f87171); border-radius: 4px;"></div>
+                  </div>
+                  <span style="width: 50px; text-align: right; font-weight: 500;">{{ .JSON.Float "year" | printf "%.0f" }}%</span>
+                </div>
+                <div style="display: flex; align-items: center; margin-bottom: 12px;">
+                  <span style="width: 60px; font-weight: bold; color: #facc15;">Month</span>
+                  <div style="flex: 1; height: 24px; background: #333; border-radius: 4px; position: relative; margin: 0 15px; overflow: hidden;">
+                    <div style="width: {{ .JSON.Float "month" }}%; height: 100%; background: linear-gradient(90deg, #eab308, #facc15); border-radius: 4px;"></div>
+                  </div>
+                  <span style="width: 50px; text-align: right; font-weight: 500;">{{ .JSON.Float "month" | printf "%.0f" }}%</span>
+                </div>
+                <div style="display: flex; align-items: center; margin-bottom: 12px;">
+                  <span style="width: 60px; font-weight: bold; color: #4ade80;">Day</span>
+                  <div style="flex: 1; height: 24px; background: #333; border-radius: 4px; position: relative; margin: 0 15px; overflow: hidden;">
+                    <div style="width: {{ .JSON.Float "day" }}%; height: 100%; background: linear-gradient(90deg, #22c55e, #4ade80); border-radius: 4px;"></div>
+                  </div>
+                  <span style="width: 50px; text-align: right; font-weight: 500;">{{ .JSON.Float "day" | printf "%.0f" }}%</span>
+                </div>
+                <div style="display: flex; align-items: center; margin-bottom: 15px;">
+                  <span style="width: 60px; font-weight: bold; color: #4ade80;">Life</span>
+                  <div style="flex: 1; height: 24px; background: #333; border-radius: 4px; position: relative; margin: 0 15px; overflow: hidden;">
+                    <div style="width: {{ .JSON.Float "life" }}%; height: 100%; background: linear-gradient(90deg, #22c55e, #4ade80); border-radius: 4px;"></div>
+                  </div>
+                  <span style="width: 50px; text-align: right; font-weight: 500;">{{ .JSON.Float "life" | printf "%.0f" }}%</span>
+                </div>
+                <div style="text-align: center; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 8px;">
+                  <em style="color: #aaa; font-size: 13px; line-height: 1.5;">"{{ .JSON.String "quote" }}"</em>
+                </div>
+              </div>
+
+          - type: extension
+            title: GitHub Contributions
+            url: http://192.168.40.10:8089/graph/herms14
+            allow-potentially-dangerous-html: true
+            parameters:
+              background-color: "#1e1e2e"
+              primary-color: "#cba6f7"
+              svg-height: 120
+              show-months: true
+              show-weekdays: true
+              font-size: 9
+
+          - type: monitor
+            title: Proxmox Cluster
+            cache: 1m
+            sites:
+              - title: Node 01 (192.168.20.20)
+                url: https://192.168.20.20:8006
+                icon: si:proxmox
+                allow-insecure: true
+              - title: Node 02 (192.168.20.21)
+                url: https://192.168.20.21:8006
+                icon: si:proxmox
+                allow-insecure: true
+              - title: Node 03 (192.168.20.22)
+                url: https://192.168.20.22:8006
+                icon: si:proxmox
+                allow-insecure: true
+
+          - type: monitor
+            title: Core Services
+            cache: 1m
+            sites:
+              - title: Traefik
+                url: http://192.168.40.20:8082/ping
+                icon: si:traefikproxy
+              - title: Authentik
+                url: http://192.168.40.21:9000/-/health/ready/
+                icon: si:authentik
+              - title: GitLab
+                url: http://192.168.40.23/users/sign_in
+                icon: si:gitlab
+              - title: Immich
+                url: http://192.168.40.22:2283/api/server/ping
+                icon: di:immich
+
+          - type: monitor
+            title: Media Services
+            cache: 1m
+            sites:
+              - title: Jellyfin
+                url: http://192.168.40.11:8096/health
+                icon: si:jellyfin
+              - title: Radarr
+                url: http://192.168.40.11:7878/ping
+                icon: di:radarr
+              - title: Sonarr
+                url: http://192.168.40.11:8989/ping
+                icon: di:sonarr
+              - title: Lidarr
+                url: http://192.168.40.11:8686/ping
+                icon: di:lidarr
+              - title: Prowlarr
+                url: http://192.168.40.11:9696/ping
+                icon: di:prowlarr
+              - title: Bazarr
+                url: http://192.168.40.11:6767
+                icon: di:bazarr
+              - title: Jellyseerr
+                url: http://192.168.40.11:5056/api/v1/status
+                icon: di:jellyseerr
+              - title: Tdarr
+                url: http://192.168.40.11:8265
+                icon: https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/tdarr.png
+              - title: Autobrr
+                url: http://192.168.40.11:7474
+                icon: di:autobrr
+              - title: Deluge
+                url: http://192.168.40.11:8112
+                icon: di:deluge
+              - title: SABnzbd
+                url: http://192.168.40.11:8081
+                icon: di:sabnzbd
+
+          - type: monitor
+            title: Utility Services
+            cache: 1m
+            sites:
+              - title: Paperless
+                url: http://192.168.40.10:8000
+                icon: di:paperless-ngx
+              - title: n8n
+                url: http://192.168.40.10:5678/healthz
+                icon: si:n8n
+              - title: Glance
+                url: http://192.168.40.10:8080
+                icon: di:glance
+              - title: Speedtest Tracker
+                url: http://192.168.40.10:3000
+                icon: di:speedtest-tracker
+              - title: Uptime Kuma
+                url: http://192.168.40.10:3001
+                icon: di:uptime-kuma
+              - title: Grafana
+                url: http://192.168.40.10:3030
+                icon: si:grafana
+              - title: Prometheus
+                url: http://192.168.40.10:9090/-/healthy
+                icon: si:prometheus
+
+          - type: monitor
+            title: Kubernetes Control Plane (API Server Health)
+            cache: 1m
+            sites:
+              - title: Controller 01
+                url: https://192.168.20.32:6443/healthz
+                icon: si:kubernetes
+                allow-insecure: true
+              - title: Controller 02
+                url: https://192.168.20.33:6443/healthz
+                icon: si:kubernetes
+                allow-insecure: true
+              - title: Controller 03
+                url: https://192.168.20.34:6443/healthz
+                icon: si:kubernetes
+                allow-insecure: true
+
+          - type: monitor
+            title: Kubernetes Workers (Kubelet Health)
+            cache: 1m
+            sites:
+              - title: Worker 01
+                url: http://192.168.20.40:10248/healthz
+                icon: si:kubernetes
+              - title: Worker 02
+                url: http://192.168.20.41:10248/healthz
+                icon: si:kubernetes
+              - title: Worker 03
+                url: http://192.168.20.42:10248/healthz
+                icon: si:kubernetes
+              - title: Worker 04
+                url: http://192.168.20.43:10248/healthz
+                icon: si:kubernetes
+              - title: Worker 05
+                url: http://192.168.20.44:10248/healthz
+                icon: si:kubernetes
+              - title: Worker 06
+                url: http://192.168.20.45:10248/healthz
+                icon: si:kubernetes
+
+      - size: small
+        widgets:
+          - type: markets
+            title: Cryptocurrency
+            markets:
+              - symbol: BTC-USD
+                name: Bitcoin
+              - symbol: ETH-USD
+                name: Ethereum
+              - symbol: XRP-USD
+                name: XRP
+              - symbol: BNB-USD
+                name: BNB
+              - symbol: ADA-USD
+                name: Cardano
+
+          - type: markets
+            title: Stocks
+            markets:
+              - symbol: MSFT
+                name: Microsoft
+              - symbol: AAPL
+                name: Apple
+              - symbol: ORCL
+                name: Oracle
+              - symbol: NVDA
+                name: Nvidia
+              - symbol: GOOGL
+                name: Google
+              - symbol: TSLA
+                name: Tesla
+              - symbol: NFLX
+                name: Netflix
+              - symbol: AMZN
+                name: Amazon
+
+          - type: rss
+            title: Tech News
+            style: horizontal-cards
+            feeds:
+              - url: https://www.reddit.com/r/homelab/.rss
+                title: r/homelab
+              - url: https://www.reddit.com/r/selfhosted/.rss
+                title: r/selfhosted
+            limit: 5
+
+  - name: Media
+    columns:
+      - size: full
+        widgets:
+          - type: custom-api
+            title: Arr Stack Downloads
+            cache: 30s
+            url: http://192.168.40.11:7878/api/v3/queue
+            headers:
+              X-Api-Key: "${RADARR_API_KEY}"
+            template: |
+              {{ range .data.records }}
+              {{ .title }} - {{ .status }}
+              {{ end }}
+
+          - type: iframe
+            title: Radarr Calendar
+            source: http://192.168.40.11:7878/calendar
+            height: 300
+
+      - size: small
+        widgets:
+          - type: bookmarks
+            title: Media Apps
+            groups:
+              - title: Arr Stack
+                links:
+                  - title: Radarr
+                    url: https://radarr.hrmsmrflrii.xyz
+                    icon: di:radarr
+                  - title: Sonarr
+                    url: https://sonarr.hrmsmrflrii.xyz
+                    icon: di:sonarr
+                  - title: Lidarr
+                    url: https://lidarr.hrmsmrflrii.xyz
+                    icon: di:lidarr
+                  - title: Prowlarr
+                    url: https://prowlarr.hrmsmrflrii.xyz
+                    icon: di:prowlarr
+                  - title: Bazarr
+                    url: https://bazarr.hrmsmrflrii.xyz
+                    icon: di:bazarr
+                  - title: Jellyseerr
+                    url: https://jellyseerr.hrmsmrflrii.xyz
+                    icon: di:jellyseerr
+
+  - name: Sports
+    columns:
+      - size: full
+        widgets:
+          - type: custom-api
+            title: NBA Scores
+            cache: 5m
+            url: https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard
+            template: |
+              {{ range .events }}
+              {{ .name }} - {{ .status.type.shortDetail }}
+              {{ range .competitions }}
+                {{ range .competitors }}
+                  {{ .team.displayName }}: {{ .score }}
+                {{ end }}
+              {{ end }}
+              {{ end }}
+
+          - type: custom-api
+            title: NFL Scores
+            cache: 5m
+            url: https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard
+            template: |
+              {{ range .events }}
+              {{ .name }} - {{ .status.type.shortDetail }}
+              {{ end }}
+
+  - name: Network
+    columns:
+      - size: full
+        widgets:
+          - type: monitor
+            title: Network Devices
+            cache: 1m
+            sites:
+              - title: Core Router (ER605)
+                url: http://192.168.0.1
+                icon: di:tp-link
+              - title: Core Switch (SG3210)
+                url: http://192.168.90.2
+                icon: di:tp-link
+              - title: Morpheus Switch (SG2210P)
+                url: http://192.168.90.3
+                icon: di:tp-link
+              - title: Atreus Switch (ES20GP)
+                url: http://192.168.90.51
+                icon: di:tp-link
+              - title: OPNsense Firewall
+                url: https://192.168.91.30
+                allow-insecure: true
+                icon: di:opnsense
+              - title: Synology NAS
+                url: http://192.168.20.31:5000
+                icon: di:synology
+
+          - type: custom-api
+            title: OPNsense Unbound Statistics
+            cache: 1m
+            url: https://192.168.91.30/api/unbound/diagnostics/stats
+            headers:
+              Authorization: "Basic ${OPNSENSE_API_CREDENTIALS}"
+            allow-insecure: true
+            template: |
+              Total Queries: {{ .data.total.num.queries }}
+              Cache Hits: {{ .data.total.num.cachehits }}
+              Blocked: {{ .data.total.num.zero_ttl }}
+
+  - name: Storage
+    columns:
+      - size: full
+        widgets:
+          - type: iframe
+            title: Synology NAS Dashboard
+            source: https://grafana.hrmsmrflrii.xyz/d/synology-nas/synology-nas?orgId=1&kiosk&refresh=30s
+            height: 800
+
+  - name: Containers
+    columns:
+      - size: full
+        widgets:
+          - type: iframe
+            title: Container Monitoring
+            source: https://grafana.hrmsmrflrii.xyz/d/container-monitoring/container-monitoring?orgId=1&kiosk&refresh=30s
+            height: 800
+
+  - name: Reddit
+    columns:
+      - size: full
+        widgets:
+          - type: custom-api
+            title: Reddit Feed
+            cache: 5m
+            url: http://192.168.40.10:5053/api/feed
+            template: |
+              <div style="margin-bottom: 15px; text-align: right;">
+                <a href="http://192.168.40.10:5053" target="_blank" style="color: #ff4500; font-size: 12px; text-decoration: none; padding: 5px 10px; border: 1px solid #ff4500; border-radius: 6px;">
+                  Settings
+                </a>
+              </div>
+              {{ range .JSON.Array "groups" }}
+              <div style="margin-bottom: 20px;">
+                <div style="color: #ff4500; font-size: 14px; font-weight: 600; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,69,0,0.3);">
+                  r/{{ .String "name" }}
+                </div>
+                {{ range .Array "posts" }}
+                <div style="display: flex; padding: 8px; margin-bottom: 6px; background: rgba(255,255,255,0.03); border-radius: 6px;">
+                  {{ if .String "thumbnail" }}
+                  <img src="{{ .String "thumbnail" }}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 4px; margin-right: 10px; flex-shrink: 0;" onerror="this.style.display='none'">
+                  {{ end }}
+                  <div style="flex: 1; min-width: 0;">
+                    <a href="{{ .String "url" }}" target="_blank" style="color: #fff; text-decoration: none; font-size: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
+                      {{ .String "title" }}
+                    </a>
+                    <div style="color: #888; font-size: 10px; margin-top: 3px;">
+                      {{ .Int "score" }} pts - {{ .Int "comments" }} comments
+                    </div>
+                  </div>
+                </div>
+                {{ end }}
+              </div>
+              {{ end }}

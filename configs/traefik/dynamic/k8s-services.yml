@@ -1,0 +1,27 @@
+# Kubernetes Services - Traefik Dynamic Configuration
+# Add to /opt/traefik/config/dynamic/
+
+http:
+  routers:
+    # ==========================================
+    # KUBERNETES SERVICES
+    # ==========================================
+    k8s-nginx-test:
+      rule: "Host(`k8s-test.hrmsmrflrii.xyz`)"
+      service: k8s-nginx-test
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+
+  services:
+    # --- Kubernetes Services (NodePort) ---
+    k8s-nginx-test:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.20.40:31938"
+          - url: "http://192.168.20.41:31938"
+          - url: "http://192.168.20.42:31938"
+          - url: "http://192.168.20.43:31938"
+          - url: "http://192.168.20.44:31938"
+          - url: "http://192.168.20.45:31938"

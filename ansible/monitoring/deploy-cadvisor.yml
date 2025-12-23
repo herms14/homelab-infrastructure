@@ -1,0 +1,819 @@
+---
+# cAdvisor Container Monitoring Deployment
+# Deploys cAdvisor to all Docker hosts for container metrics
+#
+# Features:
+# - Container CPU, memory, disk usage
+# - Network I/O per container
+# - Integrates with existing Prometheus/Grafana stack
+#
+# Usage:
+#   ansible-playbook monitoring/deploy-cadvisor.yml
+
+- name: Deploy cAdvisor to Docker Hosts
+  hosts: docker_utilities:docker_media
+  become: yes
+  vars:
+    cadvisor_port: 8081
+
+  tasks:
+    - name: Create cAdvisor directory
+      file:
+        path: /opt/cadvisor
+        state: directory
+        mode: '0755'
+
+    - name: Create Docker Compose file for cAdvisor
+      copy:
+        dest: /opt/cadvisor/docker-compose.yml
+        content: |
+          services:
+            cadvisor:
+              image: gcr.io/cadvisor/cadvisor:latest
+              container_name: cadvisor
+              restart: unless-stopped
+              privileged: true
+              ports:
+                - "{{ cadvisor_port }}:8080"
+              volumes:
+                - /:/rootfs:ro
+                - /var/run:/var/run:ro
+                - /sys:/sys:ro
+                - /var/lib/docker/:/var/lib/docker:ro
+                - /dev/disk/:/dev/disk:ro
+              devices:
+                - /dev/kmsg
+        mode: '0644'
+
+    - name: Deploy cAdvisor container
+      community.docker.docker_compose_v2:
+        project_src: /opt/cadvisor
+        state: present
+        pull: always
+
+    - name: Wait for cAdvisor to be ready
+      uri:
+        url: "http://localhost:{{ cadvisor_port }}/metrics"
+        status_code: [200]
+      register: cadvisor_status
+      until: cadvisor_status.status == 200
+      retries: 30
+      delay: 2
+
+    - name: Display cAdvisor info
+      debug:
+        msg: "cAdvisor deployed on {{ inventory_hostname }} at port {{ cadvisor_port }}"
+
+
+- name: Update Prometheus Configuration
+  hosts: docker-vm-utilities01
+  become: yes
+  vars:
+    prometheus_path: /opt/monitoring/prometheus
+
+  tasks:
+    - name: Add cAdvisor scrape jobs to Prometheus
+      blockinfile:
+        path: "{{ prometheus_path }}/prometheus.yml"
+        marker: "# {mark} CADVISOR SCRAPE JOBS"
+        insertafter: "scrape_configs:"
+        block: |2
+            - job_name: 'cadvisor-media'
+              static_configs:
+                - targets: ['192.168.40.11:8081']
+                  labels:
+                    host: 'docker-vm-media01'
+
+            - job_name: 'cadvisor-utilities'
+              static_configs:
+                - targets: ['192.168.40.10:8081']
+                  labels:
+                    host: 'docker-vm-utilities01'
+
+    - name: Restart Prometheus to load new config
+      community.docker.docker_compose_v2:
+        project_src: /opt/monitoring
+        services:
+          - prometheus
+        state: restarted
+
+    - name: Wait for Prometheus to be ready
+      uri:
+        url: "http://localhost:9090/-/ready"
+        status_code: [200]
+      register: prometheus_status
+      until: prometheus_status.status == 200
+      retries: 30
+      delay: 2
+
+
+- name: Deploy Grafana Container Dashboard
+  hosts: docker-vm-utilities01
+  become: yes
+  vars:
+    grafana_path: /opt/monitoring/grafana
+
+  tasks:
+    - name: Create dashboards directory
+      file:
+        path: "{{ grafana_path }}/dashboards"
+        state: directory
+        mode: '0755'
+
+    - name: Deploy container monitoring dashboard
+      copy:
+        dest: "{{ grafana_path }}/dashboards/container-monitoring.json"
+        content: |
+          {
+            "annotations": {
+              "list": []
+            },
+            "editable": true,
+            "fiscalYearStartMonth": 0,
+            "graphTooltip": 0,
+            "id": null,
+            "links": [],
+            "liveNow": false,
+            "panels": [
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "fieldConfig": {
+                  "defaults": {
+                    "color": {
+                      "mode": "palette-classic"
+                    },
+                    "custom": {
+                      "axisCenteredZero": false,
+                      "axisColorMode": "text",
+                      "axisLabel": "",
+                      "axisPlacement": "auto",
+                      "barAlignment": 0,
+                      "drawStyle": "line",
+                      "fillOpacity": 10,
+                      "gradientMode": "none",
+                      "hideFrom": {
+                        "legend": false,
+                        "tooltip": false,
+                        "viz": false
+                      },
+                      "lineInterpolation": "smooth",
+                      "lineWidth": 2,
+                      "pointSize": 5,
+                      "scaleDistribution": {
+                        "type": "linear"
+                      },
+                      "showPoints": "never",
+                      "spanNulls": false,
+                      "stacking": {
+                        "group": "A",
+                        "mode": "none"
+                      },
+                      "thresholdsStyle": {
+                        "mode": "off"
+                      }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        }
+                      ]
+                    },
+                    "unit": "bytes"
+                  },
+                  "overrides": []
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 0,
+                  "y": 0
+                },
+                "id": 1,
+                "options": {
+                  "legend": {
+                    "calcs": ["last"],
+                    "displayMode": "table",
+                    "placement": "right",
+                    "showLegend": true
+                  },
+                  "tooltip": {
+                    "mode": "multi",
+                    "sort": "desc"
+                  }
+                },
+                "targets": [
+                  {
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "prometheus"
+                    },
+                    "expr": "container_memory_usage_bytes{name!=\"\"}",
+                    "legendFormat": "{{ "{{name}}" }}",
+                    "refId": "A"
+                  }
+                ],
+                "title": "Container Memory Usage",
+                "type": "timeseries"
+              },
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "fieldConfig": {
+                  "defaults": {
+                    "color": {
+                      "mode": "palette-classic"
+                    },
+                    "custom": {
+                      "axisCenteredZero": false,
+                      "axisColorMode": "text",
+                      "axisLabel": "",
+                      "axisPlacement": "auto",
+                      "barAlignment": 0,
+                      "drawStyle": "line",
+                      "fillOpacity": 10,
+                      "gradientMode": "none",
+                      "hideFrom": {
+                        "legend": false,
+                        "tooltip": false,
+                        "viz": false
+                      },
+                      "lineInterpolation": "smooth",
+                      "lineWidth": 2,
+                      "pointSize": 5,
+                      "scaleDistribution": {
+                        "type": "linear"
+                      },
+                      "showPoints": "never",
+                      "spanNulls": false,
+                      "stacking": {
+                        "group": "A",
+                        "mode": "none"
+                      },
+                      "thresholdsStyle": {
+                        "mode": "off"
+                      }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        }
+                      ]
+                    },
+                    "unit": "percent"
+                  },
+                  "overrides": []
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 12,
+                  "y": 0
+                },
+                "id": 2,
+                "options": {
+                  "legend": {
+                    "calcs": ["last"],
+                    "displayMode": "table",
+                    "placement": "right",
+                    "showLegend": true
+                  },
+                  "tooltip": {
+                    "mode": "multi",
+                    "sort": "desc"
+                  }
+                },
+                "targets": [
+                  {
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "prometheus"
+                    },
+                    "expr": "rate(container_cpu_usage_seconds_total{name!=\"\"}[5m]) * 100",
+                    "legendFormat": "{{ "{{name}}" }}",
+                    "refId": "A"
+                  }
+                ],
+                "title": "Container CPU Usage (%)",
+                "type": "timeseries"
+              },
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "fieldConfig": {
+                  "defaults": {
+                    "color": {
+                      "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "max": 100,
+                    "min": 0,
+                    "thresholds": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 60
+                        },
+                        {
+                          "color": "red",
+                          "value": 80
+                        }
+                      ]
+                    },
+                    "unit": "percent"
+                  },
+                  "overrides": []
+                },
+                "gridPos": {
+                  "h": 4,
+                  "w": 6,
+                  "x": 0,
+                  "y": 8
+                },
+                "id": 3,
+                "options": {
+                  "orientation": "auto",
+                  "reduceOptions": {
+                    "calcs": ["lastNotNull"],
+                    "fields": "",
+                    "values": false
+                  },
+                  "showThresholdLabels": false,
+                  "showThresholdMarkers": true
+                },
+                "targets": [
+                  {
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "prometheus"
+                    },
+                    "expr": "sum(container_memory_usage_bytes{name!=\"\"}) / (machine_memory_bytes) * 100",
+                    "legendFormat": "Memory Used",
+                    "refId": "A"
+                  }
+                ],
+                "title": "Total Memory Usage",
+                "type": "gauge"
+              },
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "fieldConfig": {
+                  "defaults": {
+                    "color": {
+                      "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        }
+                      ]
+                    },
+                    "unit": "short"
+                  },
+                  "overrides": []
+                },
+                "gridPos": {
+                  "h": 4,
+                  "w": 6,
+                  "x": 6,
+                  "y": 8
+                },
+                "id": 4,
+                "options": {
+                  "colorMode": "value",
+                  "graphMode": "none",
+                  "justifyMode": "auto",
+                  "orientation": "auto",
+                  "reduceOptions": {
+                    "calcs": ["lastNotNull"],
+                    "fields": "",
+                    "values": false
+                  },
+                  "textMode": "auto"
+                },
+                "targets": [
+                  {
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "prometheus"
+                    },
+                    "expr": "count(container_memory_usage_bytes{name!=\"\"})",
+                    "legendFormat": "Containers",
+                    "refId": "A"
+                  }
+                ],
+                "title": "Running Containers",
+                "type": "stat"
+              },
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "fieldConfig": {
+                  "defaults": {
+                    "color": {
+                      "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        }
+                      ]
+                    },
+                    "unit": "bytes"
+                  },
+                  "overrides": []
+                },
+                "gridPos": {
+                  "h": 4,
+                  "w": 6,
+                  "x": 12,
+                  "y": 8
+                },
+                "id": 5,
+                "options": {
+                  "colorMode": "value",
+                  "graphMode": "none",
+                  "justifyMode": "auto",
+                  "orientation": "auto",
+                  "reduceOptions": {
+                    "calcs": ["lastNotNull"],
+                    "fields": "",
+                    "values": false
+                  },
+                  "textMode": "auto"
+                },
+                "targets": [
+                  {
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "prometheus"
+                    },
+                    "expr": "machine_memory_bytes",
+                    "legendFormat": "Total Memory",
+                    "refId": "A"
+                  }
+                ],
+                "title": "Total System Memory",
+                "type": "stat"
+              },
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "fieldConfig": {
+                  "defaults": {
+                    "color": {
+                      "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        }
+                      ]
+                    },
+                    "unit": "bytes"
+                  },
+                  "overrides": []
+                },
+                "gridPos": {
+                  "h": 4,
+                  "w": 6,
+                  "x": 18,
+                  "y": 8
+                },
+                "id": 6,
+                "options": {
+                  "colorMode": "value",
+                  "graphMode": "none",
+                  "justifyMode": "auto",
+                  "orientation": "auto",
+                  "reduceOptions": {
+                    "calcs": ["lastNotNull"],
+                    "fields": "",
+                    "values": false
+                  },
+                  "textMode": "auto"
+                },
+                "targets": [
+                  {
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "prometheus"
+                    },
+                    "expr": "sum(container_memory_usage_bytes{name!=\"\"})",
+                    "legendFormat": "Used Memory",
+                    "refId": "A"
+                  }
+                ],
+                "title": "Container Memory Used",
+                "type": "stat"
+              },
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "fieldConfig": {
+                  "defaults": {
+                    "color": {
+                      "mode": "palette-classic"
+                    },
+                    "custom": {
+                      "hideFrom": {
+                        "legend": false,
+                        "tooltip": false,
+                        "viz": false
+                      }
+                    },
+                    "mappings": [],
+                    "unit": "bytes"
+                  },
+                  "overrides": []
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 0,
+                  "y": 12
+                },
+                "id": 7,
+                "options": {
+                  "legend": {
+                    "displayMode": "table",
+                    "placement": "right",
+                    "showLegend": true,
+                    "values": ["value"]
+                  },
+                  "pieType": "pie",
+                  "reduceOptions": {
+                    "calcs": ["lastNotNull"],
+                    "fields": "",
+                    "values": false
+                  },
+                  "tooltip": {
+                    "mode": "single",
+                    "sort": "none"
+                  }
+                },
+                "targets": [
+                  {
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "prometheus"
+                    },
+                    "expr": "topk(10, container_memory_usage_bytes{name!=\"\"})",
+                    "legendFormat": "{{ "{{name}}" }}",
+                    "refId": "A"
+                  }
+                ],
+                "title": "Top 10 Memory by Container",
+                "type": "piechart"
+              },
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "fieldConfig": {
+                  "defaults": {
+                    "color": {
+                      "mode": "palette-classic"
+                    },
+                    "custom": {
+                      "axisCenteredZero": false,
+                      "axisColorMode": "text",
+                      "axisLabel": "",
+                      "axisPlacement": "auto",
+                      "barAlignment": 0,
+                      "drawStyle": "line",
+                      "fillOpacity": 10,
+                      "gradientMode": "none",
+                      "hideFrom": {
+                        "legend": false,
+                        "tooltip": false,
+                        "viz": false
+                      },
+                      "lineInterpolation": "smooth",
+                      "lineWidth": 2,
+                      "pointSize": 5,
+                      "scaleDistribution": {
+                        "type": "linear"
+                      },
+                      "showPoints": "never",
+                      "spanNulls": false,
+                      "stacking": {
+                        "group": "A",
+                        "mode": "none"
+                      },
+                      "thresholdsStyle": {
+                        "mode": "off"
+                      }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        }
+                      ]
+                    },
+                    "unit": "Bps"
+                  },
+                  "overrides": []
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 12,
+                  "y": 12
+                },
+                "id": 8,
+                "options": {
+                  "legend": {
+                    "calcs": ["last"],
+                    "displayMode": "table",
+                    "placement": "right",
+                    "showLegend": true
+                  },
+                  "tooltip": {
+                    "mode": "multi",
+                    "sort": "desc"
+                  }
+                },
+                "targets": [
+                  {
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "prometheus"
+                    },
+                    "expr": "rate(container_network_receive_bytes_total{name!=\"\"}[5m])",
+                    "legendFormat": "{{ "{{name}}" }} RX",
+                    "refId": "A"
+                  },
+                  {
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "prometheus"
+                    },
+                    "expr": "rate(container_network_transmit_bytes_total{name!=\"\"}[5m])",
+                    "legendFormat": "{{ "{{name}}" }} TX",
+                    "refId": "B"
+                  }
+                ],
+                "title": "Container Network I/O",
+                "type": "timeseries"
+              },
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "fieldConfig": {
+                  "defaults": {
+                    "color": {
+                      "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "max": 100,
+                    "min": 0,
+                    "thresholds": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 70
+                        },
+                        {
+                          "color": "red",
+                          "value": 85
+                        }
+                      ]
+                    },
+                    "unit": "percent"
+                  },
+                  "overrides": []
+                },
+                "gridPos": {
+                  "h": 8,
+                  "w": 24,
+                  "x": 0,
+                  "y": 20
+                },
+                "id": 9,
+                "options": {
+                  "displayMode": "gradient",
+                  "minVizHeight": 10,
+                  "minVizWidth": 0,
+                  "orientation": "horizontal",
+                  "reduceOptions": {
+                    "calcs": ["lastNotNull"],
+                    "fields": "",
+                    "values": false
+                  },
+                  "showUnfilled": true
+                },
+                "targets": [
+                  {
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "prometheus"
+                    },
+                    "expr": "(container_fs_usage_bytes{device=~\"/dev/.*\"} / container_fs_limit_bytes{device=~\"/dev/.*\"}) * 100",
+                    "legendFormat": "{{ "{{name}}" }}",
+                    "refId": "A"
+                  }
+                ],
+                "title": "Container Filesystem Usage (%)",
+                "type": "bargauge"
+              }
+            ],
+            "refresh": "30s",
+            "schemaVersion": 38,
+            "style": "dark",
+            "tags": ["containers", "docker", "cadvisor"],
+            "templating": {
+              "list": []
+            },
+            "time": {
+              "from": "now-1h",
+              "to": "now"
+            },
+            "timepicker": {},
+            "timezone": "",
+            "title": "Container Monitoring",
+            "uid": "container-monitoring",
+            "version": 1,
+            "weekStart": ""
+          }
+        mode: '0644'
+
+    - name: Restart Grafana to load dashboard
+      community.docker.docker_compose_v2:
+        project_src: /opt/monitoring
+        services:
+          - grafana
+        state: restarted
+
+    - name: Display completion info
+      debug:
+        msg: |
+          ================================================
+          Container Monitoring Deployed Successfully!
+          ================================================
+
+          cAdvisor Endpoints:
+          - Media Host: http://192.168.40.11:8081
+          - Utilities Host: http://192.168.40.10:8081
+
+          Grafana Dashboard:
+          - URL: https://grafana.hrmsmrflrii.xyz/d/container-monitoring
+
+          Metrics Available:
+          - Container memory usage
+          - Container CPU usage
+          - Network I/O per container
+          - Filesystem usage
+          - Total system memory/containers

@@ -1,0 +1,673 @@
+---
+# Deploy Observability Stack (OpenTelemetry Collector, Jaeger, Demo App)
+# Target: docker-vm-utilities01 (192.168.40.10)
+#
+# Services:
+#   - OpenTelemetry Collector: Trace/metrics collection and routing
+#   - Jaeger: Distributed tracing visualization
+#   - Demo App: Instrumented Python application for trace testing
+#
+# Prerequisites:
+#   - Monitoring stack deployed (deploy-monitoring-stack.yml)
+#   - Traefik with OTEL tracing enabled (deploy-traefik-ssl.yml)
+#
+# Usage:
+#   ansible-playbook monitoring/deploy-observability-stack.yml
+
+- name: Deploy Observability Stack
+  hosts: docker_utilities
+  become: yes
+  vars:
+    observability_dir: /opt/observability
+    domain: "hrmsmrflrii.xyz"
+
+    # Service ports (internal)
+    otel_grpc_port: 4317
+    otel_http_port: 4318
+    otel_metrics_port: 8888
+    otel_pipeline_port: 8889
+    jaeger_ui_port: 16686
+    jaeger_metrics_port: 14269
+    demo_app_port: 8080
+
+    # Network configuration
+    traefik_ip: "192.168.40.20"
+    monitoring_network: "monitoring"
+
+  tasks:
+    # ============================================
+    # DIRECTORY STRUCTURE
+    # ============================================
+
+    - name: Create observability directory structure
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ observability_dir }}"
+        - "{{ observability_dir }}/otel-collector"
+        - "{{ observability_dir }}/jaeger"
+        - "{{ observability_dir }}/demo-app"
+
+    # ============================================
+    # OPENTELEMETRY COLLECTOR CONFIGURATION
+    # ============================================
+
+    - name: Create OpenTelemetry Collector configuration
+      copy:
+        dest: "{{ observability_dir }}/otel-collector/otel-collector-config.yaml"
+        mode: '0644'
+        content: |
+          # OpenTelemetry Collector Configuration
+          # Receives traces from Traefik and applications, exports to Jaeger
+
+          receivers:
+            # OTLP Receiver - Primary receiver for traces and metrics
+            otlp:
+              protocols:
+                grpc:
+                  endpoint: "0.0.0.0:4317"
+                http:
+                  endpoint: "0.0.0.0:4318"
+                  cors:
+                    allowed_origins:
+                      - "*"
+
+          processors:
+            # Batch Processor - Groups telemetry for efficient export
+            batch:
+              timeout: 1s
+              send_batch_size: 1024
+              send_batch_max_size: 2048
+
+            # Memory Limiter - Prevents OOM conditions
+            memory_limiter:
+              check_interval: 1s
+              limit_mib: 512
+              spike_limit_mib: 128
+
+            # Resource Processor - Add consistent resource attributes
+            resource:
+              attributes:
+                - key: deployment.environment
+                  value: "production"
+                  action: upsert
+                - key: service.namespace
+                  value: "homelab"
+                  action: upsert
+
+            # Attributes Processor - Clean up sensitive data
+            attributes:
+              actions:
+                - key: http.request.header.authorization
+                  action: delete
+                - key: http.request.header.cookie
+                  action: delete
+
+          exporters:
+            # Jaeger Exporter - Send traces to Jaeger via OTLP
+            otlp/jaeger:
+              endpoint: "jaeger:4317"
+              tls:
+                insecure: true
+
+            # Debug Exporter - For troubleshooting (minimal in production)
+            debug:
+              verbosity: basic
+              sampling_initial: 5
+              sampling_thereafter: 200
+
+            # Prometheus Exporter - Expose collector metrics
+            prometheus:
+              endpoint: "0.0.0.0:8889"
+              namespace: "otelcol"
+              const_labels:
+                service: "otel-collector"
+
+          extensions:
+            # Health Check - For Docker health checks
+            health_check:
+              endpoint: "0.0.0.0:13133"
+
+            # zPages - Internal debugging
+            zpages:
+              endpoint: "0.0.0.0:55679"
+
+          service:
+            extensions:
+              - health_check
+              - zpages
+
+            pipelines:
+              # Traces Pipeline
+              traces:
+                receivers:
+                  - otlp
+                processors:
+                  - memory_limiter
+                  - attributes
+                  - resource
+                  - batch
+                exporters:
+                  - otlp/jaeger
+                  - debug
+
+              # Metrics Pipeline (for apps sending metrics via OTLP)
+              metrics:
+                receivers:
+                  - otlp
+                processors:
+                  - memory_limiter
+                  - resource
+                  - batch
+                exporters:
+                  - prometheus
+                  - debug
+
+            telemetry:
+              logs:
+                level: info
+              metrics:
+                address: "0.0.0.0:8888"
+
+    # ============================================
+    # DEMO APPLICATION
+    # ============================================
+
+    - name: Create demo app Python application
+      copy:
+        dest: "{{ observability_dir }}/demo-app/app.py"
+        mode: '0644'
+        content: |
+          #!/usr/bin/env python3
+          """
+          Demo application instrumented with OpenTelemetry.
+          Shows multi-span traces when called through Traefik.
+          """
+
+          import os
+          import time
+          import random
+          import logging
+          from flask import Flask, jsonify, request
+
+          from opentelemetry import trace
+          from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+          from opentelemetry.instrumentation.flask import FlaskInstrumentor
+          from opentelemetry.instrumentation.requests import RequestsInstrumentor
+          from opentelemetry.sdk.resources import Resource
+          from opentelemetry.sdk.trace import TracerProvider
+          from opentelemetry.sdk.trace.export import BatchSpanProcessor
+          from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+
+          # Logging Configuration
+          logging.basicConfig(
+              level=logging.INFO,
+              format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+          )
+          logger = logging.getLogger(__name__)
+
+          # OpenTelemetry Setup
+          OTEL_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "otel-collector:4317")
+          SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", "demo-app")
+
+          # Configure resource attributes
+          resource = Resource.create({
+              "service.name": SERVICE_NAME,
+              "service.namespace": "homelab",
+              "deployment.environment": os.getenv("ENVIRONMENT", "production"),
+          })
+
+          # Configure trace provider
+          provider = TracerProvider(resource=resource)
+          processor = BatchSpanProcessor(
+              OTLPSpanExporter(
+                  endpoint=OTEL_ENDPOINT,
+                  insecure=True
+              )
+          )
+          provider.add_span_processor(processor)
+          trace.set_tracer_provider(provider)
+
+          # Get tracer for manual instrumentation
+          tracer = trace.get_tracer(__name__)
+
+          # Prometheus Metrics
+          REQUEST_COUNT = Counter(
+              'demo_app_requests_total',
+              'Total requests',
+              ['method', 'endpoint', 'status']
+          )
+
+          REQUEST_LATENCY = Histogram(
+              'demo_app_request_latency_seconds',
+              'Request latency in seconds',
+              ['method', 'endpoint'],
+              buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0]
+          )
+
+          # Flask Application
+          app = Flask(__name__)
+
+          # Auto-instrument Flask
+          FlaskInstrumentor().instrument_app(app)
+          RequestsInstrumentor().instrument()
+
+
+          def simulate_database_query(query_name, delay_range=(0.01, 0.1)):
+              """Simulate a database operation with its own span."""
+              with tracer.start_as_current_span(f"db.query.{query_name}") as span:
+                  span.set_attribute("db.system", "postgresql")
+                  span.set_attribute("db.operation", "SELECT")
+                  span.set_attribute("db.name", "demo_db")
+
+                  delay = random.uniform(*delay_range)
+                  time.sleep(delay)
+
+                  span.set_attribute("db.query_time_ms", delay * 1000)
+                  return {"rows": random.randint(1, 100)}
+
+
+          def simulate_cache_lookup(key):
+              """Simulate a cache operation with its own span."""
+              with tracer.start_as_current_span("cache.get") as span:
+                  span.set_attribute("cache.system", "redis")
+                  span.set_attribute("cache.key", key)
+
+                  hit = random.random() > 0.3
+                  time.sleep(0.005 if hit else 0.001)
+
+                  span.set_attribute("cache.hit", hit)
+                  return {"hit": hit, "value": f"cached_{key}" if hit else None}
+
+
+          def simulate_external_api_call(service):
+              """Simulate calling an external service."""
+              with tracer.start_as_current_span(f"http.client.{service}") as span:
+                  span.set_attribute("http.method", "GET")
+                  span.set_attribute("http.url", f"https://{service}.internal/api/data")
+                  span.set_attribute("peer.service", service)
+
+                  delay = random.uniform(0.05, 0.2)
+                  time.sleep(delay)
+
+                  status = 200 if random.random() > 0.05 else 503
+                  span.set_attribute("http.status_code", status)
+
+                  return {"status": status, "data": {"service": service}}
+
+
+          @app.route('/health')
+          def health():
+              """Health check endpoint."""
+              return jsonify({"status": "healthy", "service": SERVICE_NAME})
+
+
+          @app.route('/metrics')
+          def metrics():
+              """Prometheus metrics endpoint."""
+              return generate_latest(), 200, {'Content-Type': CONTENT_TYPE_LATEST}
+
+
+          @app.route('/')
+          def index():
+              """Root endpoint - simple response."""
+              start = time.time()
+
+              trace_id = request.headers.get('X-Request-Id', 'unknown')
+              user = request.headers.get('X-authentik-username', 'anonymous')
+
+              with tracer.start_as_current_span("index.handler") as span:
+                  span.set_attribute("user.name", user)
+                  span.set_attribute("request.id", trace_id)
+
+                  response = {
+                      "message": "Welcome to the Demo App",
+                      "user": user,
+                      "trace_id": trace_id,
+                      "service": SERVICE_NAME
+                  }
+
+              REQUEST_COUNT.labels(method='GET', endpoint='/', status=200).inc()
+              REQUEST_LATENCY.labels(method='GET', endpoint='/').observe(time.time() - start)
+
+              return jsonify(response)
+
+
+          @app.route('/api/data')
+          def get_data():
+              """Complex endpoint showing multiple spans."""
+              start = time.time()
+              user = request.headers.get('X-authentik-username', 'anonymous')
+
+              with tracer.start_as_current_span("api.get_data") as span:
+                  span.set_attribute("user.name", user)
+
+                  cache_result = simulate_cache_lookup("user_data")
+
+                  if not cache_result["hit"]:
+                      db_result = simulate_database_query("get_user_data")
+                      span.set_attribute("data.source", "database")
+                  else:
+                      span.set_attribute("data.source", "cache")
+                      db_result = {"rows": 1}
+
+                  external_result = simulate_external_api_call("user-service")
+
+                  response = {
+                      "user": user,
+                      "data_source": "cache" if cache_result["hit"] else "database",
+                      "record_count": db_result["rows"],
+                      "external_status": external_result["status"]
+                  }
+
+              REQUEST_COUNT.labels(method='GET', endpoint='/api/data', status=200).inc()
+              REQUEST_LATENCY.labels(method='GET', endpoint='/api/data').observe(time.time() - start)
+
+              return jsonify(response)
+
+
+          @app.route('/api/slow')
+          def slow_endpoint():
+              """Intentionally slow endpoint for testing."""
+              start = time.time()
+
+              with tracer.start_as_current_span("api.slow_operation") as span:
+                  delay = random.uniform(1.0, 3.0)
+                  span.set_attribute("simulated.delay_seconds", delay)
+
+                  time.sleep(delay)
+
+                  for i in range(3):
+                      simulate_database_query(f"slow_query_{i}", (0.1, 0.3))
+
+              REQUEST_COUNT.labels(method='GET', endpoint='/api/slow', status=200).inc()
+              REQUEST_LATENCY.labels(method='GET', endpoint='/api/slow').observe(time.time() - start)
+
+              return jsonify({"message": "Slow operation completed", "delay": delay})
+
+
+          @app.route('/api/error')
+          def error_endpoint():
+              """Endpoint that sometimes fails - for testing error traces."""
+              with tracer.start_as_current_span("api.error_prone") as span:
+                  if random.random() > 0.5:
+                      span.set_attribute("error", True)
+                      span.set_attribute("error.type", "SimulatedError")
+                      REQUEST_COUNT.labels(method='GET', endpoint='/api/error', status=500).inc()
+                      return jsonify({"error": "Simulated failure"}), 500
+
+              REQUEST_COUNT.labels(method='GET', endpoint='/api/error', status=200).inc()
+              return jsonify({"message": "Success this time!"})
+
+
+          if __name__ == '__main__':
+              logger.info(f"Starting {SERVICE_NAME} on port 8080")
+              logger.info(f"OTEL endpoint: {OTEL_ENDPOINT}")
+              app.run(host='0.0.0.0', port=8080, debug=False)
+
+    - name: Create demo app requirements.txt
+      copy:
+        dest: "{{ observability_dir }}/demo-app/requirements.txt"
+        mode: '0644'
+        content: |
+          flask==3.0.0
+          opentelemetry-api==1.21.0
+          opentelemetry-sdk==1.21.0
+          opentelemetry-exporter-otlp-proto-grpc==1.21.0
+          opentelemetry-instrumentation-flask==0.42b0
+          opentelemetry-instrumentation-requests==0.42b0
+          prometheus-client==0.19.0
+          gunicorn==21.2.0
+
+    - name: Create demo app Dockerfile
+      copy:
+        dest: "{{ observability_dir }}/demo-app/Dockerfile"
+        mode: '0644'
+        content: |
+          FROM python:3.11-slim
+
+          WORKDIR /app
+
+          # Install dependencies
+          COPY requirements.txt .
+          RUN pip install --no-cache-dir -r requirements.txt
+
+          # Copy application
+          COPY app.py .
+
+          # Health check
+          HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+              CMD wget --spider -q http://localhost:8080/health || exit 1
+
+          # Run with gunicorn for production
+          CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--threads", "4", "--access-logfile", "-", "app:app"]
+
+    # ============================================
+    # DOCKER COMPOSE
+    # ============================================
+
+    - name: Create Docker Compose file for observability stack
+      copy:
+        dest: "{{ observability_dir }}/docker-compose.yml"
+        mode: '0644'
+        content: |
+          # Observability Stack: OTEL Collector, Jaeger, Demo App
+          # Deployed alongside monitoring stack on docker-vm-utilities01
+          name: observability
+
+          services:
+            # OpenTelemetry Collector
+            otel-collector:
+              image: otel/opentelemetry-collector-contrib:0.91.0
+              container_name: otel-collector
+              restart: unless-stopped
+              command:
+                - "--config=/etc/otel-collector-config.yaml"
+              volumes:
+                - ./otel-collector/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+              ports:
+                # OTLP gRPC receiver (for Traefik and apps)
+                - "{{ otel_grpc_port }}:4317"
+                # OTLP HTTP receiver
+                - "{{ otel_http_port }}:4318"
+              networks:
+                - {{ monitoring_network }}
+              healthcheck:
+                test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133"]
+                interval: 30s
+                timeout: 10s
+                retries: 3
+                start_period: 10s
+              deploy:
+                resources:
+                  limits:
+                    memory: 512M
+                    cpus: '0.5'
+                  reservations:
+                    memory: 256M
+              logging:
+                driver: "json-file"
+                options:
+                  max-size: "10m"
+                  max-file: "3"
+
+            # Jaeger - Distributed Tracing
+            jaeger:
+              image: jaegertracing/all-in-one:1.53
+              container_name: jaeger
+              restart: unless-stopped
+              environment:
+                - COLLECTOR_OTLP_ENABLED=true
+                - COLLECTOR_ZIPKIN_HOST_PORT=
+                - MEMORY_MAX_TRACES=50000
+                - QUERY_BASE_PATH=/
+              ports:
+                # Jaeger UI (internal, accessed via Traefik)
+                - "{{ jaeger_ui_port }}:16686"
+                # Metrics port for Prometheus
+                - "{{ jaeger_metrics_port }}:14269"
+              networks:
+                - {{ monitoring_network }}
+              volumes:
+                - jaeger_data:/badger
+              healthcheck:
+                test: ["CMD", "wget", "--spider", "-q", "http://localhost:14269/"]
+                interval: 30s
+                timeout: 10s
+                retries: 3
+              deploy:
+                resources:
+                  limits:
+                    memory: 1G
+                    cpus: '1.0'
+                  reservations:
+                    memory: 256M
+              logging:
+                driver: "json-file"
+                options:
+                  max-size: "10m"
+                  max-file: "3"
+
+            # Demo Application - Instrumented Backend
+            demo-app:
+              build:
+                context: ./demo-app
+                dockerfile: Dockerfile
+              image: demo-app:latest
+              container_name: demo-app
+              restart: unless-stopped
+              environment:
+                - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
+                - OTEL_SERVICE_NAME=demo-app
+                - ENVIRONMENT=production
+                - PYTHONUNBUFFERED=1
+              ports:
+                - "{{ demo_app_port }}:8080"
+              networks:
+                - {{ monitoring_network }}
+              healthcheck:
+                test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+                interval: 30s
+                timeout: 10s
+                retries: 3
+              deploy:
+                resources:
+                  limits:
+                    memory: 256M
+                    cpus: '0.5'
+                  reservations:
+                    memory: 128M
+              logging:
+                driver: "json-file"
+                options:
+                  max-size: "10m"
+                  max-file: "3"
+              depends_on:
+                otel-collector:
+                  condition: service_healthy
+
+          networks:
+            {{ monitoring_network }}:
+              external: true
+
+          volumes:
+            jaeger_data:
+              driver: local
+
+    # ============================================
+    # DEPLOY THE STACK
+    # ============================================
+
+    - name: Build demo-app image
+      community.docker.docker_image:
+        name: demo-app
+        tag: latest
+        source: build
+        build:
+          path: "{{ observability_dir }}/demo-app"
+        force_source: yes
+
+    - name: Deploy observability stack
+      community.docker.docker_compose_v2:
+        project_src: "{{ observability_dir }}"
+        state: present
+        pull: always
+      register: compose_result
+
+    # ============================================
+    # VERIFICATION
+    # ============================================
+
+    - name: Wait for services to be ready
+      wait_for:
+        port: "{{ item }}"
+        host: 127.0.0.1
+        delay: 5
+        timeout: 120
+      loop:
+        - "{{ otel_grpc_port }}"
+        - "{{ jaeger_ui_port }}"
+        - "{{ demo_app_port }}"
+
+    - name: Verify OTEL Collector health
+      uri:
+        url: "http://127.0.0.1:13133"
+        method: GET
+        status_code: 200
+      register: otel_health
+      retries: 5
+      delay: 5
+
+    - name: Verify Jaeger health
+      uri:
+        url: "http://127.0.0.1:{{ jaeger_metrics_port }}"
+        method: GET
+        status_code: 200
+      register: jaeger_health
+      retries: 5
+      delay: 5
+
+    - name: Verify Demo App health
+      uri:
+        url: "http://127.0.0.1:{{ demo_app_port }}/health"
+        method: GET
+        status_code: 200
+      register: demo_health
+      retries: 5
+      delay: 5
+
+    - name: Display deployment summary
+      debug:
+        msg:
+          - "============================================"
+          - "Observability Stack Deployed Successfully!"
+          - "============================================"
+          - ""
+          - "Services (Internal):"
+          - "  OTEL Collector: 192.168.40.10:{{ otel_grpc_port }} (gRPC)"
+          - "  OTEL Collector: 192.168.40.10:{{ otel_http_port }} (HTTP)"
+          - "  Jaeger UI:      192.168.40.10:{{ jaeger_ui_port }}"
+          - "  Demo App:       192.168.40.10:{{ demo_app_port }}"
+          - ""
+          - "External URLs (after Traefik configured):"
+          - "  Jaeger:    https://jaeger.{{ domain }}"
+          - "  Demo App:  https://demo.{{ domain }}"
+          - ""
+          - "Next Steps:"
+          - "  1. Deploy updated Traefik config (deploy-traefik-ssl.yml)"
+          - "  2. Update Prometheus scrape config (deploy-monitoring-stack.yml)"
+          - "  3. Add Jaeger datasource in Grafana"
+          - "  4. Configure DNS: jaeger.{{ domain }}, demo.{{ domain }}"
+          - ""
+          - "Verification Commands:"
+          - "  # Check OTEL Collector"
+          - "  curl http://192.168.40.10:13133"
+          - ""
+          - "  # Generate test traces"
+          - "  curl http://192.168.40.10:{{ demo_app_port }}/api/data"
+          - ""
+          - "  # View traces in Jaeger"
+          - "  Open http://192.168.40.10:{{ jaeger_ui_port }}"
+          - "============================================"

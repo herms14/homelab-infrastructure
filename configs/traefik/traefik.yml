@@ -1,0 +1,83 @@
+# Traefik Static Configuration with Let's Encrypt SSL
+# Domain: hrmsmrflrii.xyz
+
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+# API and Dashboard
+api:
+  dashboard: true
+  insecure: false
+
+# Ping endpoint for health checks
+ping:
+  entryPoint: traefik
+
+# Metrics for Prometheus
+metrics:
+  prometheus:
+    entryPoint: metrics
+    addEntryPointsLabels: true
+    addRoutersLabels: true
+    addServicesLabels: true
+
+# Logging
+log:
+  level: INFO
+  filePath: /logs/traefik.log
+  format: json
+
+accessLog:
+  filePath: /logs/access.log
+  format: json
+  bufferingSize: 100
+
+# Entrypoints
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+  websecure:
+    address: ":443"
+    http:
+      tls:
+        certResolver: letsencrypt
+        domains:
+          - main: "hrmsmrflrii.xyz"
+            sans:
+              - "*.hrmsmrflrii.xyz"
+  traefik:
+    address: ":8082"
+  metrics:
+    address: ":8083"
+
+# Certificate Resolvers (Let's Encrypt)
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: "herms14@gmail.com"
+      storage: /certs/acme.json
+      dnsChallenge:
+        provider: cloudflare
+        delayBeforeCheck: 10
+        resolvers:
+          - "1.1.1.1:53"
+          - "8.8.8.8:53"
+
+# Providers
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    network: traefik-network
+    watch: true
+
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true

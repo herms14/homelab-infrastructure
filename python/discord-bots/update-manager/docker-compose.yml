@@ -1,0 +1,35 @@
+name: update-manager
+
+services:
+  update-manager:
+    build: .
+    container_name: update-manager
+    restart: unless-stopped
+    ports:
+      - "5050:5000"
+    environment:
+      # Discord Bot Configuration
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - DISCORD_CHANNEL_ID=${DISCORD_CHANNEL_ID}
+      - ONBOARD_CHANNEL_ID=${ONBOARD_CHANNEL_ID:-1452141884809154581}
+
+      # SSH Configuration
+      - SSH_KEY_PATH=/root/.ssh/homelab_ed25519
+      - WEBHOOK_PORT=5000
+
+      # Timezone
+      - TZ=America/New_York
+
+      # Onboarding Checker API Credentials
+      - OPNSENSE_API_KEY=${OPNSENSE_API_KEY}
+      - OPNSENSE_API_SECRET=${OPNSENSE_API_SECRET}
+      - AUTHENTIK_TOKEN=${AUTHENTIK_TOKEN}
+    volumes:
+      - /home/hermes-admin/.ssh:/root/.ssh:ro
+    networks:
+      - update-manager-network
+
+networks:
+  update-manager-network:
+    name: update-manager-network
+    driver: bridge

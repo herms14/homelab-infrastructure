@@ -1,0 +1,17 @@
+services:
+  media-stats-api:
+    build: .
+    container_name: media-stats-api
+    restart: unless-stopped
+    ports:
+      - "5054:5054"
+    environment:
+      - RADARR_URL=http://192.168.40.11:7878
+      - RADARR_API_KEY=21f807cf286941158e11ba6477853821
+      - SONARR_URL=http://192.168.40.11:8989
+      - SONARR_API_KEY=50c598d01b294f929e5ecf36ae42ad2e
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5054/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
