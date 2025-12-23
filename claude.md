@@ -436,6 +436,65 @@ The Home page is managed via `temp-home-fix.py`. Any changes should be documente
 
 See [docs/GLANCE.md](./docs/GLANCE.md) for full dashboard documentation.
 
+## Glance Dashboard - Media Page Configuration
+
+**IMPORTANT: DO NOT modify the Glance Media page layout without explicit user permission.**
+
+The Media page has been carefully configured with the following structure and should be preserved:
+
+### Main Column (Full)
+
+**1. Media Stats Grid** (6-tile, Pi-hole style)
+- Wanted Movies (amber)
+- Movies Downloading (blue)
+- Movies Downloaded (green)
+- Wanted Episodes (red)
+- Episodes Downloading (purple)
+- Episodes Downloaded (cyan)
+- API: `http://192.168.40.10:5054/api/stats`
+
+**2. Now Showing - Recent Downloads**
+- Top 5 most recent downloads (movies + TV episodes)
+- Poster images with type badges (Movie=amber, TV=purple)
+- Shows title, episode info, quality
+- API: `http://192.168.40.10:5054/api/recent`
+
+**3. Currently Downloading**
+- Up to 10 active downloads with progress bars
+- Poster thumbnails, type badges
+- Quality, download client, ETA
+- Color-coded progress bars (movies=amber, TV=purple)
+- API: `http://192.168.40.10:5054/api/queue`
+
+**4. Movie & TV News RSS**
+- Deadline, Hollywood Reporter, Variety feeds
+- Limit 10, collapse after 5
+
+### Sidebar Column (Small)
+
+**1. Media Apps Bookmarks**
+- Arr Stack: Radarr, Sonarr, Lidarr, Prowlarr, Bazarr, Jellyseerr
+- Media Players: Jellyfin, Tdarr
+- Downloads: Deluge, SABnzbd
+
+**2. Services Status Monitor**
+- All Arr stack services health checks
+- Uses `/ping` endpoints where available
+
+### Media Stats API
+
+| Endpoint | Port | Description |
+|----------|------|-------------|
+| `/api/stats` | 5054 | Stats for 6-tile grid |
+| `/api/recent` | 5054 | Top 5 recent downloads with posters |
+| `/api/queue` | 5054 | Active downloads with progress (max 10) |
+| `/health` | 5054 | Health check |
+
+### Configuration Scripts
+- Media page: `temp-media-page-update.py`
+- Media Stats API: `temp-media-api-update.py`
+- API location: `/opt/media-stats-api/media-stats-api.py`
+
 ## Notes
 
 - All VMs use Ubuntu 24.04 LTS cloud-init template
