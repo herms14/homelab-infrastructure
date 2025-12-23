@@ -674,6 +674,95 @@ scp temp-home-fix.py hermes-admin@192.168.40.10:/tmp/
 ssh hermes-admin@192.168.40.10 "sudo python3 /tmp/temp-home-fix.py && cd /opt/glance && sudo docker compose restart"
 ```
 
+## Glance Dashboard Tab Structure
+
+The Glance dashboard has 7 tabs in this order:
+
+| Tab | Purpose | Protected |
+|-----|---------|-----------|
+| **Home** | Service monitors, bookmarks, markets | YES |
+| **Compute** | Proxmox cluster + Container monitoring | No |
+| **Storage** | Synology NAS Grafana dashboard | No |
+| **Network** | Network overview + Speedtest | No |
+| **Media** | Media stats, downloads, queue | YES |
+| **Web** | Tech news, AI/ML, stocks, NBA | No |
+| **Reddit** | Dynamic Reddit feed | No |
+
+### Compute Tab
+
+Displays Proxmox cluster metrics and container monitoring via two embedded Grafana dashboards.
+
+#### Proxmox Cluster Dashboard
+
+**Grafana Dashboard**: `proxmox-compute` (UID)
+- URL: `https://grafana.hrmsmrflrii.xyz/d/proxmox-compute/proxmox-cluster-overview?kiosk&theme=transparent&refresh=30s`
+- Iframe Height: 1100px
+
+**Panels**:
+- Nodes Online, Avg CPU %, Avg Memory %
+- Running/Total/Stopped VMs
+- CPU & Memory Usage by Node (time series)
+- Storage Usage % (Local LVM, VMDisks, ProxmoxData)
+
+#### Container Monitoring Dashboard (Modern Visual Style)
+
+**Grafana Dashboard**: `containers-modern` (UID)
+- URL: `https://grafana.hrmsmrflrii.xyz/d/containers-modern/container-monitoring?kiosk&theme=transparent&refresh=30s`
+- Iframe Height: 850px
+
+**Summary Stats Row** (colored tiles):
+- Total Containers (blue background)
+- Running Containers (green background)
+- Total Memory Used (orange background)
+- Total CPU (circular gauge with thresholds)
+
+**Memory Usage Bar Gauges** (horizontal gradient bars):
+- Utilities VM containers - Blue-Yellow-Red gradient (sorted highest to lowest)
+- Media VM containers - Blue-Yellow-Red gradient (sorted highest to lowest)
+
+**CPU Usage Bar Gauges** (horizontal gradient bars):
+- Utilities VM containers - Green-Yellow-Red gradient (sorted highest to lowest)
+- Media VM containers - Green-Yellow-Red gradient (sorted highest to lowest)
+
+**Sorting**: All bar gauge panels use `topk()` queries with `sortBy` transformation to display containers from highest to lowest utilization.
+
+**Color Thresholds**:
+- Memory: Green <70%, Yellow 70-90%, Red >90%
+- CPU: Green <50%, Yellow 50-80%, Red >80%
+
+**Visual Features**:
+- Transparent dashboard background (`theme=transparent`)
+- Hidden scrollbars via custom CSS
+- Gradient bar gauges with continuous color mode
+
+**Metrics Source**: docker-exporter on port 9417
+- `docker_container_running`
+- `docker_container_memory_percent`
+- `docker_container_cpu_percent`
+- `docker_container_memory_usage_bytes`
+
+### Storage Tab
+
+**Grafana Dashboard**: `synology-storage` (UID)
+- URL: `https://grafana.hrmsmrflrii.xyz/d/synology-storage/synology-nas?kiosk&refresh=30s`
+- Iframe Height: 500px
+
+### Network Tab
+
+**Grafana Dashboard**: `network-overview` (UID)
+- URL: `https://grafana.hrmsmrflrii.xyz/d/network-overview/network-overview?kiosk&refresh=30s`
+- Iframe Height: 750px
+
+**Speedtest Widget**: Custom API showing Download/Upload/Ping from Speedtest Tracker
+
+### Prometheus Exporters
+
+| Exporter | Port | Target | Status |
+|----------|------|--------|--------|
+| OPNsense Exporter | 9198 | 192.168.91.30 | Active |
+| Omada Exporter | 9202 | 192.168.0.103 | Pending |
+| Docker Stats Exporter | 9417 | Both Docker VMs | Active |
+
 ## Related Documentation
 
 - [SERVICES.md](./SERVICES.md) - All deployed services

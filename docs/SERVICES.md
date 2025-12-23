@@ -517,17 +517,28 @@ ssh hermes-admin@192.168.40.10 "cd /opt/speedtest-tracker && sudo docker compose
 - Synology NAS monitoring (embedded Grafana)
 - **Media Stats Grid** - Radarr/Sonarr stats in colorful 3x2 tile grid
 
-### Pages
+### Pages (7 Tabs)
 
-| Page | Widgets |
-|------|---------|
-| Home | Life Progress, Service Health, K8s Cluster, Markets, RSS |
-| Media | **Media Stats Grid**, Recent Movies, RSS Feeds, Media Bookmarks |
-| Sports | NBA Scores, NFL Scores |
-| Network | Network Devices, OPNsense Unbound Stats |
-| Storage | Synology NAS Dashboard (iframe) |
-| Containers | Container Monitoring (iframe) |
-| Reddit | Dynamic Reddit Feed (via Reddit Manager) |
+| Page | Widgets | Protected |
+|------|---------|-----------|
+| **Home** | Life Progress, Service Health, K8s Cluster, Markets, RSS | YES |
+| **Compute** | Proxmox Cluster Dashboard + Container Monitoring (modern bar gauges) | No |
+| **Storage** | Synology NAS Dashboard (iframe) | No |
+| **Network** | Network Overview Dashboard + Speedtest widget | No |
+| **Media** | Media Stats Grid, Recent Downloads, Download Queue | YES |
+| **Web** | Tech News, AI/ML feeds, Stocks, NBA Scores | No |
+| **Reddit** | Dynamic Reddit Feed (via Reddit Manager) | No |
+
+### Grafana Dashboards (Embedded)
+
+| Dashboard | UID | Tab | Height |
+|-----------|-----|-----|--------|
+| Proxmox Cluster | `proxmox-compute` | Compute | 1100px |
+| Container Monitoring | `containers-modern` | Compute | 850px |
+| Synology NAS | `synology-storage` | Storage | 500px |
+| Network Overview | `network-overview` | Network | 750px |
+
+**Features**: All dashboards use `theme=transparent` and hidden scrollbars via custom CSS.
 
 ### Media Stats API
 

@@ -27,6 +27,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added Glance icon troubleshooting guide to TROUBLESHOOTING.md
 - Documented Dashboard Icons as preferred icon source for arr stack apps
 
+## [2025-12-24] - Glance Dashboard Revamp with Modern Container Monitoring
+
+### Added - Glance Dashboard 7-Tab Structure
+- **Complete dashboard revamp** with 7 organized tabs:
+  - Home (protected), Compute, Storage, Network, Media (protected), Web, Reddit
+- **Compute Tab** - Proxmox cluster metrics + Container monitoring via embedded Grafana
+- **Storage Tab** - Synology NAS dashboard with SNMP metrics
+- **Network Tab** - OPNsense firewall metrics + Speedtest results widget
+- **Web Tab** - Tech news, AI/ML feeds, stocks, crypto, NBA scores (replaces Sports)
+
+### Added - Grafana Dashboards
+- **Proxmox Cluster Dashboard** (`proxmox-compute`):
+  - Nodes Online, Avg CPU/Memory %, Running/Stopped VMs
+  - CPU & Memory usage by node (time series)
+  - Storage usage bar gauges (Local LVM, VMDisks, ProxmoxData)
+- **Container Monitoring Dashboard** (`containers-modern`) with modern visual style:
+  - Summary stats row: Total/Running containers, Total Memory, CPU gauge
+  - Memory usage bar gauges (Blue-Yellow-Red gradient) grouped by VM
+  - CPU usage bar gauges (Green-Yellow-Red gradient) grouped by VM
+  - Horizontal gradient bars instead of tables for modern look
+- **Synology Storage Dashboard** (`synology-storage`):
+  - CPU Load, Root Volume %, Total/Free Storage
+  - Storage usage over time
+- **Network Overview Dashboard** (`network-overview`):
+  - OPNsense Gateway status, Services running, TCP connections
+  - WAN traffic, Firewall pass/block rates, Protocol packet rates
+
+### Added - Prometheus Exporters
+- **OPNsense Exporter** on port 9198 - Firewall metrics from 192.168.91.30
+- **Docker Stats Exporter** on port 9417 - Container metrics from both Docker VMs
+- Updated Prometheus scrape config with new targets
+
+### Changed
+- Container monitoring now uses modern gradient bar gauges instead of tables
+- **Container sorting**: All bar gauges now sort containers from highest to lowest utilization using `topk()` queries with `sortBy` transformation
+- **Transparent dashboards**: All Grafana iframes use `theme=transparent` for seamless Glance integration
+- **Hidden scrollbars**: Custom CSS added to Glance to hide iframe scrollbars
+- Glance iframe heights optimized: Proxmox 1100px, Containers 850px, Storage 500px, Network 750px
+
+### Documentation
+- Updated CLAUDE.md with complete Compute tab configuration
+- Updated docs/GLANCE.md with 7-tab structure and dashboard details
+- Updated docs/SERVICES.md with new Grafana dashboards table
+- Updated Obsidian vault with dashboard architecture
+
 ## [2025-12-23] - Glance Dashboard Home Page Configuration
 
 ### Added - Glance Home Page

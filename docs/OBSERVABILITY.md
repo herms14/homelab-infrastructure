@@ -386,6 +386,71 @@ curl -s http://192.168.40.10:9090/api/v1/targets | jq '.data.activeTargets[] | s
 | Grafana (kiosk) | http://192.168.40.10:3030/d/synology-nas/synology-nas?kiosk |
 | Glance (embedded) | https://glance.hrmsmrflrii.xyz → Storage page |
 
+## Container Monitoring
+
+Docker container metrics are collected via the Docker Stats Exporter and displayed in Grafana.
+
+### Docker Stats Exporter
+
+**Hosts**: Both Docker VMs (192.168.40.10, 192.168.40.11)
+**Port**: 9417
+
+| Metric | Description |
+|--------|-------------|
+| `docker_container_running` | Container running status (1/0) |
+| `docker_container_memory_percent` | Memory usage percentage |
+| `docker_container_cpu_percent` | CPU usage percentage |
+| `docker_container_memory_usage_bytes` | Memory usage in bytes |
+
+### Container Monitoring Dashboard
+
+**Grafana Dashboard**: `containers-modern` (UID)
+**URL**: https://grafana.hrmsmrflrii.xyz/d/containers-modern/container-monitoring
+
+**Modern Visual Style** (bar gauges instead of tables):
+
+```
+┌─────────────────┬─────────────────┬─────────────────┬─────────────────┐
+│ Total Containers│    Running      │  Total Memory   │   Total CPU     │
+│    (Blue)       │    (Green)      │    (Orange)     │   (Gauge)       │
+├─────────────────┴─────────────────┼─────────────────┴─────────────────┤
+│   Memory Usage - Utilities VM     │     Memory Usage - Media VM       │
+│   ████████████░░░ container1 45%  │   ████████░░░░░░ jellyfin 32%     │
+│   ██████░░░░░░░░░ container2 25%  │   gradient bars per container...  │
+├───────────────────────────────────┼───────────────────────────────────┤
+│   CPU Usage - Utilities VM        │     CPU Usage - Media VM          │
+│   ████░░░░░░░░░░░ container1 12%  │   gradient bars per container...  │
+└───────────────────────────────────┴───────────────────────────────────┘
+```
+
+**Color Gradients**:
+- Memory: Blue → Yellow → Red (thresholds: 70%, 90%)
+- CPU: Green → Yellow → Red (thresholds: 50%, 80%)
+
+**Sorting**: Containers sorted from highest to lowest utilization using `topk()` queries with `sortBy` transformation.
+
+**Visual Features**:
+- Transparent dashboard background (`theme=transparent`)
+- Hidden scrollbars via custom CSS in Glance
+
+### Prometheus Scrape Config
+
+```yaml
+- job_name: 'docker-stats-utilities'
+  static_configs:
+    - targets: ['192.168.40.10:9417']
+
+- job_name: 'docker-stats-media'
+  static_configs:
+    - targets: ['192.168.40.11:9417']
+```
+
+### Glance Integration
+
+The Container Monitoring dashboard is embedded in the Glance **Compute** tab via iframe:
+- Height: 850px
+- URL: `https://grafana.hrmsmrflrii.xyz/d/containers-modern/container-monitoring?kiosk&theme=transparent&refresh=30s`
+
 ## Related Documentation
 
 - [Services](./SERVICES.md) - Service deployment details
