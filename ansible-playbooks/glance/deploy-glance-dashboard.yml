@@ -229,6 +229,53 @@
           }
 
           /* ========================================
+             Media Stats Grid Layout
+             ======================================== */
+
+          /* 3-column grid container for media stat cards */
+          .media-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 16px;
+            padding: 8px;
+          }
+
+          /* Individual stat card tile */
+          .media-stat-card {
+            height: 120px;
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+          }
+
+          .media-stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+          }
+
+          /* Responsive: 2 columns on medium screens */
+          @media (max-width: 1199px) {
+            .media-stats-grid {
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+          }
+
+          /* Responsive: 1 column on small screens */
+          @media (max-width: 767px) {
+            .media-stats-grid {
+              grid-template-columns: 1fr;
+            }
+            .media-stat-card {
+              height: 100px;
+            }
+          }
+
+          /* ========================================
              Responsive Adjustments
              ======================================== */
 

@@ -80,7 +80,7 @@ locals {
       template      = "tpl-ubuntu-shared-v1"
       cores         = 2
       sockets       = 1
-      memory        = 8192   # 8GB
+      memory        = 12288  # 12GB
       disk_size     = "20G"
       storage       = "VMDisks"
       vlan_tag      = 40     # VLAN 40
@@ -95,8 +95,8 @@ locals {
       template      = "tpl-ubuntu-shared-v1"
       cores         = 2
       sockets       = 1
-      memory        = 8192   # 8GB
-      disk_size     = "20G"
+      memory        = 12288  # 12GB
+      disk_size     = "100G"
       storage       = "VMDisks"
       vlan_tag      = 40     # VLAN 40
       gateway       = "192.168.40.1"
