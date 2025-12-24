@@ -11,6 +11,10 @@ This guide documents resolved issues and common problems organized by category f
 - [Proxmox Cluster Issues](#proxmox-cluster-issues)
 - [Kubernetes Issues](#kubernetes-issues)
 - [Authentication Issues](#authentication-issues)
+  - [GitLab SSO DNS Resolution Failure](#gitlab-sso-failed-to-open-tcp-connection-dns-resolution)
+  - [GitLab SSO Client Secret Mismatch](#gitlab-sso-invalid-client-client-secret-mismatch)
+  - [Jellyseerr OIDC Not Working with Latest Image](#jellyseerr-oidc-not-working-with-latest-image)
+  - [Jellyseerr SSO Redirect URI Error](#jellyseerr-sso-redirect-uri-error)
 - [Container & Docker Issues](#container--docker-issues)
   - [Jellyfin Shows Fewer Movies Than Download Monitor](#jellyfin-shows-fewer-movies-than-download-monitor)
   - [Glance Reddit Widget Timeout Error](#glance-reddit-widget-timeout-error)
@@ -313,6 +317,108 @@ print(f'Changed {user.username} to internal')
 
 ---
 
+### GitLab SSO "Failed to open tcp connection" (DNS Resolution)
+
+**Resolved**: December 24, 2025
+
+**Symptoms**: When clicking "Authentik" SSO button on GitLab login page:
+```
+Could not authenticate you from OpenIDConnect because "Failed to open tcp connection to auth.hrmsmrflrii.xyz:443 (getaddrinfo: name or service not known)".
+```
+
+**Root Cause**: GitLab VM had incorrect DNS configuration. The netplan was configured with DNS server `192.168.20.1` instead of `192.168.91.30` (OPNsense). The VM couldn't resolve internal domain names like `auth.hrmsmrflrii.xyz`.
+
+**Diagnosis**:
+```bash
+# Check DNS resolution from GitLab VM
+ssh hermes-admin@192.168.40.23 "nslookup auth.hrmsmrflrii.xyz"
+# Returns: NXDOMAIN = DNS misconfigured
+
+# Check current DNS configuration
+ssh hermes-admin@192.168.40.23 "resolvectl status | grep 'DNS Server'"
+# Shows wrong DNS server
+```
+
+**Fix**:
+```bash
+# Update netplan DNS to correct server
+ssh hermes-admin@192.168.40.23 "sudo sed -i 's/192.168.20.1/192.168.91.30/g' /etc/netplan/50-cloud-init.yaml"
+
+# Apply changes
+ssh hermes-admin@192.168.40.23 "sudo netplan apply"
+
+# Verify DNS now works
+ssh hermes-admin@192.168.40.23 "nslookup auth.hrmsmrflrii.xyz"
+# Should return: 192.168.40.20 (Traefik IP)
+```
+
+**Verification**:
+```bash
+# Test from host
+ssh hermes-admin@192.168.40.23 "nslookup auth.hrmsmrflrii.xyz && ping -c 2 192.168.40.20"
+
+# Test from Docker container
+ssh hermes-admin@192.168.40.23 "docker exec gitlab nslookup auth.hrmsmrflrii.xyz"
+```
+
+**Prevention**:
+- Ensure all VLAN 40 VMs use DNS `192.168.91.30` (OPNsense)
+- Verify DNS resolution works before configuring SSO
+- Check Terraform `nameserver` variable in `main.tf` vm_groups
+
+---
+
+### GitLab SSO "Invalid client" (Client Secret Mismatch)
+
+**Resolved**: December 24, 2025
+
+**Symptoms**: After fixing DNS, clicking "Authentik" SSO button shows:
+```
+Could not authenticate you from OpenIDConnect because "Invalid client :: client authentication failed (e.g., unknown client, no client authentication included, or unsupported authentication method)".
+```
+
+**Root Cause**: The client secret in GitLab's docker-compose.yml was truncated/incorrect. The secret had:
+- Wrong character: `Jtz41sHn` (digit "1") instead of `Jtz4lsHn` (lowercase "L")
+- Truncated: Missing the second half of the secret string
+
+**Diagnosis**:
+```bash
+# Get correct secret from Authentik database
+ssh hermes-admin@192.168.40.21 "docker exec authentik-postgres psql -U authentik -d authentik -c \"
+SELECT p.name, o.client_id, o.client_secret
+FROM authentik_core_provider p
+JOIN authentik_providers_oauth2_oauth2provider o ON p.id = o.provider_ptr_id
+WHERE p.name ILIKE '%gitlab%';\""
+
+# Compare with GitLab config
+ssh hermes-admin@192.168.40.23 "grep 'secret:' /opt/gitlab/docker-compose.yml"
+```
+
+**Fix**:
+```bash
+# Update GitLab docker-compose.yml with correct secret
+ssh hermes-admin@192.168.40.23 "sudo sed -i 's|secret: \"OLD_TRUNCATED_SECRET\"|secret: \"CORRECT_FULL_SECRET\"|' /opt/gitlab/docker-compose.yml"
+
+# Restart GitLab
+ssh hermes-admin@192.168.40.23 "cd /opt/gitlab && sudo docker compose down && sudo docker compose up -d"
+
+# Wait for GitLab to initialize (2-3 minutes)
+sleep 120 && curl -s -o /dev/null -w "%{http_code}" https://gitlab.hrmsmrflrii.xyz/users/sign_in
+```
+
+**Verification**:
+1. Navigate to https://gitlab.hrmsmrflrii.xyz
+2. Click "Authentik" button
+3. Complete Authentik login
+4. Should redirect back to GitLab logged in
+
+**Prevention**:
+- When copying OAuth secrets, verify full string length matches
+- Use copy-paste carefully - "1" (one) vs "l" (lowercase L) are easy to confuse
+- Test OIDC immediately after configuration to catch issues early
+
+---
+
 ### Jellyfin SSO Button Not Showing on Login Page
 
 **Resolved**: December 24, 2025
@@ -380,6 +486,115 @@ ssh hermes-admin@192.168.40.11 "docker restart jellyfin"
 4. Should redirect back to Jellyfin and be logged in successfully
 
 **Prevention**: Always configure Scheme Override to `https` for services behind reverse proxies that terminate TLS.
+
+---
+
+### Jellyseerr OIDC Not Working with Latest Image
+
+**Resolved**: December 24, 2025
+
+**Symptoms**:
+- OIDC environment variables configured but no SSO button appears
+- API shows `openIdProviders: []` (empty array)
+- No errors in logs, OIDC just silently not working
+
+**Root Cause**: The `latest` Jellyseerr image does not include native OIDC support. OIDC is only available in the `preview-OIDC` branch image.
+
+**Diagnosis**:
+```bash
+# Check current image
+ssh hermes-admin@192.168.40.11 "docker inspect jellyseerr --format='{{.Config.Image}}'"
+# If "fallenbagel/jellyseerr:latest" = OIDC not supported
+
+# Check API for OIDC providers
+ssh hermes-admin@192.168.40.11 "curl -s http://localhost:5056/api/v1/settings/public | jq '.openIdProviders'"
+# Empty array [] = OIDC not enabled
+```
+
+**Fix**:
+```bash
+# Update docker-compose.yml to use preview-OIDC image
+ssh hermes-admin@192.168.40.11 "sudo sed -i 's|fallenbagel/jellyseerr:latest|fallenbagel/jellyseerr:preview-OIDC|' /opt/arr-stack/docker-compose.yml"
+
+# Recreate container
+ssh hermes-admin@192.168.40.11 "cd /opt/arr-stack && sudo docker compose up -d --force-recreate jellyseerr"
+```
+
+Then configure OIDC via the UI: **Settings → Users → Configure OpenID Connect**
+
+**Key Settings**:
+- Discovery URL: `https://auth.hrmsmrflrii.xyz/application/o/jellyseerr/.well-known/openid-configuration`
+- Client ID: From Authentik provider
+- Client Secret: From Authentik provider
+- Button Text: `Sign in with Authentik`
+
+**Verification**:
+```bash
+# Check API now shows OIDC provider
+ssh hermes-admin@192.168.40.11 "curl -s http://localhost:5056/api/v1/settings/public | jq '.openIdProviders'"
+# Should show configured provider
+```
+
+**Note**: OIDC configuration via environment variables does NOT work. Must use the UI settings.
+
+---
+
+### Jellyseerr SSO Redirect URI Error
+
+**Resolved**: December 24, 2025
+
+**Symptoms**: After clicking SSO button and authenticating with Authentik, user is redirected back with error:
+```
+Redirect URI Error
+The request fails due to a missing, invalid, or mismatching redirection URI
+```
+
+**Root Cause**: Two issues:
+1. Jellyseerr uses a new callback format: `/login?provider=authentik&callback=true` (not the standard `/outpost.goauthentik.io/callback`)
+2. Behind reverse proxy, Jellyseerr generates `http://` URIs instead of `https://`
+
+**Diagnosis**:
+```bash
+# Check Authentik logs for the actual redirect URI being sent
+ssh hermes-admin@192.168.40.21 "sudo docker logs authentik-server --tail 50 2>&1 | grep -i 'redirect'"
+# Look for the redirect_uri parameter in the error
+```
+
+**Fix**: Add both HTTP and HTTPS redirect URIs with regex matching in Authentik:
+
+```bash
+ssh hermes-admin@192.168.40.21 "sudo docker exec authentik-server ak shell -c \"
+from authentik.providers.oauth2.models import OAuth2Provider
+from authentik.providers.oauth2.constants import RedirectURIMatchingMode
+from authentik.providers.oauth2.models import RedirectURI
+
+provider = OAuth2Provider.objects.get(name='jellyseerr-oidc-provider')
+new_uris = [
+    RedirectURI(matching_mode=RedirectURIMatchingMode.REGEX, url=r'https://jellyseerr\.hrmsmrflrii\.xyz/login\?provider=authentik.*'),
+    RedirectURI(matching_mode=RedirectURIMatchingMode.REGEX, url=r'http://jellyseerr\.hrmsmrflrii\.xyz/login\?provider=authentik.*'),
+    RedirectURI(matching_mode=RedirectURIMatchingMode.STRICT, url='https://jellyseerr.hrmsmrflrii.xyz/outpost.goauthentik.io/callback'),
+]
+provider.redirect_uris = new_uris
+provider.save()
+print('Updated redirect URIs')
+\""
+```
+
+**Key Points**:
+- Use `REGEX` matching mode for the callback URL (contains query parameters)
+- Include BOTH `http://` and `https://` versions to handle scheme mismatch
+- Escape dots in regex: `\.` not `.`
+
+**Verification**:
+1. Navigate to https://jellyseerr.hrmsmrflrii.xyz
+2. Click "Sign in with Authentik"
+3. Complete Authentik login
+4. Should redirect back to Jellyseerr logged in
+
+**Prevention**: When configuring OIDC for services behind reverse proxies:
+1. Check the actual callback URL format in Authentik logs
+2. Add both HTTP and HTTPS versions of redirect URIs
+3. Use regex matching for URLs with query parameters
 
 ---
 
