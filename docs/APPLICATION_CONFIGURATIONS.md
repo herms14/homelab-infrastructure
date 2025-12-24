@@ -34,6 +34,12 @@ This document provides detailed configuration guides for applications in the hom
   - [Custom CSS Enhancements](#custom-css-enhancements)
   - [Adding a New Theme](#adding-a-new-theme)
   - [Theme Design Reference](#theme-design-reference)
+- [Authentik SSO Configuration](#authentik-sso-configuration)
+  - [Overview](#authentik-overview)
+  - [GitLab OIDC Integration](#gitlab-oidc-integration)
+  - [OAuth Sources](#oauth-sources)
+  - [Application Dashboard Organization](#application-dashboard-organization)
+  - [Troubleshooting](#authentik-troubleshooting)
 
 ---
 
@@ -1126,6 +1132,348 @@ This playbook:
 2. Deploys `custom-themes.css` to the assets folder
 3. Deploys `glance.yml` with all theme presets
 4. Restarts the Glance container
+
+---
+
+## Authentik SSO Configuration
+
+**Host**: authentik-vm01 (192.168.40.21)
+**External URL**: https://auth.hrmsmrflrii.xyz
+**Version**: 2025.10.3
+**Configured**: December 24, 2025
+
+### Authentik Overview
+
+Authentik is deployed as the central identity provider for the homelab. It provides:
+
+- **Single Sign-On (SSO)**: One login for all services
+- **OAuth2/OpenID Connect**: Industry-standard protocols for application integration
+- **Forward Authentication**: Proxy-based auth for legacy services via Traefik
+- **Social Login**: External identity providers (Google, GitHub, Discord, etc.)
+- **Application Dashboard**: Centralized application launcher
+
+**Architecture**:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         User Browser                             │
+└───────────────────────────────┬─────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      Traefik (Reverse Proxy)                     │
+│                   traefik.hrmsmrflrii.xyz                        │
+└───────────────────────────────┬─────────────────────────────────┘
+                                │
+        ┌───────────────────────┼───────────────────────┐
+        │                       │                       │
+        ▼                       ▼                       ▼
+┌───────────────┐    ┌──────────────────┐    ┌────────────────────┐
+│  Authentik    │    │   Applications   │    │   Forward Auth     │
+│ (IdP Server)  │◄───┤  (OIDC Clients)  │    │   Protected Apps   │
+│               │    │                  │    │                    │
+│ - OAuth2      │    │ - GitLab         │    │ - Traefik Dash     │
+│ - OIDC        │    │ - Portainer      │    │ - Proxmox          │
+│ - SAML        │    │ - (future apps)  │    │ - Grafana          │
+└───────────────┘    └──────────────────┘    └────────────────────┘
+```
+
+### GitLab OIDC Integration
+
+GitLab is configured to use Authentik as an OpenID Connect (OIDC) provider, enabling users to log in with their Authentik credentials.
+
+#### How It Works
+
+1. User clicks "Sign in with Authentik" on GitLab login page
+2. GitLab redirects to Authentik authorization endpoint
+3. User authenticates with Authentik (password or social login)
+4. Authentik issues authorization code and redirects back to GitLab
+5. GitLab exchanges code for tokens and creates/links user account
+
+#### Authentik Configuration
+
+**OAuth2/OIDC Provider Settings**:
+
+| Setting | Value |
+|---------|-------|
+| Name | `gitlab-oidc-provider` |
+| Client ID | `gitlab` |
+| Client Type | Confidential |
+| Authorization Flow | default-provider-authorization-implicit-consent |
+| Redirect URI | `https://gitlab.hrmsmrflrii.xyz/users/auth/openid_connect/callback` |
+| Sub Mode | Hashed User ID |
+| Include Claims in ID Token | Yes |
+| Issuer Mode | Per Provider |
+
+**Application Settings**:
+
+| Setting | Value |
+|---------|-------|
+| Name | GitLab |
+| Slug | `gitlab` |
+| Group | DevOps |
+| Launch URL | https://gitlab.hrmsmrflrii.xyz |
+| Icon | application-icons/gitlab.png |
+| Provider | gitlab-oidc-provider |
+
+**OIDC Endpoints**:
+
+| Endpoint | URL |
+|----------|-----|
+| Discovery | `https://auth.hrmsmrflrii.xyz/application/o/gitlab/.well-known/openid-configuration` |
+| Authorization | `https://auth.hrmsmrflrii.xyz/application/o/authorize/` |
+| Token | `https://auth.hrmsmrflrii.xyz/application/o/token/` |
+| Userinfo | `https://auth.hrmsmrflrii.xyz/application/o/userinfo/` |
+
+#### GitLab Configuration
+
+The GitLab docker-compose includes OmniAuth OIDC configuration:
+
+```yaml
+# In GITLAB_OMNIBUS_CONFIG environment variable
+gitlab_rails['omniauth_enabled'] = true
+gitlab_rails['omniauth_allow_single_sign_on'] = ['openid_connect']
+gitlab_rails['omniauth_block_auto_created_users'] = false
+gitlab_rails['omniauth_auto_link_user'] = ['openid_connect']
+gitlab_rails['omniauth_sync_email_from_provider'] = 'openid_connect'
+gitlab_rails['omniauth_sync_profile_from_provider'] = ['openid_connect']
+gitlab_rails['omniauth_sync_profile_attributes'] = ['email', 'name']
+
+gitlab_rails['omniauth_providers'] = [
+  {
+    name: "openid_connect",
+    label: "Authentik",
+    icon: "https://auth.hrmsmrflrii.xyz/static/dist/assets/icons/icon.png",
+    args: {
+      name: "openid_connect",
+      scope: ["openid", "profile", "email"],
+      response_type: "code",
+      issuer: "https://auth.hrmsmrflrii.xyz/application/o/gitlab/",
+      discovery: true,
+      client_auth_method: "basic",
+      uid_field: "sub",
+      pkce: true,
+      client_options: {
+        identifier: "gitlab",
+        secret: "YOUR_CLIENT_SECRET",
+        redirect_uri: "https://gitlab.hrmsmrflrii.xyz/users/auth/openid_connect/callback"
+      }
+    }
+  }
+]
+```
+
+**User Behavior**:
+
+| Scenario | Behavior |
+|----------|----------|
+| New User (no GitLab account) | Auto-created on first SSO login |
+| Existing User (matching email) | Linked by email address |
+| Profile Changes in Authentik | Synced to GitLab (email, name) |
+
+#### Ansible Automation
+
+Deploy GitLab SSO integration using the Ansible playbook:
+
+```bash
+# Set Authentik API token
+export AUTHENTIK_TOKEN="your-token-here"
+
+# Run the playbook
+cd ~/ansible
+ansible-playbook authentik/configure-gitlab-sso.yml
+```
+
+The playbook (`ansible-playbooks/authentik/configure-gitlab-sso.yml`):
+1. Creates OAuth2/OIDC provider in Authentik
+2. Creates Application linked to provider
+3. Updates GitLab docker-compose with OmniAuth config
+4. Restarts and reconfigures GitLab
+
+### OAuth Sources
+
+OAuth sources allow users to authenticate to Authentik using external identity providers (social login).
+
+#### Configured Sources
+
+| Provider | Status | Notes |
+|----------|--------|-------|
+| Google | ✅ Active | Primary social login |
+| GitHub | ⏳ Ready | Requires credentials |
+| Discord | ⏳ Ready | Requires credentials |
+| Reddit | ⏳ Ready | Requires credentials |
+| Apple | ⏳ Ready | Requires credentials |
+| Facebook | ⏳ Ready | Requires credentials |
+| Telegram | ⏳ Ready | Requires bot token |
+
+#### Setting Up OAuth Sources
+
+Each OAuth source requires creating a developer application on the provider platform:
+
+**GitHub**:
+1. Go to https://github.com/settings/developers
+2. Create new OAuth App
+3. Callback URL: `https://auth.hrmsmrflrii.xyz/source/oauth/callback/github/`
+4. Get Client ID and Client Secret
+
+**Discord**:
+1. Go to https://discord.com/developers/applications
+2. Create new application
+3. OAuth2 > Add Redirect: `https://auth.hrmsmrflrii.xyz/source/oauth/callback/discord/`
+4. Get Client ID and Client Secret
+
+**Reddit**:
+1. Go to https://www.reddit.com/prefs/apps
+2. Create new "web app"
+3. Redirect URI: `https://auth.hrmsmrflrii.xyz/source/oauth/callback/reddit/`
+4. Get Client ID (under app name) and Secret
+
+**Facebook**:
+1. Go to https://developers.facebook.com/apps
+2. Create new app (Consumer type)
+3. Add Facebook Login product
+4. Valid OAuth Redirect: `https://auth.hrmsmrflrii.xyz/source/oauth/callback/facebook/`
+5. Get App ID and App Secret
+
+**Apple**:
+1. Go to https://developer.apple.com/account/resources/identifiers/list
+2. Create Services ID with Sign In with Apple
+3. Return URL: `https://auth.hrmsmrflrii.xyz/source/oauth/callback/apple/`
+4. Generate Key for Client Secret
+
+**Telegram**:
+1. Message @BotFather on Telegram
+2. Create new bot with `/newbot`
+3. Get bot token
+4. Set domain with `/setdomain` to `auth.hrmsmrflrii.xyz`
+
+#### Ansible Playbook for OAuth Sources
+
+Use the OAuth sources playbook to configure multiple providers:
+
+```bash
+# Set credentials as environment variables
+export GITHUB_CLIENT_ID="your-github-client-id"
+export GITHUB_CLIENT_SECRET="your-github-client-secret"
+export DISCORD_CLIENT_ID="your-discord-client-id"
+export DISCORD_CLIENT_SECRET="your-discord-client-secret"
+# ... etc
+
+# Run playbook
+ansible-playbook authentik/configure-oauth-sources.yml
+```
+
+The playbook (`ansible-playbooks/authentik/configure-oauth-sources.yml`) creates sources for all configured providers.
+
+### Application Dashboard Organization
+
+Authentik's application dashboard organizes apps into groups for easy access.
+
+#### Current Groups
+
+| Group | Applications |
+|-------|-------------|
+| DevOps | GitLab |
+| Dashboards | Glance, Portainer |
+| Download Clients | Deluge, SABnzbd |
+| Media | Jellyfin, Radarr, Sonarr, Lidarr, Prowlarr, Bazarr, Jellyseerr, Tdarr |
+| Monitoring & Observability | Uptime Kuma, Grafana, Prometheus, Jaeger |
+
+#### Setting Application Groups
+
+Via Authentik Admin UI:
+1. Go to Applications > Applications
+2. Click on the application
+3. In "UI settings", set the Group field
+4. Click Update
+
+Via API:
+```bash
+curl -X PATCH "http://192.168.40.21:9000/api/v3/core/applications/APP_SLUG/" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"meta_group": "DevOps"}'
+```
+
+#### Setting Application Icons
+
+Icons are stored in `/opt/authentik/media/application-icons/`:
+
+```bash
+# Download icon
+ssh hermes-admin@192.168.40.21 "sudo curl -o /opt/authentik/media/application-icons/gitlab.png https://about.gitlab.com/images/press/logo/png/gitlab-icon-rgb.png"
+
+# Set permissions
+ssh hermes-admin@192.168.40.21 "sudo chmod 644 /opt/authentik/media/application-icons/gitlab.png"
+
+# Update application via database
+ssh hermes-admin@192.168.40.21 "sudo docker exec authentik-postgres psql -U authentik -d authentik -c \"UPDATE authentik_core_application SET meta_icon = 'application-icons/gitlab.png' WHERE slug = 'gitlab';\""
+```
+
+### Authentik Troubleshooting
+
+#### Issue: GitLab SSO Redirect Loop
+
+**Symptoms**:
+- Clicking "Sign in with Authentik" redirects back to login page
+- No error message displayed
+
+**Root Cause**: Redirect URI mismatch between GitLab config and Authentik provider.
+
+**Diagnosis**:
+```bash
+# Check GitLab logs
+ssh hermes-admin@192.168.40.23 "docker logs gitlab 2>&1 | grep -i oauth"
+
+# Verify Authentik provider redirect URI
+curl -s -H "Authorization: Bearer TOKEN" \
+  "http://192.168.40.21:9000/api/v3/providers/oauth2/?name=gitlab-oidc-provider" | jq '.results[0].redirect_uris'
+```
+
+**Fix**: Ensure redirect URIs match exactly:
+- Authentik: `https://gitlab.hrmsmrflrii.xyz/users/auth/openid_connect/callback`
+- GitLab: Same URI in `redirect_uri` client option
+
+---
+
+#### Issue: Application Not Showing on Dashboard
+
+**Symptoms**:
+- Application created but not visible on user dashboard
+- Can access application directly via URL
+
+**Root Cause**: Application not assigned to outpost or user doesn't have access.
+
+**Diagnosis**:
+```bash
+# Check if application exists
+curl -s -H "Authorization: Bearer TOKEN" \
+  "http://192.168.40.21:9000/api/v3/core/applications/" | jq '.results[] | {name, slug}'
+
+# Check outpost bindings
+curl -s -H "Authorization: Bearer TOKEN" \
+  "http://192.168.40.21:9000/api/v3/outposts/instances/" | jq '.results[] | {name, providers}'
+```
+
+**Fix**:
+1. Ensure provider is assigned to Embedded Outpost
+2. Check application policy allows user access
+3. Verify application has a linked provider
+
+---
+
+#### Issue: OAuth Source Login Fails
+
+**Symptoms**:
+- "Invalid request" or "redirect_uri_mismatch" error
+- Login button does nothing
+
+**Root Cause**: Callback URL mismatch in OAuth provider configuration.
+
+**Fix**: Verify callback URL format for each provider:
+- Must be HTTPS
+- Must match exactly: `https://auth.hrmsmrflrii.xyz/source/oauth/callback/PROVIDER_SLUG/`
+- Trailing slash is required
 
 ---
 

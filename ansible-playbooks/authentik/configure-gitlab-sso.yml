@@ -1,0 +1,440 @@
+---
+# GitLab + Authentik SSO Integration Playbook
+# Configures GitLab to use Authentik as an OpenID Connect provider
+#
+# This playbook performs:
+# 1. Creates OAuth2/OIDC provider in Authentik via API
+# 2. Creates Application in Authentik linked to the provider
+# 3. Assigns provider to the embedded outpost
+# 4. Updates GitLab configuration with OmniAuth settings
+# 5. Reconfigures and restarts GitLab
+#
+# Prerequisites:
+# - Authentik running and accessible at http://192.168.40.21:9000
+# - GitLab running at https://gitlab.hrmsmrflrii.xyz
+# - Authentik API token with admin privileges
+#
+# Usage:
+#   ansible-playbook authentik/configure-gitlab-sso.yml \
+#     -e "authentik_token=YOUR_API_TOKEN"
+#
+# To get Authentik API token:
+#   1. Login to https://auth.hrmsmrflrii.xyz/if/admin/
+#   2. Go to Directory > Tokens and App passwords
+#   3. Create new token with "API Access" intent
+#
+# After running:
+#   - Users can login to GitLab via "Sign in with Authentik" button
+#   - Existing users are matched by email
+#   - New users are auto-created with basic permissions
+
+- name: Configure GitLab with Authentik SSO
+  hosts: localhost
+  connection: local
+  gather_facts: no
+
+  vars:
+    # Authentik Configuration
+    authentik_url: "http://192.168.40.21:9000"
+    authentik_external_url: "https://auth.hrmsmrflrii.xyz"
+    authentik_token: "{{ lookup('env', 'AUTHENTIK_TOKEN') | default('') }}"
+
+    # GitLab Configuration
+    gitlab_host: "192.168.40.23"
+    gitlab_external_url: "https://gitlab.hrmsmrflrii.xyz"
+    gitlab_dir: "/opt/gitlab"
+
+    # OAuth2/OIDC Provider Configuration
+    provider_name: "gitlab-oidc-provider"
+    app_name: "gitlab"
+    app_slug: "gitlab"
+
+    # Generate a secure client secret if not provided
+    client_secret: "{{ lookup('password', '/dev/null length=64 chars=ascii_letters,digits') }}"
+
+  tasks:
+    # ============================================
+    # VALIDATION
+    # ============================================
+
+    - name: Validate Authentik token is provided
+      fail:
+        msg: |
+          Authentik API token is required!
+
+          Set the AUTHENTIK_TOKEN environment variable or pass it as a variable:
+            ansible-playbook configure-gitlab-sso.yml -e "authentik_token=YOUR_TOKEN"
+
+          To create a token:
+            1. Login to https://auth.hrmsmrflrii.xyz/if/admin/
+            2. Go to Directory > Tokens and App passwords
+            3. Create new token with "API Access" intent
+      when: authentik_token == ""
+
+    - name: Check Authentik connectivity
+      uri:
+        url: "{{ authentik_url }}/api/v3/core/applications/"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ authentik_token }}"
+        status_code: [200]
+      register: authentik_check
+      failed_when: false
+
+    - name: Fail if Authentik is not accessible
+      fail:
+        msg: "Cannot connect to Authentik API at {{ authentik_url }}. Status: {{ authentik_check.status | default('unreachable') }}"
+      when: authentik_check.status | default(0) != 200
+
+    - name: Display configuration
+      debug:
+        msg: |
+          GitLab + Authentik SSO Configuration
+          =====================================
+          Authentik URL: {{ authentik_url }}
+          Authentik External: {{ authentik_external_url }}
+          GitLab URL: {{ gitlab_external_url }}
+          GitLab Host: {{ gitlab_host }}
+
+    # ============================================
+    # GET AUTHENTIK FLOWS
+    # ============================================
+
+    - name: Get authorization flow
+      uri:
+        url: "{{ authentik_url }}/api/v3/flows/instances/?slug=default-provider-authorization-implicit-consent"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ authentik_token }}"
+      register: auth_flow
+
+    - name: Get invalidation flow
+      uri:
+        url: "{{ authentik_url }}/api/v3/flows/instances/?slug=default-provider-invalidation-flow"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ authentik_token }}"
+      register: invalidation_flow
+
+    - name: Set flow UUIDs
+      set_fact:
+        auth_flow_uuid: "{{ auth_flow.json.results[0].pk }}"
+        invalidation_flow_uuid: "{{ invalidation_flow.json.results[0].pk }}"
+
+    # ============================================
+    # CREATE OAUTH2/OIDC PROVIDER
+    # ============================================
+
+    - name: Check if GitLab OAuth2 provider exists
+      uri:
+        url: "{{ authentik_url }}/api/v3/providers/oauth2/?name={{ provider_name }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ authentik_token }}"
+      register: existing_provider
+
+    - name: Get existing provider details
+      set_fact:
+        provider_exists: "{{ existing_provider.json.results | length > 0 }}"
+        existing_client_id: "{{ existing_provider.json.results[0].client_id | default('') }}"
+        existing_provider_pk: "{{ existing_provider.json.results[0].pk | default('') }}"
+
+    - name: Create GitLab OAuth2/OIDC Provider
+      uri:
+        url: "{{ authentik_url }}/api/v3/providers/oauth2/"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ authentik_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "{{ provider_name }}"
+          authorization_flow: "{{ auth_flow_uuid }}"
+          invalidation_flow: "{{ invalidation_flow_uuid }}"
+          client_type: "confidential"
+          client_id: "gitlab"
+          client_secret: "{{ client_secret }}"
+          redirect_uris: |
+            {{ gitlab_external_url }}/users/auth/openid_connect/callback
+          sub_mode: "hashed_user_id"
+          include_claims_in_id_token: true
+          issuer_mode: "per_provider"
+          access_token_validity: "minutes=5"
+          refresh_token_validity: "days=30"
+        status_code: [201]
+      when: not provider_exists
+      register: created_provider
+
+    - name: Update existing provider with new secret
+      uri:
+        url: "{{ authentik_url }}/api/v3/providers/oauth2/{{ existing_provider_pk }}/"
+        method: PATCH
+        headers:
+          Authorization: "Bearer {{ authentik_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          client_secret: "{{ client_secret }}"
+          redirect_uris: |
+            {{ gitlab_external_url }}/users/auth/openid_connect/callback
+          authorization_flow: "{{ auth_flow_uuid }}"
+          invalidation_flow: "{{ invalidation_flow_uuid }}"
+        status_code: [200]
+      when: provider_exists
+      register: updated_provider
+
+    - name: Get provider details
+      uri:
+        url: "{{ authentik_url }}/api/v3/providers/oauth2/?name={{ provider_name }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ authentik_token }}"
+      register: provider_details
+
+    - name: Set provider facts
+      set_fact:
+        provider_pk: "{{ provider_details.json.results[0].pk }}"
+        provider_client_id: "{{ provider_details.json.results[0].client_id }}"
+
+    # ============================================
+    # CREATE APPLICATION
+    # ============================================
+
+    - name: Check if GitLab application exists
+      uri:
+        url: "{{ authentik_url }}/api/v3/core/applications/?slug={{ app_slug }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ authentik_token }}"
+      register: existing_app
+
+    - name: Create GitLab Application
+      uri:
+        url: "{{ authentik_url }}/api/v3/core/applications/"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ authentik_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "GitLab"
+          slug: "{{ app_slug }}"
+          provider: "{{ provider_pk }}"
+          meta_launch_url: "{{ gitlab_external_url }}"
+          meta_description: "GitLab DevOps Platform - Code repository, CI/CD, and more"
+          policy_engine_mode: "any"
+        status_code: [201]
+      when: existing_app.json.results | length == 0
+      register: created_app
+
+    - name: Update existing application with provider
+      uri:
+        url: "{{ authentik_url }}/api/v3/core/applications/{{ app_slug }}/"
+        method: PATCH
+        headers:
+          Authorization: "Bearer {{ authentik_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          provider: "{{ provider_pk }}"
+        status_code: [200]
+      when: existing_app.json.results | length > 0
+
+    # ============================================
+    # UPDATE GITLAB CONFIGURATION
+    # ============================================
+
+    - name: Configure GitLab with Authentik OIDC
+      delegate_to: "{{ gitlab_host }}"
+      become: yes
+      vars:
+        ansible_user: hermes-admin
+        ansible_ssh_private_key_file: ~/.ssh/homelab_ed25519
+      block:
+        - name: Update GitLab docker-compose with OIDC configuration
+          copy:
+            dest: "{{ gitlab_dir }}/docker-compose.yml"
+            mode: "0644"
+            content: |
+              # GitLab CE - Docker Compose Configuration
+              # Updated with Authentik SSO integration
+              name: gitlab
+
+              services:
+                gitlab:
+                  container_name: gitlab
+                  image: gitlab/gitlab-ce:latest
+                  restart: unless-stopped
+                  hostname: gitlab.homelab.local
+                  environment:
+                    GITLAB_OMNIBUS_CONFIG: |
+                      # External URL - must be HTTPS for OAuth
+                      external_url '{{ gitlab_external_url }}'
+                      nginx['listen_port'] = 80
+                      nginx['listen_https'] = false
+
+                      # SSH configuration
+                      gitlab_rails['gitlab_shell_ssh_port'] = 2222
+
+                      # Timezone
+                      gitlab_rails['time_zone'] = 'America/New_York'
+
+                      # Disable monitoring to save resources
+                      prometheus_monitoring['enable'] = false
+                      alertmanager['enable'] = false
+                      grafana['enable'] = false
+
+                      # Optimize for homelab
+                      puma['worker_processes'] = 2
+                      sidekiq['max_concurrency'] = 10
+                      postgresql['shared_buffers'] = "256MB"
+
+                      # Disable unused features
+                      gitlab_rails['registry_enabled'] = false
+
+                      # ============================================
+                      # AUTHENTIK SSO CONFIGURATION
+                      # ============================================
+
+                      # Enable OmniAuth
+                      gitlab_rails['omniauth_enabled'] = true
+
+                      # Allow SSO without requiring existing account
+                      gitlab_rails['omniauth_allow_single_sign_on'] = ['openid_connect']
+
+                      # Auto-create users on first SSO login
+                      gitlab_rails['omniauth_block_auto_created_users'] = false
+
+                      # Auto-link existing users by email
+                      gitlab_rails['omniauth_auto_link_user'] = ['openid_connect']
+
+                      # Sync email from provider
+                      gitlab_rails['omniauth_sync_email_from_provider'] = 'openid_connect'
+
+                      # Sync profile attributes
+                      gitlab_rails['omniauth_sync_profile_from_provider'] = ['openid_connect']
+                      gitlab_rails['omniauth_sync_profile_attributes'] = ['email', 'name']
+
+                      # OmniAuth providers configuration
+                      gitlab_rails['omniauth_providers'] = [
+                        {
+                          name: "openid_connect",
+                          label: "Authentik",
+                          icon: "https://auth.hrmsmrflrii.xyz/static/dist/assets/icons/icon.png",
+                          args: {
+                            name: "openid_connect",
+                            scope: ["openid", "profile", "email"],
+                            response_type: "code",
+                            issuer: "{{ authentik_external_url }}/application/o/{{ app_slug }}/",
+                            discovery: true,
+                            client_auth_method: "basic",
+                            uid_field: "sub",
+                            pkce: true,
+                            client_options: {
+                              identifier: "{{ provider_client_id }}",
+                              secret: "{{ client_secret }}",
+                              redirect_uri: "{{ gitlab_external_url }}/users/auth/openid_connect/callback"
+                            }
+                          }
+                        }
+                      ]
+                  ports:
+                    - "80:80"
+                    - "443:443"
+                    - "2222:22"
+                  volumes:
+                    - {{ gitlab_dir }}/config:/etc/gitlab
+                    - {{ gitlab_dir }}/logs:/var/log/gitlab
+                    - {{ gitlab_dir }}/data:/var/opt/gitlab
+                  shm_size: '256m'
+                  networks:
+                    - gitlab-network
+
+              networks:
+                gitlab-network:
+                  driver: bridge
+
+        - name: Restart GitLab to apply configuration
+          shell: |
+            cd {{ gitlab_dir }}
+            docker compose down
+            docker compose up -d
+          register: restart_result
+
+        - name: Wait for GitLab to start
+          pause:
+            seconds: 30
+            prompt: "Waiting for GitLab container to initialize..."
+
+        - name: Reconfigure GitLab
+          shell: docker exec gitlab gitlab-ctl reconfigure
+          register: reconfigure_result
+          retries: 3
+          delay: 60
+          until: reconfigure_result.rc == 0
+          ignore_errors: yes
+
+        - name: Wait for GitLab to be ready
+          uri:
+            url: "http://localhost:80/-/readiness"
+            method: GET
+            status_code: [200, 503]
+          register: gitlab_health
+          retries: 30
+          delay: 20
+          until: gitlab_health.status == 200
+          ignore_errors: yes
+
+    # ============================================
+    # VERIFICATION
+    # ============================================
+
+    - name: Display completion message
+      debug:
+        msg: |
+          ============================================
+          GITLAB + AUTHENTIK SSO CONFIGURED!
+          ============================================
+
+          Provider Details:
+            Name: {{ provider_name }}
+            Client ID: {{ provider_client_id }}
+            Application: {{ app_slug }}
+
+          GitLab Configuration:
+            External URL: {{ gitlab_external_url }}
+            OIDC Issuer: {{ authentik_external_url }}/application/o/{{ app_slug }}/
+
+          OIDC Endpoints:
+            Discovery: {{ authentik_external_url }}/application/o/{{ app_slug }}/.well-known/openid-configuration
+            Authorization: {{ authentik_external_url }}/application/o/authorize/
+            Token: {{ authentik_external_url }}/application/o/token/
+            Userinfo: {{ authentik_external_url }}/application/o/userinfo/
+
+          Testing:
+            1. Navigate to {{ gitlab_external_url }}
+            2. Click "Sign in with Authentik"
+            3. Login with your Authentik credentials
+            4. You should be redirected back to GitLab, logged in
+
+          User Behavior:
+            - New users: Auto-created on first SSO login
+            - Existing users: Linked by email address
+            - Profile sync: Email and name synced from Authentik
+
+          Troubleshooting:
+            # Check GitLab logs
+            docker exec gitlab gitlab-ctl tail
+
+            # Check OIDC discovery
+            curl {{ authentik_external_url }}/application/o/{{ app_slug }}/.well-known/openid-configuration
+
+            # Verify GitLab config
+            docker exec gitlab gitlab-rake gitlab:check
+
+          IMPORTANT:
+            Store these credentials securely:
+            - Client ID: {{ provider_client_id }}
+            - Client Secret: {{ client_secret }}
+
+          ============================================

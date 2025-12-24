@@ -1,0 +1,519 @@
+---
+# Authentik OAuth Sources Configuration Playbook
+# Configures multiple social login providers for Authentik SSO
+#
+# Prerequisites:
+# 1. Authentik running at https://auth.hrmsmrflrii.xyz
+# 2. Authentik API token with admin privileges
+# 3. OAuth credentials from each provider (see documentation below)
+#
+# Usage:
+#   # Configure all sources (requires all credentials):
+#   ansible-playbook authentik/configure-oauth-sources.yml \
+#     -e "authentik_token=YOUR_API_TOKEN" \
+#     -e "@oauth-credentials.yml"
+#
+#   # Configure specific source:
+#   ansible-playbook authentik/configure-oauth-sources.yml \
+#     -e "authentik_token=YOUR_API_TOKEN" \
+#     -e "github_client_id=xxx" \
+#     -e "github_client_secret=xxx" \
+#     --tags github
+#
+# OAuth Provider Setup Instructions:
+# ==================================
+#
+# GITHUB:
+#   1. Go to: https://github.com/settings/developers
+#   2. Click "New OAuth App"
+#   3. Application name: Authentik Homelab
+#   4. Homepage URL: https://auth.hrmsmrflrii.xyz
+#   5. Authorization callback URL: https://auth.hrmsmrflrii.xyz/source/oauth/callback/github/
+#   6. Save Client ID and generate Client Secret
+#
+# DISCORD:
+#   1. Go to: https://discord.com/developers/applications
+#   2. Click "New Application"
+#   3. Name: Authentik Homelab
+#   4. Go to OAuth2 > General
+#   5. Add Redirect: https://auth.hrmsmrflrii.xyz/source/oauth/callback/discord/
+#   6. Copy Client ID and Client Secret
+#
+# REDDIT:
+#   1. Go to: https://www.reddit.com/prefs/apps
+#   2. Click "create another app..."
+#   3. Name: Authentik Homelab
+#   4. Type: web app
+#   5. Redirect URI: https://auth.hrmsmrflrii.xyz/source/oauth/callback/reddit/
+#   6. Copy Client ID (under app name) and Secret
+#
+# FACEBOOK:
+#   1. Go to: https://developers.facebook.com/apps
+#   2. Create App > Consumer > Configure
+#   3. Add Facebook Login product
+#   4. Settings > Basic: Copy App ID and App Secret
+#   5. Facebook Login > Settings:
+#      Valid OAuth Redirect URIs: https://auth.hrmsmrflrii.xyz/source/oauth/callback/facebook/
+#
+# APPLE:
+#   1. Go to: https://developer.apple.com/account/resources/identifiers/list
+#   2. Create App ID with "Sign in with Apple" capability
+#   3. Create Services ID for web authentication
+#   4. Configure domains and return URLs:
+#      - Domain: auth.hrmsmrflrii.xyz
+#      - Return URL: https://auth.hrmsmrflrii.xyz/source/oauth/callback/apple/
+#   5. Create private key for Sign in with Apple
+#   Note: Apple requires paid developer account ($99/year)
+#
+# TELEGRAM:
+#   1. Message @BotFather on Telegram
+#   2. Send /newbot and follow prompts
+#   3. Copy the bot token
+#   4. Send /setdomain to set: auth.hrmsmrflrii.xyz
+#   Note: Telegram uses bot-based authentication, not traditional OAuth
+
+- name: Configure Authentik OAuth Sources
+  hosts: localhost
+  connection: local
+  gather_facts: no
+
+  vars:
+    # Authentik Configuration
+    authentik_url: "http://192.168.40.21:9000"
+    authentik_external_url: "https://auth.hrmsmrflrii.xyz"
+    authentik_token: "{{ lookup('env', 'AUTHENTIK_TOKEN') | default('') }}"
+
+    # OAuth Credentials (pass via -e or credentials file)
+    # GitHub
+    github_client_id: "{{ lookup('env', 'GITHUB_CLIENT_ID') | default('') }}"
+    github_client_secret: "{{ lookup('env', 'GITHUB_CLIENT_SECRET') | default('') }}"
+
+    # Discord
+    discord_client_id: "{{ lookup('env', 'DISCORD_CLIENT_ID') | default('') }}"
+    discord_client_secret: "{{ lookup('env', 'DISCORD_CLIENT_SECRET') | default('') }}"
+
+    # Reddit
+    reddit_client_id: "{{ lookup('env', 'REDDIT_CLIENT_ID') | default('') }}"
+    reddit_client_secret: "{{ lookup('env', 'REDDIT_CLIENT_SECRET') | default('') }}"
+
+    # Facebook
+    facebook_client_id: "{{ lookup('env', 'FACEBOOK_CLIENT_ID') | default('') }}"
+    facebook_client_secret: "{{ lookup('env', 'FACEBOOK_CLIENT_SECRET') | default('') }}"
+
+    # Apple
+    apple_client_id: "{{ lookup('env', 'APPLE_CLIENT_ID') | default('') }}"
+    apple_team_id: "{{ lookup('env', 'APPLE_TEAM_ID') | default('') }}"
+    apple_key_id: "{{ lookup('env', 'APPLE_KEY_ID') | default('') }}"
+    apple_private_key: "{{ lookup('env', 'APPLE_PRIVATE_KEY') | default('') }}"
+
+    # Telegram
+    telegram_bot_token: "{{ lookup('env', 'TELEGRAM_BOT_TOKEN') | default('') }}"
+
+  tasks:
+    # ============================================
+    # VALIDATION
+    # ============================================
+
+    - name: Validate Authentik token is provided
+      fail:
+        msg: |
+          Authentik API token is required!
+
+          Set the AUTHENTIK_TOKEN environment variable or pass it as a variable:
+            ansible-playbook configure-oauth-sources.yml -e "authentik_token=YOUR_TOKEN"
+
+          To create a token:
+            1. Login to https://auth.hrmsmrflrii.xyz/if/admin/
+            2. Go to Directory > Tokens and App passwords
+            3. Create new token with "API Access" intent
+      when: authentik_token == ""
+
+    - name: Check Authentik connectivity
+      uri:
+        url: "{{ authentik_url }}/api/v3/sources/all/"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ authentik_token }}"
+        status_code: [200]
+      register: authentik_check
+      failed_when: false
+
+    - name: Fail if Authentik is not accessible
+      fail:
+        msg: "Cannot connect to Authentik API at {{ authentik_url }}. Status: {{ authentik_check.status | default('unreachable') }}"
+      when: authentik_check.status | default(0) != 200
+
+    # ============================================
+    # GET FLOWS
+    # ============================================
+
+    - name: Get default authentication flow
+      uri:
+        url: "{{ authentik_url }}/api/v3/flows/instances/?slug=default-source-authentication"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ authentik_token }}"
+      register: auth_flow
+
+    - name: Get default enrollment flow
+      uri:
+        url: "{{ authentik_url }}/api/v3/flows/instances/?slug=default-source-enrollment"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ authentik_token }}"
+      register: enrollment_flow
+
+    - name: Set flow UUIDs
+      set_fact:
+        auth_flow_uuid: "{{ auth_flow.json.results[0].pk | default('') }}"
+        enrollment_flow_uuid: "{{ enrollment_flow.json.results[0].pk | default('') }}"
+
+    # ============================================
+    # GITHUB OAUTH SOURCE
+    # ============================================
+
+    - name: Configure GitHub OAuth Source
+      tags: [github]
+      when: github_client_id != "" and github_client_secret != ""
+      block:
+        - name: Check if GitHub source exists
+          uri:
+            url: "{{ authentik_url }}/api/v3/sources/oauth/?slug=github"
+            method: GET
+            headers:
+              Authorization: "Bearer {{ authentik_token }}"
+          register: github_source_check
+
+        - name: Create GitHub OAuth Source
+          uri:
+            url: "{{ authentik_url }}/api/v3/sources/oauth/"
+            method: POST
+            headers:
+              Authorization: "Bearer {{ authentik_token }}"
+              Content-Type: "application/json"
+            body_format: json
+            body:
+              name: "GitHub"
+              slug: "github"
+              enabled: true
+              authentication_flow: "{{ auth_flow_uuid }}"
+              enrollment_flow: "{{ enrollment_flow_uuid }}"
+              provider_type: "github"
+              consumer_key: "{{ github_client_id }}"
+              consumer_secret: "{{ github_client_secret }}"
+              user_matching_mode: "email_link"
+            status_code: [201, 400]
+          when: github_source_check.json.results | length == 0
+          register: github_create
+
+        - name: Update existing GitHub OAuth Source
+          uri:
+            url: "{{ authentik_url }}/api/v3/sources/oauth/github/"
+            method: PATCH
+            headers:
+              Authorization: "Bearer {{ authentik_token }}"
+              Content-Type: "application/json"
+            body_format: json
+            body:
+              consumer_key: "{{ github_client_id }}"
+              consumer_secret: "{{ github_client_secret }}"
+              enabled: true
+            status_code: [200]
+          when: github_source_check.json.results | length > 0
+
+        - name: Display GitHub configuration
+          debug:
+            msg: |
+              GitHub OAuth Source configured!
+              Callback URL: {{ authentik_external_url }}/source/oauth/callback/github/
+
+    # ============================================
+    # DISCORD OAUTH SOURCE
+    # ============================================
+
+    - name: Configure Discord OAuth Source
+      tags: [discord]
+      when: discord_client_id != "" and discord_client_secret != ""
+      block:
+        - name: Check if Discord source exists
+          uri:
+            url: "{{ authentik_url }}/api/v3/sources/oauth/?slug=discord"
+            method: GET
+            headers:
+              Authorization: "Bearer {{ authentik_token }}"
+          register: discord_source_check
+
+        - name: Create Discord OAuth Source
+          uri:
+            url: "{{ authentik_url }}/api/v3/sources/oauth/"
+            method: POST
+            headers:
+              Authorization: "Bearer {{ authentik_token }}"
+              Content-Type: "application/json"
+            body_format: json
+            body:
+              name: "Discord"
+              slug: "discord"
+              enabled: true
+              authentication_flow: "{{ auth_flow_uuid }}"
+              enrollment_flow: "{{ enrollment_flow_uuid }}"
+              provider_type: "discord"
+              consumer_key: "{{ discord_client_id }}"
+              consumer_secret: "{{ discord_client_secret }}"
+              user_matching_mode: "email_link"
+            status_code: [201, 400]
+          when: discord_source_check.json.results | length == 0
+
+        - name: Update existing Discord OAuth Source
+          uri:
+            url: "{{ authentik_url }}/api/v3/sources/oauth/discord/"
+            method: PATCH
+            headers:
+              Authorization: "Bearer {{ authentik_token }}"
+              Content-Type: "application/json"
+            body_format: json
+            body:
+              consumer_key: "{{ discord_client_id }}"
+              consumer_secret: "{{ discord_client_secret }}"
+              enabled: true
+            status_code: [200]
+          when: discord_source_check.json.results | length > 0
+
+        - name: Display Discord configuration
+          debug:
+            msg: |
+              Discord OAuth Source configured!
+              Callback URL: {{ authentik_external_url }}/source/oauth/callback/discord/
+
+    # ============================================
+    # REDDIT OAUTH SOURCE
+    # ============================================
+
+    - name: Configure Reddit OAuth Source
+      tags: [reddit]
+      when: reddit_client_id != "" and reddit_client_secret != ""
+      block:
+        - name: Check if Reddit source exists
+          uri:
+            url: "{{ authentik_url }}/api/v3/sources/oauth/?slug=reddit"
+            method: GET
+            headers:
+              Authorization: "Bearer {{ authentik_token }}"
+          register: reddit_source_check
+
+        - name: Create Reddit OAuth Source
+          uri:
+            url: "{{ authentik_url }}/api/v3/sources/oauth/"
+            method: POST
+            headers:
+              Authorization: "Bearer {{ authentik_token }}"
+              Content-Type: "application/json"
+            body_format: json
+            body:
+              name: "Reddit"
+              slug: "reddit"
+              enabled: true
+              authentication_flow: "{{ auth_flow_uuid }}"
+              enrollment_flow: "{{ enrollment_flow_uuid }}"
+              provider_type: "reddit"
+              consumer_key: "{{ reddit_client_id }}"
+              consumer_secret: "{{ reddit_client_secret }}"
+              user_matching_mode: "email_link"
+            status_code: [201, 400]
+          when: reddit_source_check.json.results | length == 0
+
+        - name: Update existing Reddit OAuth Source
+          uri:
+            url: "{{ authentik_url }}/api/v3/sources/oauth/reddit/"
+            method: PATCH
+            headers:
+              Authorization: "Bearer {{ authentik_token }}"
+              Content-Type: "application/json"
+            body_format: json
+            body:
+              consumer_key: "{{ reddit_client_id }}"
+              consumer_secret: "{{ reddit_client_secret }}"
+              enabled: true
+            status_code: [200]
+          when: reddit_source_check.json.results | length > 0
+
+        - name: Display Reddit configuration
+          debug:
+            msg: |
+              Reddit OAuth Source configured!
+              Callback URL: {{ authentik_external_url }}/source/oauth/callback/reddit/
+
+    # ============================================
+    # FACEBOOK OAUTH SOURCE
+    # ============================================
+
+    - name: Configure Facebook OAuth Source
+      tags: [facebook]
+      when: facebook_client_id != "" and facebook_client_secret != ""
+      block:
+        - name: Check if Facebook source exists
+          uri:
+            url: "{{ authentik_url }}/api/v3/sources/oauth/?slug=facebook"
+            method: GET
+            headers:
+              Authorization: "Bearer {{ authentik_token }}"
+          register: facebook_source_check
+
+        - name: Create Facebook OAuth Source
+          uri:
+            url: "{{ authentik_url }}/api/v3/sources/oauth/"
+            method: POST
+            headers:
+              Authorization: "Bearer {{ authentik_token }}"
+              Content-Type: "application/json"
+            body_format: json
+            body:
+              name: "Facebook"
+              slug: "facebook"
+              enabled: true
+              authentication_flow: "{{ auth_flow_uuid }}"
+              enrollment_flow: "{{ enrollment_flow_uuid }}"
+              provider_type: "facebook"
+              consumer_key: "{{ facebook_client_id }}"
+              consumer_secret: "{{ facebook_client_secret }}"
+              user_matching_mode: "email_link"
+            status_code: [201, 400]
+          when: facebook_source_check.json.results | length == 0
+
+        - name: Update existing Facebook OAuth Source
+          uri:
+            url: "{{ authentik_url }}/api/v3/sources/oauth/facebook/"
+            method: PATCH
+            headers:
+              Authorization: "Bearer {{ authentik_token }}"
+              Content-Type: "application/json"
+            body_format: json
+            body:
+              consumer_key: "{{ facebook_client_id }}"
+              consumer_secret: "{{ facebook_client_secret }}"
+              enabled: true
+            status_code: [200]
+          when: facebook_source_check.json.results | length > 0
+
+        - name: Display Facebook configuration
+          debug:
+            msg: |
+              Facebook OAuth Source configured!
+              Callback URL: {{ authentik_external_url }}/source/oauth/callback/facebook/
+
+    # ============================================
+    # APPLE OAUTH SOURCE
+    # ============================================
+
+    - name: Configure Apple OAuth Source
+      tags: [apple]
+      when: apple_client_id != "" and apple_team_id != ""
+      block:
+        - name: Check if Apple source exists
+          uri:
+            url: "{{ authentik_url }}/api/v3/sources/oauth/?slug=apple"
+            method: GET
+            headers:
+              Authorization: "Bearer {{ authentik_token }}"
+          register: apple_source_check
+
+        - name: Create Apple OAuth Source
+          uri:
+            url: "{{ authentik_url }}/api/v3/sources/oauth/"
+            method: POST
+            headers:
+              Authorization: "Bearer {{ authentik_token }}"
+              Content-Type: "application/json"
+            body_format: json
+            body:
+              name: "Apple"
+              slug: "apple"
+              enabled: true
+              authentication_flow: "{{ auth_flow_uuid }}"
+              enrollment_flow: "{{ enrollment_flow_uuid }}"
+              provider_type: "apple"
+              consumer_key: "{{ apple_client_id }}"
+              consumer_secret: "{{ apple_team_id }}:{{ apple_key_id }}:{{ apple_private_key }}"
+              user_matching_mode: "email_link"
+            status_code: [201, 400]
+          when: apple_source_check.json.results | length == 0
+
+        - name: Display Apple configuration
+          debug:
+            msg: |
+              Apple OAuth Source configured!
+              Callback URL: {{ authentik_external_url }}/source/oauth/callback/apple/
+              Note: Apple Sign In requires paid Apple Developer account
+
+    # ============================================
+    # TELEGRAM SOURCE
+    # ============================================
+
+    - name: Configure Telegram Source
+      tags: [telegram]
+      when: telegram_bot_token != ""
+      block:
+        - name: Check if Telegram source exists
+          uri:
+            url: "{{ authentik_url }}/api/v3/sources/plex/?slug=telegram"
+            method: GET
+            headers:
+              Authorization: "Bearer {{ authentik_token }}"
+          register: telegram_source_check
+          failed_when: false
+
+        - name: Display Telegram configuration instructions
+          debug:
+            msg: |
+              Telegram Source Configuration:
+
+              Telegram uses a different authentication method than OAuth.
+              Configure it manually in Authentik Admin:
+
+              1. Go to Directory > Federation and Social login
+              2. Create > Telegram Source
+              3. Name: Telegram
+              4. Slug: telegram
+              5. Bot Token: {{ telegram_bot_token }}
+
+              Bot Setup (if not done):
+              1. Message @BotFather on Telegram
+              2. /setdomain auth.hrmsmrflrii.xyz
+
+    # ============================================
+    # SUMMARY
+    # ============================================
+
+    - name: Display summary
+      debug:
+        msg: |
+          ============================================
+          AUTHENTIK OAUTH SOURCES CONFIGURATION
+          ============================================
+
+          Configured Sources:
+          {% if github_client_id != "" %}- GitHub: Configured{% else %}- GitHub: Not configured (missing credentials){% endif %}
+
+          {% if discord_client_id != "" %}- Discord: Configured{% else %}- Discord: Not configured (missing credentials){% endif %}
+
+          {% if reddit_client_id != "" %}- Reddit: Configured{% else %}- Reddit: Not configured (missing credentials){% endif %}
+
+          {% if facebook_client_id != "" %}- Facebook: Configured{% else %}- Facebook: Not configured (missing credentials){% endif %}
+
+          {% if apple_client_id != "" %}- Apple: Configured{% else %}- Apple: Not configured (missing credentials){% endif %}
+
+          {% if telegram_bot_token != "" %}- Telegram: See manual setup instructions{% else %}- Telegram: Not configured (missing bot token){% endif %}
+
+          Callback URLs:
+            GitHub:   {{ authentik_external_url }}/source/oauth/callback/github/
+            Discord:  {{ authentik_external_url }}/source/oauth/callback/discord/
+            Reddit:   {{ authentik_external_url }}/source/oauth/callback/reddit/
+            Facebook: {{ authentik_external_url }}/source/oauth/callback/facebook/
+            Apple:    {{ authentik_external_url }}/source/oauth/callback/apple/
+
+          To enable a source on the login page:
+            1. Go to Flows and Stages > Flows
+            2. Edit "default-authentication-flow"
+            3. Add source to the Identification stage
+
+          ============================================
