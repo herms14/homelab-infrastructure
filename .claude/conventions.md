@@ -168,8 +168,15 @@ tf-proxmox/
 ### Protected Pages (DO NOT MODIFY)
 
 - **Home** - Service monitors, bookmarks, markets
-- **Compute** - Proxmox cluster + Container monitoring
+- **Compute** - Proxmox cluster + Container Status History dashboard
 - **Media** - Media stats, downloads, queue
+
+### Protected Grafana Dashboards (DO NOT MODIFY)
+
+- **Container Status History** (`container-status`) - State timeline visualization for container uptime
+  - Iframe height: 1250px
+  - Dashboard JSON: `temp-container-status-fixed.json`
+  - Ansible: `ansible-playbooks/monitoring/deploy-container-status-dashboard.yml`
 
 ### Configuration Scripts
 

@@ -141,9 +141,16 @@ C:\Users\herms\OneDrive\Obsidian Vault\Hermes's Life Knowledge Base\07 HomeLab T
 
 **DO NOT modify without explicit user permission:**
 
+### Glance Dashboard Pages
 - Glance Home page layout
 - Glance Media page layout
 - Glance Compute tab layout
+
+### Grafana Dashboards
+- **Container Status History** (`container-status`)
+  - Iframe height: 1250px
+  - Dashboard JSON: `temp-container-status-fixed.json`
+  - Ansible: `ansible-playbooks/monitoring/deploy-container-status-dashboard.yml`
 
 See `.claude/context.md` for current structure details.
 

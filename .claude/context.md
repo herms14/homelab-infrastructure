@@ -139,8 +139,39 @@ ssh hermes-admin@192.168.20.30
 - **Sidebar**: Media Apps Bookmarks, Services Status
 
 ### Compute Tab Structure
-- **Main**: Proxmox Cluster Dashboard (Grafana), Container Monitoring Dashboard (Grafana)
+- **Main**: Proxmox Cluster Dashboard (Grafana), Container Status History Dashboard (Grafana)
 - **Sidebar**: Proxmox Nodes Monitor, Quick Links
+
+### Container Status History Dashboard (PROTECTED)
+
+**Grafana UID**: `container-status`
+**Glance Iframe Height**: 1250px
+
+**Layout:**
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│ [Total Containers] [Running]    [Total Memory Used]   [Total CPU Gauge] │  Row 1: h=4
+├─────────────────────────────────────────────────────────────────────────┤
+│ [Utilities VM]  [Utilities Stable] [Media VM]      [Media Stable]       │  Row 2: h=3
+├──────────────────────────────────┬──────────────────────────────────────┤
+│ State Timeline - Utilities VM    │ State Timeline - Media VM            │  Row 3: h=14
+│ (container uptime, 1h window)    │ (container uptime, 1h window)        │
+├──────────────────────────────────┴──────────────────────────────────────┤
+│ Container Issues (Last 15 min) - Table of stopped/restarted containers  │  Row 4: h=8
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Key Configuration:**
+- Visualization: `state-timeline` (not status-history)
+- Query interval: `1m` to reduce data points
+- Time range: `now-1h`
+- Stable threshold: `> 3600` (1 hour) with `or vector(0)` fallback
+- Row height: `0.9`
+- mergeValues: `true`
+
+**Files:**
+- Dashboard JSON: `temp-container-status-fixed.json`
+- Ansible Playbook: `ansible-playbooks/monitoring/deploy-container-status-dashboard.yml`
 
 ### Tab Order
 Home | Compute | Storage | Network | Media | Web | Reddit

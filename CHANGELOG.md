@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Container Status History Dashboard (PROTECTED)
+- **Container Status History** Grafana dashboard (`container-status`):
+  - State timeline visualization showing container uptime over 1 hour window
+  - Summary stats: Total/Running containers, Memory, CPU gauge
+  - VM stats: Container counts and stable counts (>1h uptime) per VM
+  - Container Issues table: Shows stopped and recently restarted containers
+  - Key fix: Uses `state-timeline` instead of `status-history` to handle data volume
+  - Query interval: `1m` to prevent "Too many points" errors
+  - Stable query: `> 3600` (1h threshold) with `or vector(0)` fallback
+- Dashboard JSON: `temp-container-status-fixed.json`
+- Ansible playbook: `ansible-playbooks/monitoring/deploy-container-status-dashboard.yml`
+- Glance iframe height: 1250px
+- **PROTECTED**: Do not modify without explicit user permission
+
+### Added - Tailscale Remote Access Documentation
+- Added Tailscale IP addresses for Proxmox nodes to documentation
+- Updated: claude.md, docs/NETWORKING.md, GitHub Wiki, Obsidian vault
+- Tailscale IPs: node01 (100.89.33.5), node02 (100.96.195.27), node03 (100.76.81.39)
+
+### Added - Multi-Session Workflow
+- Created `.claude/` directory structure for multi-session coordination:
+  - `context.md` - Infrastructure reference
+  - `active-tasks.md` - Work-in-progress tracking
+  - `session-log.md` - Session history
+  - `conventions.md` - Standards and patterns
+- Refactored claude.md with handoff protocol
+
+### Added - New Productivity & Tools Services
+- **BentoPDF** (https://bentopdf.hrmsmrflrii.xyz)
+  - Privacy-first PDF toolkit for document manipulation
+  - Deployed on docker-vm-utilities01:5055
+  - Authentik forward auth protection
+- **Edgeshark** (https://edgeshark.hrmsmrflrii.xyz)
+  - Docker container network inspector by Siemens
+  - Two-container setup: Ghostwire (discovery) + Packetflix (UI)
+  - Live packet capture, network namespace visualization
+  - Deployed on docker-vm-utilities01:5056
+- **Reactive Resume** (https://resume.hrmsmrflrii.xyz)
+  - Self-hosted resume builder (30k+ GitHub stars)
+  - Four-container stack: App, PostgreSQL, MinIO, Chromium
+  - PDF export, multiple templates, dark mode
+  - Deployed on docker-vm-utilities01:5057
+
+### Added - Infrastructure Updates
+- Traefik routes for BentoPDF, Edgeshark, Reactive Resume
+- Authentik forward auth providers for all three services
+- Update Manager container tracking for new services
+
 ### Fixed
 - **Glance Dashboard Icons** - Replaced broken `si:` icons with Dashboard Icons URLs for Lidarr, Prowlarr, Bazarr, Jellyseerr, and Tdarr
 - **SABnzbd Health Monitor** - Corrected port from 8082 to 8081 in Glance config
@@ -16,14 +64,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `/mnt/media/Series:/tv`
 
 ### Added
+- **Jellyseerr SSO Integration** - Native OIDC support with Authentik:
+  - Switched from `latest` to `preview-OIDC` branch image (OIDC only available in preview branch)
+  - Created OAuth2/OpenID provider in Authentik with regex redirect URIs
+  - Added extra_hosts for container DNS resolution to Authentik
+  - Configured OIDC via Jellyseerr UI (Settings → Users → Configure OpenID Connect)
+  - Added both HTTP and HTTPS redirect URIs to handle scheme mismatch behind reverse proxy
 - **Media Page Enhancements** - "Now Showing" widget with recent downloads and poster covers
 - **Download Progress Widget** - Real-time download progress bars with ETA
 - Media Stats API endpoints: `/api/recent` and `/api/queue`
 
 ### Changed
 - Updated `.claude/settings.local.json`
+- Jellyseerr Docker image changed from `fallenbagel/jellyseerr:latest` to `fallenbagel/jellyseerr:preview-OIDC`
 
 ### Documentation
+- Added Jellyseerr SSO Integration guide to docs/APPLICATION_CONFIGURATIONS.md
+- Added Jellyseerr troubleshooting entries to docs/TROUBLESHOOTING.md:
+  - "Jellyseerr OIDC Not Working with Latest Image" - Switch to preview-OIDC branch
+  - "Jellyseerr SSO Redirect URI Error" - HTTP/HTTPS scheme mismatch fix
+- Added Jellyfin and Jellyseerr SSO sections to GitHub Wiki Application-Configurations.md
+- Updated Obsidian documentation (21 - Application Configurations.md, 12 - Troubleshooting.md)
 - Added Glance icon troubleshooting guide to TROUBLESHOOTING.md
 - Documented Dashboard Icons as preferred icon source for arr stack apps
 

@@ -26,6 +26,20 @@ When starting a task, add an entry here:
 
 ## Recently Completed (Last 24 Hours)
 
+## Container Status Dashboard - Protected
+**Completed**: 2025-12-25 16:30
+**Changes**:
+- Fixed "No data" and "Too many points" issues
+- Added Container Issues table for stopped/restarted containers
+- Deployed version 6 of dashboard to Grafana
+- Iframe height: 1250px
+- **PROTECTED** - Do not modify without explicit user permission
+**Files Modified**:
+- temp-container-status-fixed.json
+- ansible-playbooks/monitoring/deploy-container-status-dashboard.yml
+**Documentation Updated**:
+- .claude/context.md, .claude/conventions.md, docs/GLANCE.md, claude.md, CHANGELOG.md
+
 ## Tailscale Documentation + CLAUDE.md Restructure
 **Completed**: 2025-12-25 14:45
 **Changes**:

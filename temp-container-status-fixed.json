@@ -1,0 +1,291 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Total Containers",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+      "id": 1,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "#3b82f6", "value": null}]}, "unit": "short"},
+        "overrides": []
+      },
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "count(docker_container_running)", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Running",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+      "id": 2,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "#22c55e", "value": null}]}, "unit": "short"},
+        "overrides": []
+      },
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "sum(docker_container_running)", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Total Memory Used",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+      "id": 3,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "#f59e0b", "value": null}]}, "unit": "bytes"},
+        "overrides": []
+      },
+      "options": {"colorMode": "background", "graphMode": "area", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "sum(docker_container_memory_usage_bytes)", "refId": "A"}]
+    },
+    {
+      "type": "gauge",
+      "title": "Total CPU %",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+      "id": 4,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "thresholds"}, "decimals": 1, "max": 100, "min": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "#22c55e", "value": null}, {"color": "#f59e0b", "value": 50}, {"color": "#ef4444", "value": 80}]}, "unit": "percent"},
+        "overrides": []
+      },
+      "options": {"orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showThresholdLabels": false, "showThresholdMarkers": true},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "sum(docker_container_cpu_percent)", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Utilities VM",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 3, "w": 6, "x": 0, "y": 4},
+      "id": 9,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "#8b5cf6", "value": null}]}, "unit": "short"},
+        "overrides": []
+      },
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "count(docker_container_running{job=\"docker-stats-utilities\"})", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Utilities: Stable (>1h)",
+      "description": "Containers running for more than 1 hour",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 3, "w": 6, "x": 6, "y": 4},
+      "id": 10,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "#22c55e", "value": null}]}, "unit": "short"},
+        "overrides": []
+      },
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "count(docker_container_uptime_seconds{job=\"docker-stats-utilities\"} > 3600) or vector(0)", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Media VM",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 3, "w": 6, "x": 12, "y": 4},
+      "id": 11,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "#ec4899", "value": null}]}, "unit": "short"},
+        "overrides": []
+      },
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "count(docker_container_running{job=\"docker-stats-media\"})", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Media: Stable (>1h)",
+      "description": "Containers running for more than 1 hour",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 3, "w": 6, "x": 18, "y": 4},
+      "id": 12,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "#22c55e", "value": null}]}, "unit": "short"},
+        "overrides": []
+      },
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "count(docker_container_uptime_seconds{job=\"docker-stats-media\"} > 3600) or vector(0)", "refId": "A"}]
+    },
+    {
+      "type": "state-timeline",
+      "title": "Container Status - Utilities VM",
+      "description": "Green = Running, Red = Down. Shows container state over the past 1 hour.",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 14, "w": 12, "x": 0, "y": 7},
+      "id": 13,
+      "transparent": true,
+      "interval": "1m",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "custom": {
+            "fillOpacity": 90,
+            "hideFrom": {"legend": false, "tooltip": false, "viz": false},
+            "insertNulls": false,
+            "lineWidth": 0,
+            "spanNulls": false
+          },
+          "mappings": [
+            {"options": {"0": {"color": "#ef4444", "index": 0, "text": "Down"}}, "type": "value"},
+            {"options": {"1": {"color": "#22c55e", "index": 1, "text": "Running"}}, "type": "value"}
+          ],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "#ef4444", "value": null}, {"color": "#22c55e", "value": 1}]}
+        },
+        "overrides": []
+      },
+      "options": {
+        "alignValue": "center",
+        "legend": {"displayMode": "list", "placement": "bottom", "showLegend": false},
+        "mergeValues": true,
+        "rowHeight": 0.9,
+        "showValue": "never",
+        "tooltip": {"mode": "single", "sort": "none"}
+      },
+      "targets": [{"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "docker_container_running{job=\"docker-stats-utilities\"}", "legendFormat": "{{ name }}", "refId": "A", "interval": "1m"}]
+    },
+    {
+      "type": "state-timeline",
+      "title": "Container Status - Media VM",
+      "description": "Green = Running, Red = Down. Shows container state over the past 1 hour.",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 14, "w": 12, "x": 12, "y": 7},
+      "id": 14,
+      "transparent": true,
+      "interval": "1m",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "custom": {
+            "fillOpacity": 90,
+            "hideFrom": {"legend": false, "tooltip": false, "viz": false},
+            "insertNulls": false,
+            "lineWidth": 0,
+            "spanNulls": false
+          },
+          "mappings": [
+            {"options": {"0": {"color": "#ef4444", "index": 0, "text": "Down"}}, "type": "value"},
+            {"options": {"1": {"color": "#22c55e", "index": 1, "text": "Running"}}, "type": "value"}
+          ],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "#ef4444", "value": null}, {"color": "#22c55e", "value": 1}]}
+        },
+        "overrides": []
+      },
+      "options": {
+        "alignValue": "center",
+        "legend": {"displayMode": "list", "placement": "bottom", "showLegend": false},
+        "mergeValues": true,
+        "rowHeight": 0.9,
+        "showValue": "never",
+        "tooltip": {"mode": "single", "sort": "none"}
+      },
+      "targets": [{"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "docker_container_running{job=\"docker-stats-media\"}", "legendFormat": "{{ name }}", "refId": "A", "interval": "1m"}]
+    },
+    {
+      "type": "table",
+      "title": "Container Issues (Last 15 min)",
+      "description": "Containers that are stopped or recently restarted",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 21},
+      "id": 15,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "custom": {
+            "align": "auto",
+            "cellOptions": {"type": "auto"},
+            "inspect": false
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "#ef4444", "value": null}
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "Status"},
+            "properties": [
+              {"id": "custom.cellOptions", "value": {"mode": "basic", "type": "color-background"}},
+              {"id": "mappings", "value": [
+                {"options": {"0": {"color": "#ef4444", "index": 0, "text": "Stopped"}}, "type": "value"},
+                {"options": {"1": {"color": "#f59e0b", "index": 1, "text": "Restarted"}}, "type": "value"}
+              ]}
+            ]
+          },
+          {
+            "matcher": {"id": "byName", "options": "Uptime"},
+            "properties": [
+              {"id": "unit", "value": "s"}
+            ]
+          }
+        ]
+      },
+      "options": {
+        "cellHeight": "sm",
+        "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false},
+        "showHeader": true,
+        "sortBy": [{"desc": false, "displayName": "Status"}]
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {"Time": true, "job": true, "__name__": true},
+            "indexByName": {},
+            "renameByName": {"Value #A": "Status", "Value #B": "Uptime", "name": "Container"}
+          }
+        }
+      ],
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+          "expr": "docker_container_running == 0",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "",
+          "refId": "A"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+          "expr": "docker_container_uptime_seconds < 900 and docker_container_running == 1",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "",
+          "refId": "B"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["containers", "docker", "monitoring", "status"],
+  "templating": {"list": []},
+  "time": {"from": "now-1h", "to": "now"},
+  "timepicker": {},
+  "timezone": "",
+  "title": "Container Status History",
+  "uid": "container-status",
+  "version": 2,
+  "weekStart": ""
+}

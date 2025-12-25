@@ -681,7 +681,7 @@ The Glance dashboard has 7 tabs in this order:
 | Tab | Purpose | Protected |
 |-----|---------|-----------|
 | **Home** | Service monitors, bookmarks, markets | YES |
-| **Compute** | Proxmox cluster + Container monitoring | No |
+| **Compute** | Proxmox cluster + Container monitoring | YES |
 | **Storage** | Synology NAS Grafana dashboard | No |
 | **Network** | Network overview + Speedtest | No |
 | **Media** | Media stats, downloads, queue | YES |
@@ -689,6 +689,8 @@ The Glance dashboard has 7 tabs in this order:
 | **Reddit** | Dynamic Reddit feed | No |
 
 ### Compute Tab
+
+**IMPORTANT: DO NOT modify the Compute tab layout without explicit user permission.**
 
 Displays Proxmox cluster metrics and container monitoring via two embedded Grafana dashboards.
 
@@ -704,42 +706,184 @@ Displays Proxmox cluster metrics and container monitoring via two embedded Grafa
 - CPU & Memory Usage by Node (time series)
 - Storage Usage % (Local LVM, VMDisks, ProxmoxData)
 
-#### Container Monitoring Dashboard (Modern Visual Style)
+#### Container Status History Dashboard (PROTECTED)
 
-**Grafana Dashboard**: `containers-modern` (UID)
-- URL: `https://grafana.hrmsmrflrii.xyz/d/containers-modern/container-monitoring?kiosk&theme=transparent&refresh=30s`
-- Iframe Height: 850px
+**DO NOT MODIFY without explicit user permission.**
 
-**Summary Stats Row** (colored tiles):
-- Total Containers (blue background)
-- Running Containers (green background)
-- Total Memory Used (orange background)
-- Total CPU (circular gauge with thresholds)
+**Grafana Dashboard**: `container-status` (UID)
+- URL: `https://grafana.hrmsmrflrii.xyz/d/container-status/container-status-history?kiosk&theme=transparent&refresh=30s`
+- Iframe Height: 1250px
+- Dashboard JSON: `temp-container-status-fixed.json`
+- Ansible Playbook: `ansible-playbooks/monitoring/deploy-container-status-dashboard.yml`
 
-**Memory Usage Bar Gauges** (horizontal gradient bars):
-- Utilities VM containers - Blue-Yellow-Red gradient (sorted highest to lowest)
-- Media VM containers - Blue-Yellow-Red gradient (sorted highest to lowest)
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│ [Total Containers] [Running]    [Total Memory Used]   [Total CPU Gauge] │  Row 1: h=4
+├─────────────────────────────────────────────────────────────────────────┤
+│ [Utilities VM]  [Utilities Stable] [Media VM]      [Media Stable]       │  Row 2: h=3
+├──────────────────────────────────┬──────────────────────────────────────┤
+│ State Timeline - Utilities VM    │ State Timeline - Media VM            │  Row 3: h=14
+│ (container uptime, 1h window)    │ (container uptime, 1h window)        │
+├──────────────────────────────────┴──────────────────────────────────────┤
+│ Container Issues (Last 15 min) - Table of stopped/restarted containers  │  Row 4: h=8
+└─────────────────────────────────────────────────────────────────────────┘
+```
 
-**CPU Usage Bar Gauges** (horizontal gradient bars):
-- Utilities VM containers - Green-Yellow-Red gradient (sorted highest to lowest)
-- Media VM containers - Green-Yellow-Red gradient (sorted highest to lowest)
+**Row 1: Summary Stats** (y=0, h=4)
+| Panel | Color | Query |
+|-------|-------|-------|
+| Total Containers | Blue (#3b82f6) | `count(docker_container_running)` |
+| Running | Green (#22c55e) | `sum(docker_container_running)` |
+| Total Memory Used | Orange (#f59e0b) | `sum(docker_container_memory_usage_bytes)` |
+| Total CPU % | Gauge with thresholds | `sum(docker_container_cpu_percent)` |
 
-**Sorting**: All bar gauge panels use `topk()` queries with `sortBy` transformation to display containers from highest to lowest utilization.
+**Row 2: VM Stats** (y=4, h=3)
+| Panel | Color | Query |
+|-------|-------|-------|
+| Utilities VM | Purple (#8b5cf6) | `count(docker_container_running{job="docker-stats-utilities"})` |
+| Utilities: Stable (>1h) | Green (#22c55e) | `count(docker_container_uptime_seconds{job="docker-stats-utilities"} > 3600) or vector(0)` |
+| Media VM | Pink (#ec4899) | `count(docker_container_running{job="docker-stats-media"})` |
+| Media: Stable (>1h) | Green (#22c55e) | `count(docker_container_uptime_seconds{job="docker-stats-media"} > 3600) or vector(0)` |
 
-**Color Thresholds**:
-- Memory: Green <70%, Yellow 70-90%, Red >90%
-- CPU: Green <50%, Yellow 50-80%, Red >80%
+**Row 3: State Timeline Panels** (y=7, h=14)
+- State Timeline - Utilities VM: `docker_container_running{job="docker-stats-utilities"}`
+- State Timeline - Media VM: `docker_container_running{job="docker-stats-media"}`
+- Visualization: `state-timeline` (not status-history)
+- Query interval: `1m` to reduce data points
+- Time range: `now-1h`
+- Value mappings: 0 = Down (red #ef4444), 1 = Running (green #22c55e)
+- Row height: `0.9`
+- mergeValues: `true`
+
+**Row 4: Container Issues Table** (y=21, h=8)
+- Shows containers that are stopped or recently restarted (uptime < 15 min)
+- Query A: `docker_container_running == 0` (stopped containers)
+- Query B: `docker_container_uptime_seconds < 900 and docker_container_running == 1` (recently restarted)
+- Status mappings: 0 = Stopped (red), 1 = Restarted (amber)
+
+**Key Configuration:**
+- Visualization type: `state-timeline` (handles more data points than status-history)
+- Query interval: `1m` to prevent "Too many points" errors
+- Stable threshold: `> 3600` (1 hour) with `or vector(0)` fallback for empty results
+- Time range: 1 hour window
 
 **Visual Features**:
 - Transparent dashboard background (`theme=transparent`)
-- Hidden scrollbars via custom CSS
-- Gradient bar gauges with continuous color mode
+- Modern stat tiles with colored backgrounds
+- State timeline with green/red status indicators
+- Issues table for quick problem identification
 
 **Metrics Source**: docker-exporter on port 9417
-- `docker_container_running`
-- `docker_container_memory_percent`
-- `docker_container_cpu_percent`
-- `docker_container_memory_usage_bytes`
+- `docker_container_running` - Container status (1=running, 0=stopped)
+- `docker_container_memory_percent` - Memory usage percentage
+- `docker_container_memory_usage_bytes` - Memory usage in bytes
+- `docker_container_cpu_percent` - CPU usage percentage
+- `docker_container_uptime_seconds` - Container uptime in seconds
+- `docker_container_started_at` - Container start time (Unix timestamp)
+
+#### How It Was Built
+
+The Container Monitoring dashboard was built with these key components:
+
+**1. Docker Stats Exporter Enhancement**
+
+The docker-stats-exporter (`ansible-playbooks/monitoring/docker-stats-exporter.py`) was enhanced to expose container uptime metrics:
+
+```python
+# New metrics added to docker-stats-exporter.py
+container_uptime_seconds = Gauge(
+    'docker_container_uptime_seconds',
+    'Container uptime in seconds',
+    ['name', 'id', 'image']
+)
+
+container_started_at = Gauge(
+    'docker_container_started_at',
+    'Container start time as Unix timestamp',
+    ['name', 'id', 'image']
+)
+
+# In collect_metrics(), calculate uptime from container state
+if status == 'running':
+    started_at_str = container.attrs['State'].get('StartedAt', '')
+    if started_at_str:
+        start_time = datetime.fromisoformat(started_at_str.replace('Z', '+00:00'))
+        now = datetime.now(timezone.utc)
+        uptime = (now - start_time).total_seconds()
+        container_uptime_seconds.labels(name=name, id=cid, image=image).set(uptime)
+        container_started_at.labels(name=name, id=cid, image=image).set(start_time.timestamp())
+```
+
+**2. Grafana Dashboard (Provisioned)**
+
+The dashboard is provisioned from a JSON file, not managed via API:
+- **Location**: `/opt/monitoring/grafana/dashboards/container-monitoring.json`
+- **UID**: `containers-modern`
+- **Provisioning**: Grafana auto-loads dashboards from this directory on startup
+
+Key design decisions:
+- **Bar gauges instead of tables** - Modern visual style matching the rest of the dashboard
+- **Continuous color gradients** - `continuous-BlYlRd` for memory, `continuous-GrYlRd` for CPU
+- **topk() queries with sortBy** - Ensures containers are sorted highest to lowest
+- **Transparent backgrounds** - Seamless embedding in Glance iframes
+
+**3. Prometheus Scrape Configuration**
+
+Two jobs scrape the docker-stats-exporters:
+
+```yaml
+# In prometheus.yml
+- job_name: 'docker-stats-utilities'
+  static_configs:
+    - targets: ['192.168.40.10:9417']
+      labels:
+        vm: 'docker-vm-utilities01'
+
+- job_name: 'docker-stats-media'
+  static_configs:
+    - targets: ['192.168.40.11:9417']
+      labels:
+        vm: 'docker-vm-media01'
+```
+
+**4. Glance Iframe Configuration**
+
+The Compute tab embeds the Grafana dashboard via iframe:
+
+```python
+# In temp-glance-update.py COMPUTE_PAGE
+{
+    'type': 'iframe',
+    'title': 'Container Monitoring',
+    'source': 'https://grafana.hrmsmrflrii.xyz/d/containers-modern/container-monitoring?orgId=1&kiosk&theme=transparent&refresh=30s',
+    'height': 1400
+}
+```
+
+**5. Deployment Process**
+
+```bash
+# 1. Deploy docker-stats-exporter to both VMs
+ssh hermes-admin@192.168.20.30 "cd ~/ansible && ansible-playbook monitoring/deploy-docker-exporter.yml"
+
+# 2. Copy dashboard JSON to Grafana host
+scp temp-container-monitoring.json hermes-admin@192.168.40.10:/opt/monitoring/grafana/dashboards/container-monitoring.json
+
+# 3. Restart Grafana to load new dashboard
+ssh hermes-admin@192.168.40.10 "cd /opt/monitoring && docker compose restart grafana"
+
+# 4. Update Glance config and restart
+scp temp-glance-update.py hermes-admin@192.168.40.10:/tmp/
+ssh hermes-admin@192.168.40.10 "sudo python3 /tmp/temp-glance-update.py && cd /opt/glance && sudo docker compose restart"
+```
+
+**File Locations Summary**:
+| File | Location | Purpose |
+|------|----------|---------|
+| docker-stats-exporter.py | `ansible-playbooks/monitoring/` | Prometheus exporter source |
+| container-monitoring.json | `/opt/monitoring/grafana/dashboards/` | Grafana dashboard JSON |
+| temp-glance-update.py | Repository root | Glance config update script |
+| temp-enhanced-container-dashboard.py | Repository root | Dashboard generation script |
 
 ### Storage Tab
 
