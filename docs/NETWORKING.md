@@ -304,6 +304,55 @@ All `*.hrmsmrflrii.xyz` subdomains resolve to `192.168.40.20` (Traefik)
 | OTEL Pipeline Metrics | 192.168.40.10:8889/metrics | Pipeline exporter metrics |
 | Jaeger Metrics | 192.168.40.10:14269/metrics | Jaeger internal metrics |
 
+## Remote Access (Tailscale)
+
+Tailscale provides secure remote access to the homelab from outside the local network. All Proxmox nodes have Tailscale installed.
+
+### Tailscale IP Mapping
+
+| Device | Local IP | Tailscale IP | Status |
+|--------|----------|--------------|--------|
+| node01 | 192.168.20.20 | 100.89.33.5 | Active |
+| node02 | 192.168.20.21 | 100.96.195.27 | Active |
+| node03 | 192.168.20.22 | 100.76.81.39 | Active |
+| Synology NAS | 192.168.20.31 | 100.84.128.43 | Inactive |
+| Kratos PC | - | 100.124.141.17 | User device |
+
+### Remote Access Commands
+
+```bash
+# Connect to Tailscale
+tailscale up
+
+# Check Tailscale status
+tailscale status
+
+# SSH via Tailscale
+ssh root@100.89.33.5         # node01
+ssh root@100.96.195.27       # node02
+ssh root@100.76.81.39        # node03
+
+# Access Proxmox Web UI
+# https://100.89.33.5:8006    (node01)
+# https://100.96.195.27:8006  (node02)
+# https://100.76.81.39:8006   (node03)
+```
+
+### When to Use Tailscale
+
+- **Remote locations**: When outside the home network
+- **Backup access**: If local network has issues
+- **Direct SSH**: For Proxmox node management
+- **Secure tunnel**: Point-to-point encrypted connections
+
+### Service URLs vs Tailscale
+
+- Service URLs (`*.hrmsmrflrii.xyz`) work from anywhere with proper DNS
+- Tailscale IPs are for direct access to Proxmox nodes and infrastructure
+- Use Tailscale when you need SSH access or Proxmox web UI
+
+---
+
 ## Network Maintenance
 
 ### Omada Controller Backup
