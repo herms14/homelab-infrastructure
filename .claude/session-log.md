@@ -7,6 +7,59 @@
 
 ## 2025-12-26
 
+### 22:30 - Jellyfin SSO Redirect URI Fix (Recurring Issue)
+**Status**: Completed
+**Request**: Fix Jellyfin Authentik SSO redirect URI error when accessing from MacBook via Tailscale
+
+**Issue**: "Redirect URI Error" when clicking "Sign in with Authentik" on Jellyfin
+**Root Cause**: Authentik provider had ForwardAuth URIs instead of SSO-Auth plugin URIs (keeps reverting)
+
+**Fix Applied**:
+```
+Changed from:
+- /outpost.goauthentik.io/callback?X-authentik-auth-callback=true
+
+Changed to:
+- https://jellyfin.hrmsmrflrii.xyz/sso/OID/redirect/authentik
+- http://jellyfin.hrmsmrflrii.xyz/sso/OID/redirect/authentik
+```
+
+**Quick Fix Command** (if issue recurs):
+```bash
+ssh hermes-admin@192.168.40.21 "sudo docker exec authentik-server ak shell -c \"
+from authentik.providers.oauth2.models import OAuth2Provider, RedirectURI, RedirectURIMatchingMode
+provider = OAuth2Provider.objects.get(name='jellyfin-provider')
+provider.redirect_uris = [
+    RedirectURI(matching_mode=RedirectURIMatchingMode.STRICT, url='https://jellyfin.hrmsmrflrii.xyz/sso/OID/redirect/authentik'),
+    RedirectURI(matching_mode=RedirectURIMatchingMode.STRICT, url='http://jellyfin.hrmsmrflrii.xyz/sso/OID/redirect/authentik'),
+]
+provider.save()
+print('Fixed!')
+\""
+```
+
+---
+
+### 12:00 - Tailscale Setup Documentation & MacBook Remote Access
+**Status**: Completed
+**Request**: Document Tailscale setup for MacBook, create TAILSCALE_SETUP.md, update CLAUDE.md
+
+**Files Created**:
+- `TAILSCALE_SETUP.md` - Complete step-by-step guide for MacBook setup
+
+**CLAUDE.md Updates**:
+- Added "Remote Deployment via Tailscale (MacBook)" section
+- SSH key setup instructions
+- SSH config template for all hosts
+- Three deployment methods documented
+- Troubleshooting guide
+
+**Commits**:
+- `7ecebb6` - Add Tailscale setup guide
+- `a728bac` - Add remote deployment guide to CLAUDE.md
+
+---
+
 ### 10:30 - Tailscale Subnet Router Configuration
 **Status**: Completed
 **Request**: Configure Tailscale for remote access to all VMs and containers from MacBook
@@ -37,39 +90,49 @@
 
 ---
 
-### 11:00 - Comprehensive Omada Network Dashboard
-**Status**: Ready for Deployment (Network Unreachable)
+### 11:00 - Comprehensive Omada Network Dashboard (PROTECTED)
+**Status**: Completed & Protected
 **Request**: Complete Omada Network dashboard with device health, WiFi signal, switch ports, PoE, and traffic panels
 
-**Dashboard Panels** (in `temp-omada-full-dashboard.json`):
+**Dashboard Version 3** (in `temp-omada-full-dashboard.json`):
 1. **Overview**: Total/Wired/Wireless clients, Controller uptime, Storage, Upgrade status, WiFi mode pie
-2. **Device Health**: Gateway CPU/Memory gauges, Switch/AP CPU bar gauges, Device uptimes
-3. **WiFi Signal Quality**: Client RSSI and SNR bar gauges (top 15), Signal over time chart
-4. **Switch Port Status**: Port link status (UP/DOWN), Link speeds, Port RX/TX traffic
+2. **Device Health**: Gateway CPU/Memory gauges, Switch/AP CPU bar gauges, Pi-hole style uptime boxes (6 boxes)
+3. **WiFi Signal Quality**: Client RSSI and SNR bar gauges (h=12), Signal over time chart (h=10)
+4. **Switch Port Status**: Table with Switch, Port, Status (colored UP/DOWN), Speed, PoE, Port Name
 5. **PoE Power**: Total power gauge, Remaining power, Per-port power bar gauge
 6. **Traffic Analysis**: Client trend, Top 10 clients, Device download/upload, TX/RX rates
-7. **Client Details**: Full client table (Client, IP, MAC, VLAN, Port, Mode, SSID, AP, Vendor, WiFi, Activity)
+7. **Client Details**: Full client table
+
+**Fixes Applied**:
+- Changed Device Uptimes from horizontal stat to 6 individual colored boxes (Pi-hole style)
+- Increased WiFi signal quality panels from h=8 to h=12
+- Increased WiFi signal over time from h=6 to h=10
+- Changed Port Link Status from confusing stat to clear table format
 
 **Files Created**:
 - `ansible-playbooks/monitoring/deploy-omada-full-dashboard.yml` - Deploys comprehensive dashboard
 - `ansible-playbooks/monitoring/update-glance-network-tab.yml` - Updates Glance Network tab
 
 **Documentation Updated**:
-- `docs/OMADA_NETWORK_DASHBOARD.md` - Added layout diagram, new playbooks, updated instructions
-
-**Deployment Commands** (when network available):
-```bash
-ssh hermes-admin@192.168.20.30
-export GRAFANA_API_KEY='your_key'
-cd ~/ansible
-ansible-playbook monitoring/deploy-omada-full-dashboard.yml
-ansible-playbook monitoring/update-glance-network-tab.yml
-```
+- `docs/OMADA_NETWORK_DASHBOARD.md` - Added comprehensive tutorial:
+  - Part 1: Understanding the Data Source (Omada SDN, metrics)
+  - Part 2: Setting Up Data Collection (exporter, Prometheus)
+  - Part 3: Building the Dashboard (JSON, panels, PromQL)
+  - Part 4: Deploying the Dashboard (API, Ansible)
+  - Part 5: Design Decisions (why Pi-hole style, tables, heights)
+  - Part 6: Maintenance Notes (protected, version history)
+- `.claude/context.md` - Added Network Tab Structure (PROTECTED)
+- `.claude/conventions.md` - Added to Protected Pages and Dashboards
+- `CLAUDE.md` - Added to Protected Configurations
+- `CHANGELOG.md` - Updated with final version details
 
 **Configuration**:
 - Grafana UID: `omada-network`
-- Glance iframe height: 1900px
+- Dashboard Version: 3
+- Glance iframe height: 2200px
 - Omada exporter: `192.168.20.30:9202`
+
+**Protected Status**: Do not modify without explicit user permission
 
 ---
 
