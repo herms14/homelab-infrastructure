@@ -146,6 +146,7 @@ C:\Users\herms\OneDrive\Obsidian Vault\Hermes's Life Knowledge Base\07 HomeLab T
 - Glance Media page layout
 - Glance Compute tab layout
 - Glance Storage tab layout
+- Glance Network tab layout
 
 ### Grafana Dashboards
 - **Container Status History** (`container-status`)
@@ -157,6 +158,11 @@ C:\Users\herms\OneDrive\Obsidian Vault\Hermes's Life Knowledge Base\07 HomeLab T
   - Iframe height: 1350px
   - Dashboard JSON: `temp-synology-nas-dashboard.json`
   - Ansible: `ansible-playbooks/monitoring/deploy-synology-nas-dashboard.yml`
+
+- **Omada Network Overview** (`omada-network`)
+  - Iframe height: 2200px
+  - Dashboard JSON: `temp-omada-full-dashboard.json`
+  - Ansible: `ansible-playbooks/monitoring/deploy-omada-full-dashboard.yml`
 
 See `.claude/context.md` for current structure details.
 
@@ -189,6 +195,266 @@ Full service list in `.claude/context.md`.
 | SSH User | hermes-admin (VMs), root (Proxmox) |
 | SSH Key | `~/.ssh/homelab_ed25519` (no passphrase) |
 | Proxmox API | terraform-deployment-user@pve!tf |
+
+---
+
+## Remote Deployment via Tailscale (MacBook)
+
+This section covers deploying to the homelab from a MacBook connected via Tailscale.
+
+### Prerequisites Checklist
+
+Before deploying remotely, ensure:
+
+- [ ] Tailscale installed and signed in
+- [ ] Subnet routes accepted (`tailscale up --accept-routes`)
+- [ ] SSH key copied to `~/.ssh/homelab_ed25519`
+- [ ] SSH key permissions set (`chmod 600 ~/.ssh/homelab_ed25519`)
+
+### Tailscale Subnet Router
+
+node01 (100.89.33.5) is configured as a **subnet router** advertising:
+
+| Network | Purpose | Reachable Hosts |
+|---------|---------|-----------------|
+| 192.168.20.0/24 | Infrastructure | Proxmox nodes, Ansible, K8s |
+| 192.168.40.0/24 | Services | Docker hosts, all applications |
+| 192.168.91.0/24 | Firewall | OPNsense DNS (192.168.91.30) |
+
+### Verify Tailscale Connection
+
+```bash
+# Check Tailscale status
+/Applications/Tailscale.app/Contents/MacOS/Tailscale status
+
+# Verify subnet routes are accepted
+ping 192.168.20.30    # Ansible controller
+ping 192.168.40.10    # Docker utilities
+
+# Verify DNS works
+nslookup grafana.hrmsmrflrii.xyz
+```
+
+### SSH Key Setup (One-Time)
+
+```bash
+# Create .ssh directory if needed
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+
+# Copy key from Windows (via OneDrive or manual transfer)
+# The key should be at: ~/.ssh/homelab_ed25519
+
+# Set permissions
+chmod 600 ~/.ssh/homelab_ed25519
+
+# Add to SSH config (~/.ssh/config)
+cat >> ~/.ssh/config << 'EOF'
+# Homelab - Proxmox Nodes
+Host node01
+    HostName 192.168.20.20
+    User root
+    IdentityFile ~/.ssh/homelab_ed25519
+
+Host node02
+    HostName 192.168.20.21
+    User root
+    IdentityFile ~/.ssh/homelab_ed25519
+
+Host node03
+    HostName 192.168.20.22
+    User root
+    IdentityFile ~/.ssh/homelab_ed25519
+
+# Homelab - Ansible Controller
+Host ansible
+    HostName 192.168.20.30
+    User hermes-admin
+    IdentityFile ~/.ssh/homelab_ed25519
+
+# Homelab - Docker Hosts
+Host docker-utilities
+    HostName 192.168.40.10
+    User hermes-admin
+    IdentityFile ~/.ssh/homelab_ed25519
+
+Host docker-media
+    HostName 192.168.40.11
+    User hermes-admin
+    IdentityFile ~/.ssh/homelab_ed25519
+
+# Homelab - Service VMs
+Host traefik
+    HostName 192.168.40.20
+    User hermes-admin
+    IdentityFile ~/.ssh/homelab_ed25519
+
+Host authentik
+    HostName 192.168.40.21
+    User hermes-admin
+    IdentityFile ~/.ssh/homelab_ed25519
+EOF
+
+chmod 600 ~/.ssh/config
+```
+
+### Deployment Methods
+
+#### Method 1: Via Ansible Controller (Recommended)
+
+The Ansible controller already has everything configured. SSH in and run deployments from there:
+
+```bash
+# Connect to Ansible controller
+ssh ansible
+
+# Navigate to playbooks
+cd ~/ansible
+
+# Run any playbook
+ansible-playbook services/deploy-xyz.yml
+ansible-playbook monitoring/deploy-grafana-dashboard.yml
+
+# Check service status
+ansible docker_hosts -m shell -a "docker ps"
+```
+
+#### Method 2: Direct from MacBook
+
+Run Ansible directly from MacBook (requires Ansible installed):
+
+```bash
+# Install Ansible on MacBook
+brew install ansible
+
+# From the repo directory
+cd ~/path/to/tf-proxmox
+
+# Run playbook with inventory
+ansible-playbook -i ansible-playbooks/inventory.ini \
+    ansible-playbooks/services/deploy-xyz.yml
+```
+
+#### Method 3: Direct SSH Commands
+
+For quick tasks without Ansible:
+
+```bash
+# Restart a container
+ssh docker-utilities "cd /opt/glance && docker compose restart"
+
+# Check container logs
+ssh docker-media "docker logs jellyfin --tail 50"
+
+# Deploy a simple compose file
+scp docker-compose.yml docker-utilities:/opt/myservice/
+ssh docker-utilities "cd /opt/myservice && docker compose up -d"
+```
+
+### Key Hosts Quick Reference
+
+| Alias | IP | User | Purpose |
+|-------|-----|------|---------|
+| `ansible` | 192.168.20.30 | hermes-admin | Ansible controller, run playbooks |
+| `docker-utilities` | 192.168.40.10 | hermes-admin | Glance, Grafana, Prometheus, n8n |
+| `docker-media` | 192.168.40.11 | hermes-admin | Jellyfin, *arr stack |
+| `traefik` | 192.168.40.20 | hermes-admin | Reverse proxy |
+| `authentik` | 192.168.40.21 | hermes-admin | SSO/Authentication |
+| `node01` | 192.168.20.20 | root | Proxmox node (subnet router) |
+| `node02` | 192.168.20.21 | root | Proxmox node |
+| `node03` | 192.168.20.22 | root | Proxmox node |
+
+### Common Deployment Commands
+
+```bash
+# === Service Management ===
+ssh docker-utilities "docker ps"                          # List containers
+ssh docker-utilities "docker restart grafana"             # Restart service
+ssh docker-utilities "docker logs glance --tail 100"      # View logs
+
+# === Glance Dashboard ===
+ssh docker-utilities "cd /opt/glance && docker compose restart"
+ssh docker-utilities "cat /opt/glance/config/glance.yml"  # View config
+
+# === Grafana Dashboards ===
+ssh ansible "cd ~/ansible && ansible-playbook monitoring/deploy-container-status-dashboard.yml"
+
+# === Traefik Routes ===
+ssh traefik "cat /opt/traefik/config/dynamic/services.yml"
+ssh traefik "docker logs traefik --tail 50"
+
+# === Full Service Deployment ===
+ssh ansible "cd ~/ansible && ansible-playbook services/deploy-all-new-services.yml"
+```
+
+### Credentials Location
+
+Credentials are NOT in this repo. They are stored in:
+
+| Location | Contents | Access |
+|----------|----------|--------|
+| **Obsidian Vault** | All passwords, API keys, tokens | OneDrive sync |
+| **Ansible Controller** | SSH keys, ansible vault | Already configured |
+| **1Password/Bitwarden** | Master credentials | Your password manager |
+
+**Obsidian Vault Path (MacBook via OneDrive):**
+```
+~/Library/CloudStorage/OneDrive-Personal/Obsidian Vault/Hermes's Life Knowledge Base/07 HomeLab Things/Claude Managed Homelab/11 - Credentials.md
+```
+
+### Terraform Deployment (Optional)
+
+If running Terraform directly from MacBook:
+
+```bash
+# Install Terraform
+brew install terraform
+
+# Create terraform.tfvars (NOT committed to git)
+cat > terraform.tfvars << 'EOF'
+proxmox_api_url   = "https://192.168.20.21:8006/api2/json"
+proxmox_api_token = "terraform-deployment-user@pve!tf=YOUR_TOKEN"
+EOF
+
+# Deploy
+terraform init
+terraform plan
+terraform apply
+```
+
+### Troubleshooting Remote Access
+
+```bash
+# Tailscale not connecting
+sudo killall Tailscale tailscaled
+open -a Tailscale
+/Applications/Tailscale.app/Contents/MacOS/Tailscale up --accept-routes
+
+# SSH permission denied
+chmod 600 ~/.ssh/homelab_ed25519
+ssh-add ~/.ssh/homelab_ed25519
+
+# Can't reach local IPs
+# Verify subnet routes are approved in Tailscale Admin Console
+# https://login.tailscale.com/admin/machines → node01 → Edit route settings
+
+# DNS not resolving
+# Check split DNS in Tailscale Admin Console → DNS tab
+# Nameserver: 192.168.91.30, Restricted to: hrmsmrflrii.xyz
+
+# Test connectivity step by step
+ping 100.89.33.5      # Tailscale direct to node01
+ping 192.168.20.20    # Via subnet router to node01
+ping 192.168.40.10    # Via subnet router to docker-utilities
+```
+
+### macOS Tailscale Alias (Recommended)
+
+Add to `~/.zshrc`:
+```bash
+alias tailscale="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+```
+
+Then reload: `source ~/.zshrc`
 
 ---
 
