@@ -13,6 +13,47 @@
 
 ## Recently Completed (Last 24 Hours)
 
+## Discord Bot Reorganization
+**Completed**: 2025-12-26 ~22:00
+**Session**: MacBook via Tailscale
+**Changes**:
+- Created Argus bot for container updates (`#container-updates`)
+  - Watchtower webhook integration (port 5050)
+  - Button-based update approvals
+  - Commands: `/check`, `/update`, `/updateall`, `/containers`, `/status`
+- Created Chronos bot for project management (`#project-management`)
+  - GitLab Boards integration
+  - Commands: `/todo`, `/tasks`, `/done`, `/close`, `/board`, `/quick`
+- Enhanced Mnemosyne for media downloads (`#media-downloads`)
+  - Added: `/availablemovies`, `/availableseries`, `/showlist`
+  - Progress notifications at 50%, 80%, 100%
+- Fixed channel restriction checking with debug logging
+**Files Created**:
+- `ansible-playbooks/container-updates/argus-bot.py`
+- `ansible-playbooks/container-updates/deploy-argus-bot.yml`
+- `ansible-playbooks/project-management/chronos-bot.py`
+- `ansible-playbooks/project-management/deploy-chronos-bot.yml`
+- `docs/DISCORD_BOTS.md`
+
+## Glance Web & Reddit Page Enhancement
+**Completed**: 2025-12-26 ~16:30
+**Session**: MacBook via Tailscale
+**Changes**:
+- Revamped Web page as comprehensive tech news aggregator with 9 collapsible sections
+- Added Tech YouTube widget with 7 channels (MKBHD, LTT, Mrwhosetheboss, Dave2D, Austin Evans, JerryRigEverything, Fireship)
+- Expanded news sources: The Verge, XDA, TechCrunch, Ars Technica, AWS Blog
+- Added categories: Android/Mobile, AI/ML, Cloud, Big Tech, Gaming, PC Builds, Travel
+- Updated Reddit Manager with 16 subreddits (added datahoarder, technology, programming, webdev, sysadmin, netsec, gaming, pcmasterrace, buildapc, mechanicalkeyboards)
+- Changed Reddit view to "grouped" mode with thumbnails
+- Added native Reddit widgets for r/technology, r/programming, r/sysadmin
+**Files Created**:
+- temp-glance-web-reddit-update.py
+- ansible-playbooks/glance/deploy-web-reddit-update.yml
+**Files Modified on Server**:
+- /opt/glance/config/glance.yml
+- /opt/reddit-manager/data/subreddits.json
+- /opt/reddit-manager/data/settings.json
+
 ## NBA Stats API + Yahoo Fantasy Integration
 **Completed**: 2025-12-26 ~14:00
 **Session**: MacBook via Tailscale

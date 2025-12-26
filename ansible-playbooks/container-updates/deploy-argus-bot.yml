@@ -1,0 +1,165 @@
+---
+# Argus - Container Update Guardian Bot Deployment
+# Location: /opt/argus-bot/
+#
+# Features:
+# - Watchtower webhook integration
+# - Button-based update approvals
+# - Slash commands for container management
+# - Channel-restricted to container-updates
+#
+# Usage:
+#   ARGUS_DISCORD_TOKEN=xxx ansible-playbook container-updates/deploy-argus-bot.yml
+
+- name: Deploy Argus Container Update Bot
+  hosts: docker-vm-utilities01
+  become: yes
+  vars:
+    bot_path: /opt/argus-bot
+    discord_token: "{{ lookup('env', 'ARGUS_DISCORD_TOKEN') }}"
+    webhook_port: 5050
+    allowed_channels: "container-updates"
+
+  tasks:
+    - name: Validate Discord token is set
+      assert:
+        that:
+          - discord_token | length > 0
+        fail_msg: |
+          ARGUS_DISCORD_TOKEN environment variable required.
+          Export it before running: export ARGUS_DISCORD_TOKEN=your_token
+
+    - name: Create bot directory
+      file:
+        path: "{{ bot_path }}"
+        state: directory
+        mode: '0755'
+
+    - name: Copy Python bot script
+      copy:
+        src: argus-bot.py
+        dest: "{{ bot_path }}/argus-bot.py"
+        mode: '0644'
+      notify: Rebuild and restart bot
+
+    - name: Create requirements.txt
+      copy:
+        dest: "{{ bot_path }}/requirements.txt"
+        content: |
+          discord.py>=2.3.0
+          flask>=2.3.0
+        mode: '0644'
+      notify: Rebuild and restart bot
+
+    - name: Create Dockerfile
+      copy:
+        dest: "{{ bot_path }}/Dockerfile"
+        content: |
+          FROM python:3.12-slim
+
+          WORKDIR /app
+
+          # Install SSH client for container management
+          RUN apt-get update && apt-get install -y openssh-client && rm -rf /var/lib/apt/lists/*
+
+          COPY requirements.txt .
+          RUN pip install --no-cache-dir -r requirements.txt
+
+          COPY argus-bot.py .
+
+          CMD ["python", "-u", "argus-bot.py"]
+        mode: '0644'
+      notify: Rebuild and restart bot
+
+    - name: Create Docker Compose file
+      copy:
+        dest: "{{ bot_path }}/docker-compose.yml"
+        content: |
+          services:
+            argus-bot:
+              build: .
+              container_name: argus-bot
+              restart: unless-stopped
+              ports:
+                - "{{ webhook_port }}:5000"
+              environment:
+                - DISCORD_TOKEN={{ discord_token }}
+                - WEBHOOK_PORT=5000
+                - SSH_KEY_PATH=/root/.ssh/homelab_ed25519
+                - ALLOWED_CHANNELS={{ allowed_channels }}
+                - TZ=America/New_York
+              volumes:
+                - /home/hermes-admin/.ssh:/root/.ssh:ro
+              healthcheck:
+                test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+                interval: 60s
+                timeout: 10s
+                retries: 3
+              logging:
+                driver: json-file
+                options:
+                  max-size: "10m"
+                  max-file: "3"
+        mode: '0644'
+      notify: Restart bot
+
+    - name: Stop old update-manager if exists
+      community.docker.docker_container:
+        name: update-manager
+        state: absent
+      ignore_errors: yes
+
+    - name: Build and deploy Argus bot
+      community.docker.docker_compose_v2:
+        project_src: "{{ bot_path }}"
+        state: present
+        build: always
+
+    - name: Wait for bot to start
+      pause:
+        seconds: 10
+
+    - name: Check bot status
+      command: docker logs argus-bot --tail 20
+      register: bot_logs
+      changed_when: false
+
+    - name: Display deployment info
+      debug:
+        msg: |
+          =====================================================
+          Argus Container Update Guardian Deployed!
+          =====================================================
+
+          Container: argus-bot
+          Host: docker-vm-utilities01 (192.168.40.10)
+          Webhook: http://192.168.40.10:{{ webhook_port }}/webhook
+          Channel: #{{ allowed_channels }}
+
+          Commands:
+          ---------
+          /check      - Scan containers for updates
+          /update     - Update specific container
+          /updateall  - Update all pending
+          /containers - List monitored containers
+          /status     - Show running status
+          /argus      - Show help
+
+          Watchtower Integration:
+          -----------------------
+          Set WATCHTOWER_NOTIFICATION_URL on each host to:
+          generic+http://192.168.40.10:{{ webhook_port }}/webhook
+
+          Logs: docker logs -f argus-bot
+
+  handlers:
+    - name: Rebuild and restart bot
+      community.docker.docker_compose_v2:
+        project_src: "{{ bot_path }}"
+        state: present
+        build: always
+
+    - name: Restart bot
+      community.docker.docker_compose_v2:
+        project_src: "{{ bot_path }}"
+        state: restarted

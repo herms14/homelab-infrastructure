@@ -4,19 +4,23 @@ Mnemosyne - Media Download Discord Bot
 Goddess of Memory - Tracks and manages your media downloads.
 
 Features:
-- Real-time download notifications
+- Real-time download notifications (50%, 80%, 100% progress)
 - Slash commands for media management
 - Radarr/Sonarr integration
 - Quality profile management
+- Library browsing
 
 Commands:
-  /downloads  - Show current download queue
-  /search     - Search for movies/shows
-  /request    - Add media to download
-  /stats      - Library statistics
-  /recent     - Recent downloads
-  /quality    - View/set quality profiles
-  /help       - Show help
+  /downloads       - Show current download queue
+  /search          - Search for movies/shows
+  /request         - Add media to download
+  /availablemovies - List available movies
+  /availableseries - List available series
+  /showlist        - Quick compact media list
+  /stats           - Library statistics
+  /recent          - Recent downloads
+  /quality         - View quality profiles
+  /mnemosyne       - Show help
 """
 
 import os
@@ -75,12 +79,25 @@ def is_allowed_channel():
     """Decorator to restrict commands to allowed channels."""
     async def predicate(interaction: discord.Interaction) -> bool:
         channel = interaction.channel
-        if channel.id in ALLOWED_CHANNEL_LIST:
+        channel_name = getattr(channel, 'name', '').lower()
+        channel_id = getattr(channel, 'id', 0)
+
+        # Debug logging
+        logger.info(f"Channel check - name: '{channel_name}', id: {channel_id}, allowed: {ALLOWED_CHANNEL_LIST}")
+
+        # Check by ID first
+        if channel_id in ALLOWED_CHANNEL_LIST:
             return True
-        if channel.name.lower() in ALLOWED_CHANNEL_LIST:
+        # Check by name (case-insensitive)
+        if channel_name in ALLOWED_CHANNEL_LIST:
             return True
+        # Check if name contains the allowed channel (for threads)
+        for allowed in ALLOWED_CHANNEL_LIST:
+            if isinstance(allowed, str) and allowed in channel_name:
+                return True
+
         await interaction.response.send_message(
-            f"This command can only be used in: **{', '.join(str(c) for c in ALLOWED_CHANNEL_LIST)}**",
+            f"This command can only be used in: **#{', #'.join(str(c) for c in ALLOWED_CHANNEL_LIST)}**",
             ephemeral=True
         )
         return False
@@ -680,6 +697,219 @@ async def quality_command(interaction: discord.Interaction, service: str = "rada
     await interaction.followup.send(embed=embed)
 
 
+@bot.tree.command(name="availablemovies", description="List movies available in your library")
+@is_allowed_channel()
+@app_commands.describe(limit="Number of movies to show (default: 20)")
+async def available_movies_command(interaction: discord.Interaction, limit: int = 20):
+    """Show movies that are downloaded and available to watch."""
+    await interaction.response.defer()
+
+    movies = await fetch_radarr("movie")
+    if not movies:
+        await interaction.followup.send(embed=create_embed(
+            "Error",
+            "Could not fetch movies from Radarr.",
+            color=0xff0000
+        ))
+        return
+
+    # Filter to only movies with files (available to watch)
+    available = [m for m in movies if m.get("hasFile")]
+
+    if not available:
+        await interaction.followup.send(embed=create_embed(
+            "No Movies Available",
+            "No movies are currently downloaded in your library.",
+            color=0xff9900
+        ))
+        return
+
+    # Sort by title
+    available.sort(key=lambda x: x.get("title", "").lower())
+
+    # Limit results
+    limit = min(limit, 50)
+    displayed = available[:limit]
+
+    embed = create_embed(
+        f"Available Movies ({len(available)} total)",
+        f"Showing {len(displayed)} of {len(available)} movies in your library.",
+        color=0x2ecc71
+    )
+
+    # Split into chunks for fields
+    movie_lines = []
+    for movie in displayed:
+        title = movie.get("title", "Unknown")
+        year = movie.get("year", "N/A")
+        quality = movie.get("movieFile", {}).get("quality", {}).get("quality", {}).get("name", "Unknown")
+        movie_lines.append(f"**{title}** ({year}) - {quality}")
+
+    # Add movies in chunks (max 1024 chars per field)
+    current_chunk = []
+    current_len = 0
+    chunk_num = 1
+
+    for line in movie_lines:
+        if current_len + len(line) + 1 > 1000:
+            embed.add_field(
+                name=f"Movies {chunk_num}" if chunk_num > 1 else "Movies",
+                value="\n".join(current_chunk),
+                inline=False
+            )
+            current_chunk = [line]
+            current_len = len(line)
+            chunk_num += 1
+        else:
+            current_chunk.append(line)
+            current_len += len(line) + 1
+
+    if current_chunk:
+        embed.add_field(
+            name=f"Movies {chunk_num}" if chunk_num > 1 else "Movies",
+            value="\n".join(current_chunk),
+            inline=False
+        )
+
+    embed.set_footer(text=f"Mnemosyne - {len(available)} movies available | {len(movies) - len(available)} missing")
+    await interaction.followup.send(embed=embed)
+
+
+@bot.tree.command(name="availableseries", description="List TV series available in your library")
+@is_allowed_channel()
+@app_commands.describe(limit="Number of series to show (default: 20)")
+async def available_series_command(interaction: discord.Interaction, limit: int = 20):
+    """Show TV series that have episodes downloaded."""
+    await interaction.response.defer()
+
+    series = await fetch_sonarr("series")
+    if not series:
+        await interaction.followup.send(embed=create_embed(
+            "Error",
+            "Could not fetch series from Sonarr.",
+            color=0xff0000
+        ))
+        return
+
+    # Filter to series with at least one episode
+    available = [s for s in series if s.get("statistics", {}).get("episodeFileCount", 0) > 0]
+
+    if not available:
+        await interaction.followup.send(embed=create_embed(
+            "No Series Available",
+            "No TV series episodes are currently downloaded in your library.",
+            color=0xff9900
+        ))
+        return
+
+    # Sort by title
+    available.sort(key=lambda x: x.get("title", "").lower())
+
+    # Limit results
+    limit = min(limit, 50)
+    displayed = available[:limit]
+
+    embed = create_embed(
+        f"Available Series ({len(available)} total)",
+        f"Showing {len(displayed)} of {len(available)} series in your library.",
+        color=0x2ecc71
+    )
+
+    # Split into chunks for fields
+    series_lines = []
+    for show in displayed:
+        title = show.get("title", "Unknown")
+        stats = show.get("statistics", {})
+        episodes = stats.get("episodeFileCount", 0)
+        total_eps = stats.get("totalEpisodeCount", 0)
+        seasons = show.get("seasonCount", 0)
+        status = show.get("status", "Unknown").title()
+        series_lines.append(f"**{title}** - {episodes}/{total_eps} eps ({seasons} seasons) [{status}]")
+
+    # Add series in chunks (max 1024 chars per field)
+    current_chunk = []
+    current_len = 0
+    chunk_num = 1
+
+    for line in series_lines:
+        if current_len + len(line) + 1 > 1000:
+            embed.add_field(
+                name=f"Series {chunk_num}" if chunk_num > 1 else "Series",
+                value="\n".join(current_chunk),
+                inline=False
+            )
+            current_chunk = [line]
+            current_len = len(line)
+            chunk_num += 1
+        else:
+            current_chunk.append(line)
+            current_len += len(line) + 1
+
+    if current_chunk:
+        embed.add_field(
+            name=f"Series {chunk_num}" if chunk_num > 1 else "Series",
+            value="\n".join(current_chunk),
+            inline=False
+        )
+
+    total_episodes = sum(s.get("statistics", {}).get("episodeFileCount", 0) for s in available)
+    embed.set_footer(text=f"Mnemosyne - {len(available)} series | {total_episodes} episodes available")
+    await interaction.followup.send(embed=embed)
+
+
+@bot.tree.command(name="showlist", description="Quick list of all available media titles")
+@is_allowed_channel()
+@app_commands.describe(media_type="Type of media to list")
+@app_commands.choices(media_type=[
+    app_commands.Choice(name="Movies", value="movie"),
+    app_commands.Choice(name="TV Shows", value="tv"),
+    app_commands.Choice(name="Both", value="both"),
+])
+async def showlist_command(interaction: discord.Interaction, media_type: str = "both"):
+    """Quick compact list of all available media."""
+    await interaction.response.defer()
+
+    lines = []
+
+    if media_type in ["movie", "both"]:
+        movies = await fetch_radarr("movie")
+        if movies:
+            available_movies = [m for m in movies if m.get("hasFile")]
+            available_movies.sort(key=lambda x: x.get("title", "").lower())
+            if available_movies:
+                lines.append(f"**MOVIES ({len(available_movies)})**")
+                lines.extend([f"- {m.get('title')} ({m.get('year', 'N/A')})" for m in available_movies[:25]])
+                if len(available_movies) > 25:
+                    lines.append(f"*...and {len(available_movies) - 25} more*")
+                lines.append("")
+
+    if media_type in ["tv", "both"]:
+        series = await fetch_sonarr("series")
+        if series:
+            available_series = [s for s in series if s.get("statistics", {}).get("episodeFileCount", 0) > 0]
+            available_series.sort(key=lambda x: x.get("title", "").lower())
+            if available_series:
+                lines.append(f"**TV SERIES ({len(available_series)})**")
+                lines.extend([f"- {s.get('title')}" for s in available_series[:25]])
+                if len(available_series) > 25:
+                    lines.append(f"*...and {len(available_series) - 25} more*")
+
+    if not lines:
+        await interaction.followup.send(embed=create_embed(
+            "No Media Available",
+            "Your library is empty.",
+            color=0xff9900
+        ))
+        return
+
+    content = "\n".join(lines)
+    if len(content) > 4000:
+        content = content[:4000] + "\n*...truncated*"
+
+    embed = create_embed("Media Library", content, color=0x9b59b6)
+    await interaction.followup.send(embed=embed)
+
+
 @bot.tree.command(name="mnemosyne", description="Show Mnemosyne help and info")
 @is_allowed_channel()
 async def help_command(interaction: discord.Interaction):
@@ -699,6 +929,12 @@ async def help_command(interaction: discord.Interaction):
     embed.add_field(
         name="Media Search & Request",
         value="`/search` - Search for movies/shows\n`/request` - Add media to download",
+        inline=False
+    )
+
+    embed.add_field(
+        name="Library Browse",
+        value="`/availablemovies` - List downloaded movies\n`/availableseries` - List downloaded series\n`/showlist` - Quick compact list",
         inline=False
     )
 
@@ -891,13 +1127,13 @@ async def on_ready():
                 inline=True
             )
             embed.add_field(
-                name="Library",
-                value="`/stats` - Statistics\n`/quality` - Quality profiles",
+                name="Browse Library",
+                value="`/availablemovies` - Movies\n`/availableseries` - Series\n`/showlist` - Quick list",
                 inline=True
             )
             embed.add_field(
-                name="Help",
-                value="`/mnemosyne` - Full command list",
+                name="Info & Help",
+                value="`/stats` - Statistics\n`/mnemosyne` - All commands",
                 inline=True
             )
             await channel.send(embed=embed)

@@ -1,23 +1,32 @@
 ---
-# Mnemosyne Discord Bot Deployment
-# Media management bot with slash commands for Radarr/Sonarr integration
+# Mnemosyne - Media Guardian Discord Bot
+# Goddess of Memory - Tracks and manages your media downloads
+# Location: /opt/mnemosyne-bot/
 #
 # Features:
-# - /downloads - Show current download queue
-# - /search - Search for movies and TV shows
-# - /request - Add media to Radarr/Sonarr
-# - /stats - Library statistics
-# - /recent - Recently added media
-# - /quality - View quality profiles
-# - /mnemosyne - Help command
-# - Automatic download notifications with progress updates
+# - Real-time download notifications (50%, 80%, 100% progress)
+# - Library browsing with /availablemovies, /availableseries
+# - Radarr/Sonarr search and request functionality
+# - Channel-restricted to media-downloads
+#
+# Commands:
+# - /downloads       - Show current download queue
+# - /search          - Search for movies/TV shows
+# - /request         - Add media to Radarr/Sonarr
+# - /availablemovies - List available movies in library
+# - /availableseries - List available series in library
+# - /showlist        - Quick compact media list
+# - /stats           - Library statistics
+# - /recent          - Recently added media
+# - /quality         - View quality profiles
+# - /mnemosyne       - Help command
 #
 # Prerequisites:
 # - Discord bot token (create at https://discord.com/developers/applications)
 # - Radarr/Sonarr API keys
 #
 # Usage:
-#   ansible-playbook media-downloads/deploy-mnemosyne-bot.yml
+#   MNEMOSYNE_DISCORD_TOKEN=xxx ansible-playbook media-downloads/deploy-mnemosyne-bot.yml
 
 - name: Deploy Mnemosyne Discord Bot
   hosts: docker-vm-media01
@@ -140,32 +149,32 @@
     - name: Display deployment information
       debug:
         msg: |
-          ================================================
-          Mnemosyne Discord Bot Deployed Successfully!
-          ================================================
+          =====================================================
+          Mnemosyne Media Guardian Deployed!
+          =====================================================
 
           Container: mnemosyne-bot
           Host: docker-vm-media01 (192.168.40.11)
           Channel: #{{ allowed_channels }}
 
-          Bot logs:
-          {{ bot_logs.stdout }}
+          Commands:
+          ---------
+          /downloads       - View current download queue
+          /search          - Search for movies/TV shows
+          /request         - Add media to download queue
+          /availablemovies - List downloaded movies
+          /availableseries - List downloaded series
+          /showlist        - Quick compact media list
+          /stats           - View library statistics
+          /recent          - Recently added media
+          /quality         - View quality profiles
+          /mnemosyne       - Show help and bot info
 
-          Available Commands:
-          -------------------
-          /downloads - View current download queue
-          /search    - Search for movies/TV shows
-          /request   - Add media to download queue
-          /stats     - View library statistics
-          /recent    - Recently added media
-          /quality   - View quality profiles
-          /mnemosyne - Show help and bot info
-
-          Automatic Features:
-          -------------------
-          - Download start notifications
-          - Progress updates (50%, 80%, 100%)
-          - Completion notifications with Jellyfin links
+          Automatic Notifications:
+          ------------------------
+          - Download started
+          - Progress: 50%, 80%, 100%
+          - Completion with Jellyfin link
 
           Logs: docker logs -f mnemosyne-bot
 

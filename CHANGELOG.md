@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Discord Bot Reorganization (December 26, 2025)
+- **Argus Bot** - Container Update Guardian (`#container-updates`)
+  - Watchtower webhook integration for update notifications
+  - Button-based update approvals with SSH container management
+  - Commands: `/check`, `/update`, `/updateall`, `/containers`, `/status`
+  - Webhook endpoint: `http://192.168.40.10:5050/webhook`
+  - Deployment: `ansible-playbooks/container-updates/deploy-argus-bot.yml`
+
+- **Mnemosyne Bot** - Media Guardian (`#media-downloads`)
+  - Real-time download progress notifications (50%, 80%, 100%)
+  - New commands: `/availablemovies`, `/availableseries`, `/showlist`
+  - Existing: `/downloads`, `/search`, `/request`, `/stats`, `/recent`, `/quality`
+  - Radarr/Sonarr integration with library browsing
+  - Deployment: `ansible-playbooks/media-downloads/deploy-mnemosyne-bot.yml`
+
+- **Chronos Bot** - Project Management (`#project-management`)
+  - GitLab Boards integration for task management
+  - Commands: `/todo`, `/tasks`, `/done`, `/close`, `/board`, `/quick`
+  - Priority labels: high, medium, low
+  - Deployment: `ansible-playbooks/project-management/deploy-chronos-bot.yml`
+
+- **Documentation**: Created `docs/DISCORD_BOTS.md` with full bot documentation
+
 ### Added - Chess.com Stats Widget (December 26, 2025)
 - **Chess.com Stats Widget** added to Glance Home page right column
   - Displays Blitz and Rapid ratings with W/L/D records

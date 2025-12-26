@@ -7,6 +7,123 @@
 
 ## 2025-12-26
 
+### 22:00 - Discord Bot Reorganization
+**Status**: Completed
+**Request**: Reorganize Discord bots with channel restrictions and specific functionality
+
+**Bots Deployed**:
+1. **Argus** (`#container-updates`) - Container Update Guardian
+   - Watchtower webhook integration (port 5050)
+   - Button-based update approvals
+   - Commands: `/check`, `/update`, `/updateall`, `/containers`, `/status`
+   - Host: docker-utilities (192.168.40.10)
+
+2. **Mnemosyne** (`#media-downloads`) - Media Guardian
+   - Enhanced with new commands: `/availablemovies`, `/availableseries`, `/showlist`
+   - Progress notifications at 50%, 80%, 100%
+   - Host: docker-media (192.168.40.11)
+
+3. **Chronos** (`#project-management`) - Project Management
+   - GitLab Boards integration
+   - Commands: `/todo`, `/tasks`, `/done`, `/close`, `/board`, `/quick`
+   - Host: docker-utilities (192.168.40.10)
+
+**Files Created**:
+- `ansible-playbooks/container-updates/argus-bot.py`
+- `ansible-playbooks/container-updates/deploy-argus-bot.yml`
+- `ansible-playbooks/project-management/chronos-bot.py`
+- `ansible-playbooks/project-management/deploy-chronos-bot.yml`
+- `docs/DISCORD_BOTS.md`
+
+**Files Modified**:
+- `ansible-playbooks/media-downloads/mnemosyne-bot.py`
+- `ansible-playbooks/media-downloads/deploy-mnemosyne-bot.yml`
+- `CHANGELOG.md`
+
+**Bug Fix**: Improved channel restriction checking with debug logging and substring matching for threads.
+
+---
+
+### 16:45 - Home Page Widgets (Chess.com, Sunrise/Sunset, Obsidian)
+**Status**: Completed
+**Request**: Add Chess.com stats widget, sunrise/sunset widget, and Obsidian daily notes widget to Home page
+
+**New Widgets Added**:
+1. **Chess.com Stats** - Blitz & Rapid ratings with W/L records
+   - Username: hrmsmrflrii
+   - Required User-Agent header (API blocks without it)
+   - Template syntax: `{{ .JSON.Int "chess_blitz.last.rating" }}`
+2. **Sun Times** - Sunrise/sunset for Manila via sunrise-sunset.org API
+   - Coordinates: 14.5995, 120.9842
+3. **Obsidian Daily Notes** - Today's note from vault
+   - MacBook Tailscale IP: 100.90.207.58
+   - Port: 27123
+   - Requires Obsidian Local REST API plugin bound to 0.0.0.0
+
+**Chess.com Fix**:
+- Issue: Widget was not displaying data
+- Cause: Chess.com API requires User-Agent header
+- Fix: Added `User-Agent: Glance Dashboard/1.0` header
+- Also simplified template from nested `{{ with }}` to direct path access
+
+**Files Created**:
+- `temp-home-widgets-update.py` - Chess.com + Sunrise/Sunset
+- `temp-add-obsidian-widget.py` - Obsidian Daily Notes
+- `temp-fix-chess-v3.py` - Final working Chess.com fix
+
+**Documentation Updated**:
+- CHANGELOG.md, docs/GLANCE.md, CLAUDE.md
+- GitHub Wiki (Glance-Dashboard.md)
+- Obsidian vault (23 - Glance Dashboard.md)
+
+---
+
+### 16:30 - Web & Reddit Page Enhancement
+**Status**: Completed
+**Request**: Improve Web and Reddit pages on Glance dashboard with comprehensive tech news aggregation and better Reddit feeds
+
+**Web Page Changes**:
+1. Added **Tech YouTube** widget with 7 channels (MKBHD, LTT, Mrwhosetheboss, Dave2D, Austin Evans, JerryRigEverything, Fireship)
+2. Expanded **Tech News** with The Verge, XDA, TechCrunch, Ars Technica
+3. Added **Android & Mobile** section (XDA Mobile, Google News Android, r/Android)
+4. Expanded **AI & Machine Learning** (TechCrunch AI + 5 Reddit feeds)
+5. Added **Cloud & Enterprise** (AWS Blog + 4 cloud subreddits)
+6. Added **Big Tech** (Microsoft, NVIDIA, Google, Apple, Meta)
+7. Added **Gaming** section (r/gaming, r/pcgaming, r/Games, Ars Gaming)
+8. Added **PC Builds & Hardware** section (r/buildapc, r/pcmasterrace, r/hardware, XDA Computing)
+9. Added **Travel** section (r/travel, r/solotravel, r/TravelHacks)
+10. Expanded sidebar: 8 tech stocks, 5 crypto, news feeds, quick links
+
+**Reddit Page Changes**:
+1. Updated Reddit Manager with 16 subreddits (homelab, selfhosted, datahoarder, linux, devops, kubernetes, docker, technology, programming, webdev, sysadmin, netsec, gaming, pcmasterrace, buildapc, mechanicalkeyboards)
+2. Changed view mode from "combined" to "grouped" for organized display
+3. Added native Reddit widgets in sidebar (r/technology, r/programming, r/sysadmin)
+4. Thumbnails enabled on all posts
+
+**YouTube Channel IDs**:
+- MKBHD: UCBJycsmduvYEL83R_U4JriQ
+- Linus Tech Tips: UCXuqSBlHAE6Xw-yeJA0Tunw
+- Mrwhosetheboss: UCMiJRAwDNSNzuYeN2uWa0pA
+- Dave2D: UCVYamHliCI9rw1tHR1xbkfw
+- Austin Evans: UCXGgrKt94gR6lmN4aN3mYTg
+- JerryRigEverything: UCWFKCr40YwOZQx8FHU_ZqqQ
+- Fireship: UCsBjURrPoezykLs9EqgamOA
+
+**Files Created**:
+- `temp-glance-web-reddit-update.py` - Configuration script
+- `ansible-playbooks/glance/deploy-web-reddit-update.yml` - Deployment playbook
+
+**Files Modified on Server**:
+- `/opt/glance/config/glance.yml` - Updated Web and Reddit pages
+- `/opt/reddit-manager/data/subreddits.json` - 16 subreddits
+- `/opt/reddit-manager/data/settings.json` - Sort: hot, View: grouped
+
+**Documentation Updated**:
+- CHANGELOG.md, docs/GLANCE.md, .claude/session-log.md, .claude/active-tasks.md
+- GitHub Wiki, Obsidian vault
+
+---
+
 ### 13:30 - Sports Tab Enhancement: Injuries & News Widgets
 **Status**: Completed
 **Request**: Add Injury Report with player photos, NBA News, fix Hot Pickups stats showing as None

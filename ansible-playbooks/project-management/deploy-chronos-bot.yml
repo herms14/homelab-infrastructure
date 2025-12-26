@@ -1,0 +1,177 @@
+---
+# Chronos - Project Management Bot Deployment
+# Location: /opt/chronos-bot/
+#
+# Features:
+# - GitLab Boards integration
+# - Create issues with /todo
+# - Task management via slash commands
+# - Channel-restricted to project-management
+#
+# Prerequisites:
+# - GitLab personal access token with api scope
+# - GitLab project created for tasks
+#
+# Usage:
+#   CHRONOS_DISCORD_TOKEN=xxx GITLAB_TOKEN=xxx ansible-playbook project-management/deploy-chronos-bot.yml
+
+- name: Deploy Chronos Project Management Bot
+  hosts: docker-vm-utilities01
+  become: yes
+  vars:
+    bot_path: /opt/chronos-bot
+    discord_token: "{{ lookup('env', 'CHRONOS_DISCORD_TOKEN') }}"
+    gitlab_token: "{{ lookup('env', 'GITLAB_TOKEN') }}"
+    gitlab_url: "https://gitlab.hrmsmrflrii.xyz"
+    gitlab_project_id: "{{ lookup('env', 'GITLAB_PROJECT_ID') | default('homelab/tasks', true) }}"
+    allowed_channels: "project-management"
+
+  tasks:
+    - name: Validate required variables
+      assert:
+        that:
+          - discord_token | length > 0
+          - gitlab_token | length > 0
+        fail_msg: |
+          Required environment variables:
+          - CHRONOS_DISCORD_TOKEN: Discord bot token
+          - GITLAB_TOKEN: GitLab personal access token
+          - GITLAB_PROJECT_ID: GitLab project (optional, defaults to homelab/tasks)
+
+    - name: Create bot directory
+      file:
+        path: "{{ bot_path }}"
+        state: directory
+        mode: '0755'
+
+    - name: Copy Python bot script
+      copy:
+        src: chronos-bot.py
+        dest: "{{ bot_path }}/chronos-bot.py"
+        mode: '0644'
+      notify: Rebuild and restart bot
+
+    - name: Create requirements.txt
+      copy:
+        dest: "{{ bot_path }}/requirements.txt"
+        content: |
+          discord.py>=2.3.0
+          aiohttp>=3.9.0
+        mode: '0644'
+      notify: Rebuild and restart bot
+
+    - name: Create Dockerfile
+      copy:
+        dest: "{{ bot_path }}/Dockerfile"
+        content: |
+          FROM python:3.12-slim
+
+          WORKDIR /app
+
+          COPY requirements.txt .
+          RUN pip install --no-cache-dir -r requirements.txt
+
+          COPY chronos-bot.py .
+
+          RUN useradd -m -u 1000 appuser
+          USER appuser
+
+          CMD ["python", "-u", "chronos-bot.py"]
+        mode: '0644'
+      notify: Rebuild and restart bot
+
+    - name: Create Docker Compose file
+      copy:
+        dest: "{{ bot_path }}/docker-compose.yml"
+        content: |
+          services:
+            chronos-bot:
+              build: .
+              container_name: chronos-bot
+              restart: unless-stopped
+              environment:
+                - DISCORD_TOKEN={{ discord_token }}
+                - GITLAB_URL={{ gitlab_url }}
+                - GITLAB_TOKEN={{ gitlab_token }}
+                - GITLAB_PROJECT_ID={{ gitlab_project_id }}
+                - ALLOWED_CHANNELS={{ allowed_channels }}
+                - TZ=America/New_York
+              healthcheck:
+                test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+                interval: 60s
+                timeout: 10s
+                retries: 3
+              logging:
+                driver: json-file
+                options:
+                  max-size: "10m"
+                  max-file: "3"
+        mode: '0644'
+      notify: Restart bot
+
+    - name: Stop old project-bot if exists
+      community.docker.docker_container:
+        name: project-bot
+        state: absent
+      ignore_errors: yes
+
+    - name: Build and deploy Chronos bot
+      community.docker.docker_compose_v2:
+        project_src: "{{ bot_path }}"
+        state: present
+        build: always
+
+    - name: Wait for bot to start
+      pause:
+        seconds: 10
+
+    - name: Check bot status
+      command: docker logs chronos-bot --tail 20
+      register: bot_logs
+      changed_when: false
+
+    - name: Display deployment info
+      debug:
+        msg: |
+          =====================================================
+          Chronos Project Management Bot Deployed!
+          =====================================================
+
+          Container: chronos-bot
+          Host: docker-vm-utilities01 (192.168.40.10)
+          Channel: #{{ allowed_channels }}
+
+          GitLab Configuration:
+          ---------------------
+          URL: {{ gitlab_url }}
+          Project: {{ gitlab_project_id }}
+
+          Commands:
+          ---------
+          /todo <task>   - Create a new task
+          /tasks         - List all open tasks
+          /done          - List completed tasks
+          /close         - Close a task (dropdown)
+          /board         - Show board overview
+          /quick <tasks> - Quick add multiple tasks
+          /chronos       - Show help
+
+          Setup Notes:
+          ------------
+          1. Create a GitLab project for tasks if not exists
+          2. Create labels: todo, priority::high, priority::medium, priority::low
+          3. Optional: Create a board with lists for workflow
+
+          Logs: docker logs -f chronos-bot
+
+  handlers:
+    - name: Rebuild and restart bot
+      community.docker.docker_compose_v2:
+        project_src: "{{ bot_path }}"
+        state: present
+        build: always
+
+    - name: Restart bot
+      community.docker.docker_compose_v2:
+        project_src: "{{ bot_path }}"
+        state: restarted
