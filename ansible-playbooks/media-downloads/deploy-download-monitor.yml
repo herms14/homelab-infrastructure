@@ -1,0 +1,146 @@
+---
+# Media Download Monitor Deployment
+# Monitors Radarr/Sonarr downloads and sends Discord notifications
+#
+# Features:
+# - Notifies when downloads start
+# - Progress updates at 50%, 80%, 100%
+# - Completion notification with Jellyfin link
+#
+# Prerequisites:
+# - Discord webhook URL for the media-downloads channel
+# - Radarr/Sonarr API keys
+#
+# Usage:
+#   ansible-playbook media-downloads/deploy-download-monitor.yml
+
+- name: Deploy Media Download Monitor
+  hosts: docker-vm-media01
+  become: yes
+  vars:
+    monitor_path: /opt/download-monitor
+    # API Keys - these should match your existing setup
+    radarr_api_key: "21f807cf286941158e11ba6477853821"
+    sonarr_api_key: "50c598d01b294f929e5ecf36ae42ad2e"
+    # Discord webhook for media-downloads channel
+    discord_webhook_url: "{{ lookup('env', 'DISCORD_MEDIA_WEBHOOK') | default('') }}"
+    # Service URLs
+    radarr_url: "http://localhost:7878"
+    sonarr_url: "http://localhost:8989"
+    jellyfin_url: "https://jellyfin.hrmsmrflrii.xyz"
+    # Polling interval in seconds
+    poll_interval: 30
+
+  tasks:
+    - name: Create monitor directory
+      file:
+        path: "{{ monitor_path }}"
+        state: directory
+        mode: '0755'
+
+    - name: Copy Python application
+      copy:
+        src: download-monitor.py
+        dest: "{{ monitor_path }}/download-monitor.py"
+        mode: '0644'
+
+    - name: Copy requirements
+      copy:
+        src: requirements.txt
+        dest: "{{ monitor_path }}/requirements.txt"
+        mode: '0644'
+
+    - name: Copy Dockerfile
+      copy:
+        src: Dockerfile
+        dest: "{{ monitor_path }}/Dockerfile"
+        mode: '0644'
+
+    - name: Create environment file
+      copy:
+        dest: "{{ monitor_path }}/.env"
+        content: |
+          RADARR_URL={{ radarr_url }}
+          RADARR_API_KEY={{ radarr_api_key }}
+          SONARR_URL={{ sonarr_url }}
+          SONARR_API_KEY={{ sonarr_api_key }}
+          DISCORD_WEBHOOK_URL={{ discord_webhook_url }}
+          JELLYFIN_URL={{ jellyfin_url }}
+          POLL_INTERVAL={{ poll_interval }}
+          LOG_LEVEL=INFO
+        mode: '0600'
+
+    - name: Create Docker Compose file
+      copy:
+        dest: "{{ monitor_path }}/docker-compose.yml"
+        content: |
+          services:
+            download-monitor:
+              build: .
+              container_name: download-monitor
+              restart: unless-stopped
+              env_file:
+                - .env
+              ports:
+                - "5052:5052"
+              network_mode: host
+              logging:
+                driver: json-file
+                options:
+                  max-size: "10m"
+                  max-file: "3"
+        mode: '0644'
+
+    - name: Build and deploy container
+      community.docker.docker_compose_v2:
+        project_src: "{{ monitor_path }}"
+        state: present
+        build: always
+
+    - name: Wait for service to be ready
+      uri:
+        url: "http://localhost:5052/health"
+        status_code: [200]
+      register: monitor_status
+      until: monitor_status.status == 200
+      retries: 30
+      delay: 2
+
+    - name: Display deployment information
+      debug:
+        msg: |
+          ================================================
+          Media Download Monitor Deployed Successfully!
+          ================================================
+
+          Service: download-monitor
+          Host: docker-vm-media01 (192.168.40.11)
+          Webhook Port: 5052
+
+          Monitoring:
+          -----------
+          - Radarr: {{ radarr_url }}
+          - Sonarr: {{ sonarr_url }}
+          - Poll Interval: {{ poll_interval }}s
+
+          Notifications:
+          --------------
+          - Download start notification
+          - Progress at 50%, 80%, 100%
+          - Completion with Jellyfin link
+
+          Discord Channel: media-downloads
+
+          To configure completion webhooks in Radarr/Sonarr:
+          --------------------------------------------------
+          1. Radarr: Settings -> Connect -> Add -> Webhook
+             - Name: Download Complete
+             - On Download: Yes
+             - URL: http://localhost:5052/radarr/completed
+
+          2. Sonarr: Settings -> Connect -> Add -> Webhook
+             - Name: Download Complete
+             - On Download: Yes
+             - URL: http://localhost:5052/sonarr/completed
+
+          Logs: docker logs -f download-monitor

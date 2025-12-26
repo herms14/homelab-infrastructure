@@ -121,7 +121,7 @@
       "targets": [{"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "count(docker_container_uptime_seconds{job=\"docker-stats-media\"} > 3600) or vector(0)", "refId": "A"}]
     },
     {
-      "type": "bargauge",
+      "type": "barchart",
       "title": "Top 5 Memory - Utilities VM",
       "description": "Top 5 most memory-hungry containers on Utilities VM",
       "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
@@ -144,37 +144,63 @@
               {"color": "#ef4444", "value": 80}
             ]
           },
-          "unit": "percent"
+          "unit": "percent",
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "hue",
+            "hideFrom": {"legend": false, "tooltip": false, "viz": false},
+            "lineWidth": 1,
+            "scaleDistribution": {"type": "linear"},
+            "thresholdsStyle": {"mode": "off"}
+          }
         },
         "overrides": []
       },
       "options": {
-        "displayMode": "gradient",
-        "maxVizHeight": 300,
-        "minVizHeight": 16,
-        "minVizWidth": 8,
-        "namePlacement": "auto",
+        "barRadius": 0.1,
+        "barWidth": 0.8,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": {"displayMode": "hidden", "placement": "right", "showLegend": false},
         "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": ["lastNotNull"],
-          "fields": "",
-          "values": false
-        },
-        "showUnfilled": true,
-        "sizing": "auto",
-        "valueMode": "color"
+        "showValue": "always",
+        "stacking": "none",
+        "tooltip": {"mode": "single", "sort": "none"},
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0
       },
       "targets": [
         {
           "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
           "expr": "topk(5, docker_container_memory_percent{job=\"docker-stats-utilities\"})",
           "legendFormat": "{{name}}",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": ["lastNotNull"]
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [{"field": "Last *", "desc": true}]
+          }
         }
       ]
     },
     {
-      "type": "bargauge",
+      "type": "barchart",
       "title": "Top 5 Memory - Media VM",
       "description": "Top 5 most memory-hungry containers on Media VM",
       "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
@@ -197,32 +223,58 @@
               {"color": "#ef4444", "value": 80}
             ]
           },
-          "unit": "percent"
+          "unit": "percent",
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "hue",
+            "hideFrom": {"legend": false, "tooltip": false, "viz": false},
+            "lineWidth": 1,
+            "scaleDistribution": {"type": "linear"},
+            "thresholdsStyle": {"mode": "off"}
+          }
         },
         "overrides": []
       },
       "options": {
-        "displayMode": "gradient",
-        "maxVizHeight": 300,
-        "minVizHeight": 16,
-        "minVizWidth": 8,
-        "namePlacement": "auto",
+        "barRadius": 0.1,
+        "barWidth": 0.8,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": {"displayMode": "hidden", "placement": "right", "showLegend": false},
         "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": ["lastNotNull"],
-          "fields": "",
-          "values": false
-        },
-        "showUnfilled": true,
-        "sizing": "auto",
-        "valueMode": "color"
+        "showValue": "always",
+        "stacking": "none",
+        "tooltip": {"mode": "single", "sort": "none"},
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0
       },
       "targets": [
         {
           "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
           "expr": "topk(5, docker_container_memory_percent{job=\"docker-stats-media\"})",
           "legendFormat": "{{name}}",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": ["lastNotNull"]
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [{"field": "Last *", "desc": true}]
+          }
         }
       ]
     },
@@ -392,6 +444,6 @@
   "timezone": "",
   "title": "Container Status History",
   "uid": "container-status",
-  "version": 8,
+  "version": 15,
   "weekStart": ""
 }

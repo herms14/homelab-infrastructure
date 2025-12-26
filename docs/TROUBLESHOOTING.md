@@ -15,6 +15,7 @@ This guide documents resolved issues and common problems organized by category f
   - [GitLab SSO Client Secret Mismatch](#gitlab-sso-invalid-client-client-secret-mismatch)
   - [Jellyseerr OIDC Not Working with Latest Image](#jellyseerr-oidc-not-working-with-latest-image)
   - [Jellyseerr SSO Redirect URI Error](#jellyseerr-sso-redirect-uri-error)
+  - [Jellyfin SSO Redirect URI Error (ForwardAuth vs SSO-Auth)](#jellyfin-sso-redirect-uri-error-forwardauth-vs-sso-auth)
 - [Container & Docker Issues](#container--docker-issues)
   - [Jellyfin Shows Fewer Movies Than Download Monitor](#jellyfin-shows-fewer-movies-than-download-monitor)
   - [Glance Reddit Widget Timeout Error](#glance-reddit-widget-timeout-error)
@@ -590,6 +591,267 @@ print('Updated redirect URIs')
 2. Click "Sign in with Authentik"
 3. Complete Authentik login
 4. Should redirect back to Jellyseerr logged in
+
+---
+
+### Jellyfin SSO Redirect URI Error (ForwardAuth vs SSO-Auth)
+
+**Resolved**: December 25, 2025
+
+**Symptoms**:
+- Clicking "Sign in with Authentik" on Jellyfin login page
+- Authentik shows error: "Redirect URI Error - The request fails due to a missing, invalid, or mismatching redirection URI"
+- User never completes login
+
+#### Understanding the Concepts
+
+Before diving into the fix, it's important to understand the key concepts involved:
+
+##### What is a Redirect URI?
+
+A **Redirect URI** (also called Callback URL) is a security mechanism in OAuth2/OIDC authentication. Here's how it works:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        OAuth2 Authentication Flow                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  1. User clicks "Login with Authentik" on Jellyfin                          │
+│     │                                                                        │
+│     ▼                                                                        │
+│  2. Jellyfin redirects browser to Authentik with:                           │
+│     - client_id: "jellyfin-app-id"                                          │
+│     - redirect_uri: "https://jellyfin.example.com/sso/OID/redirect/authentik"│
+│     - scope: "openid profile email groups"                                  │
+│     │                                                                        │
+│     ▼                                                                        │
+│  3. Authentik VALIDATES the redirect_uri:                                    │
+│     "Is https://jellyfin.example.com/sso/OID/redirect/authentik              │
+│      in my list of allowed URIs for this client?"                           │
+│     │                                                                        │
+│     ├── YES → Show login page, continue flow                                │
+│     └── NO  → ❌ "Redirect URI Error" (SECURITY BLOCK)                      │
+│     │                                                                        │
+│     ▼                                                                        │
+│  4. User logs in (username/password, Google, etc.)                          │
+│     │                                                                        │
+│     ▼                                                                        │
+│  5. Authentik redirects browser BACK to the redirect_uri with auth code     │
+│     │                                                                        │
+│     ▼                                                                        │
+│  6. Jellyfin exchanges code for tokens, user is logged in                   │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Why is this validation important?**
+
+Without redirect URI validation, an attacker could:
+1. Create a malicious site that looks like Jellyfin
+2. Trick users into clicking "Login with Authentik"
+3. Change the redirect_uri to point to their malicious site
+4. Steal the authentication token when Authentik redirects
+
+The redirect URI whitelist ensures Authentik only sends tokens to legitimate, pre-approved URLs.
+
+##### ForwardAuth vs SSO-Auth Plugin: Two Different Authentication Methods
+
+There are **two completely different ways** to protect Jellyfin with Authentik:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                  METHOD 1: ForwardAuth (Proxy-Based)                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  User → Traefik → [ForwardAuth Check] → Jellyfin                            │
+│                         │                                                    │
+│                         ▼                                                    │
+│                    Authentik Outpost                                         │
+│                                                                              │
+│  How it works:                                                               │
+│  1. User visits jellyfin.example.com                                         │
+│  2. Traefik's ForwardAuth middleware asks Authentik: "Is this user logged in?"│
+│  3. If NO: Redirect to Authentik login page                                  │
+│  4. If YES: Allow request through to Jellyfin                               │
+│                                                                              │
+│  Redirect URIs used:                                                         │
+│  - /outpost.goauthentik.io/callback                                          │
+│  - /?X-authentik-auth-callback=true                                          │
+│                                                                              │
+│  Characteristics:                                                            │
+│  - Authentication happens BEFORE reaching Jellyfin                          │
+│  - Jellyfin doesn't know about authentication                               │
+│  - User appears anonymous inside Jellyfin                                    │
+│  - Good for simple "gate" protection                                        │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                  METHOD 2: SSO-Auth Plugin (Native OIDC)                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  User → Traefik → Jellyfin → [SSO-Auth Plugin] → Authentik                  │
+│                                                                              │
+│  How it works:                                                               │
+│  1. User visits jellyfin.example.com                                         │
+│  2. Jellyfin shows login page with "Sign in with Authentik" button          │
+│  3. User clicks button, Jellyfin redirects to Authentik                     │
+│  4. User logs in at Authentik                                                │
+│  5. Authentik redirects back to Jellyfin's SSO callback URL                 │
+│  6. Jellyfin SSO-Auth plugin creates/links user account                     │
+│                                                                              │
+│  Redirect URIs used:                                                         │
+│  - /sso/OID/redirect/authentik                                               │
+│  - /sso/OID/start/authentik                                                  │
+│                                                                              │
+│  Characteristics:                                                            │
+│  - Authentication happens INSIDE Jellyfin                                   │
+│  - Jellyfin knows who the user is                                           │
+│  - User gets a real Jellyfin account with proper permissions               │
+│  - Supports groups/roles for admin privileges                               │
+│  - Better user experience                                                   │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Key difference**: The redirect URIs are completely different between these methods!
+
+| Method | Redirect URI Pattern | When to Use |
+|--------|---------------------|-------------|
+| ForwardAuth | `/outpost.goauthentik.io/callback` | Simple gate protection, no user accounts needed |
+| SSO-Auth Plugin | `/sso/OID/redirect/authentik` | Full SSO with user accounts, groups, permissions |
+
+##### The Scheme Mismatch Problem
+
+An additional complication occurs when running behind a reverse proxy like Traefik:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          Scheme Mismatch Problem                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  External (What users see):                                                 │
+│  https://jellyfin.example.com  ◄── HTTPS (TLS terminated at Traefik)       │
+│           │                                                                  │
+│           ▼                                                                  │
+│  Traefik (Reverse Proxy)                                                    │
+│           │                                                                  │
+│           ▼                                                                  │
+│  Internal (What Jellyfin sees):                                             │
+│  http://jellyfin:8096  ◄── HTTP (internal Docker network)                  │
+│                                                                              │
+│  Problem:                                                                    │
+│  - Jellyfin thinks it's running on HTTP                                     │
+│  - When generating redirect_uri, it uses: http://jellyfin.example.com/...  │
+│  - But Authentik expects: https://jellyfin.example.com/...                  │
+│  - MISMATCH! → "Redirect URI Error"                                         │
+│                                                                              │
+│  Solution:                                                                   │
+│  1. Configure BOTH http:// and https:// versions in Authentik               │
+│  2. OR set "Scheme Override" to "https" in SSO-Auth plugin settings         │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Root Cause of This Issue
+
+The Authentik provider `jellyfin-provider` was configured with **ForwardAuth redirect URIs**:
+```
+- https://jellyfin.hrmsmrflrii.xyz/outpost.goauthentik.io/callback?X-authentik-auth-callback=true
+- https://jellyfin.hrmsmrflrii.xyz?X-authentik-auth-callback=true
+```
+
+But Jellyfin's **SSO-Auth plugin** sends a completely different redirect URI:
+```
+- https://jellyfin.hrmsmrflrii.xyz/sso/OID/redirect/authentik
+```
+
+Since `/sso/OID/redirect/authentik` was not in the allowed list, Authentik blocked the request with "Redirect URI Error".
+
+**How this happened**:
+- Initially, Jellyfin may have been set up with ForwardAuth (proxy-based auth)
+- Later, the SSO-Auth plugin was installed for better integration
+- But the Authentik provider's redirect URIs were never updated for the new method
+
+#### Diagnosis
+
+**Step 1**: Check what redirect URIs are currently configured:
+```bash
+ssh hermes-admin@192.168.40.21 "sudo docker exec authentik-server ak shell -c \"
+from authentik.providers.oauth2.models import OAuth2Provider
+p = OAuth2Provider.objects.get(name='jellyfin-provider')
+print('Current redirect URIs:')
+for uri in p.redirect_uris:
+    print(f'  - {uri.url} (mode: {uri.matching_mode})')
+\""
+```
+
+**Step 2**: Compare with what Jellyfin is sending (check Authentik logs):
+```bash
+ssh hermes-admin@192.168.40.21 "sudo docker logs authentik-server 2>&1 | grep -i 'redirect_uri' | tail -5"
+```
+
+**Step 3**: Verify Jellyfin SSO-Auth plugin is installed and configured:
+```bash
+ssh hermes-admin@192.168.40.11 "sudo docker exec jellyfin ls /config/plugins/ | grep -i sso"
+```
+
+#### Fix
+
+Update the Authentik provider with the correct redirect URIs for the SSO-Auth plugin:
+
+```bash
+ssh hermes-admin@192.168.40.21 "sudo docker exec authentik-server ak shell -c \"
+from authentik.providers.oauth2.models import OAuth2Provider, RedirectURI, RedirectURIMatchingMode
+
+provider = OAuth2Provider.objects.get(name='jellyfin-provider')
+
+# Set up correct redirect URIs for SSO-Auth plugin
+new_uris = [
+    # HTTPS version for SSO-Auth plugin callback
+    RedirectURI(
+        matching_mode=RedirectURIMatchingMode.STRICT,
+        url='https://jellyfin.hrmsmrflrii.xyz/sso/OID/redirect/authentik'
+    ),
+    # HTTP version (needed because Jellyfin is behind reverse proxy)
+    RedirectURI(
+        matching_mode=RedirectURIMatchingMode.STRICT,
+        url='http://jellyfin.hrmsmrflrii.xyz/sso/OID/redirect/authentik'
+    ),
+]
+provider.redirect_uris = new_uris
+provider.save()
+
+print('Updated redirect URIs:')
+for uri in provider.redirect_uris:
+    print(f'  - {uri.url}')
+\""
+```
+
+#### Verification
+
+1. Navigate to https://jellyfin.hrmsmrflrii.xyz
+2. Click "Sign in with Authentik" button
+3. Log in at Authentik (Google, GitHub, Discord, or password)
+4. Should redirect back to Jellyfin and be logged in
+
+#### Summary Table
+
+| Issue | Wrong Config | Correct Config |
+|-------|--------------|----------------|
+| Auth Method | ForwardAuth redirect URIs | SSO-Auth plugin redirect URIs |
+| Redirect URI | `/outpost.goauthentik.io/callback` | `/sso/OID/redirect/authentik` |
+| Scheme | HTTPS only | Both HTTP and HTTPS |
+
+#### Prevention
+
+When setting up SSO for an application:
+
+1. **Identify the auth method first**: Is it ForwardAuth (proxy-based) or native OIDC/SSO?
+2. **Check the application's documentation** for the exact redirect URI format
+3. **Test the redirect URI**: Visit the SSO start URL and check browser's network tab for the actual redirect_uri being sent
+4. **Always configure both HTTP and HTTPS** versions when the app is behind a TLS-terminating reverse proxy
+5. **Document the configuration** so future troubleshooting is easier
 
 **Prevention**: When configuring OIDC for services behind reverse proxies:
 1. Check the actual callback URL format in Authentik logs

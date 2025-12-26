@@ -1,0 +1,655 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "omada-network",
+    "title": "Omada Network Overview",
+    "tags": ["network", "omada", "monitoring"],
+    "timezone": "browser",
+    "schemaVersion": 39,
+    "refresh": "30s",
+    "time": {"from": "now-1h", "to": "now"},
+    "panels": [
+      {
+        "type": "row",
+        "title": "📊 Overview",
+        "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+        "id": 100,
+        "collapsed": false
+      },
+      {
+        "type": "stat",
+        "title": "Total Clients",
+        "gridPos": {"h": 4, "w": 3, "x": 0, "y": 1},
+        "id": 1,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "thresholds": {"mode": "absolute", "steps": [{"color": "#22c55e", "value": null}]}
+          }
+        },
+        "options": {"colorMode": "background", "graphMode": "area", "justifyMode": "center", "reduceOptions": {"calcs": ["lastNotNull"]}},
+        "targets": [{"expr": "sum(omada_client_connected_total)", "refId": "A"}]
+      },
+      {
+        "type": "stat",
+        "title": "Wired",
+        "gridPos": {"h": 4, "w": 3, "x": 3, "y": 1},
+        "id": 2,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "thresholds": {"mode": "absolute", "steps": [{"color": "#3b82f6", "value": null}]}
+          }
+        },
+        "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": {"calcs": ["lastNotNull"]}},
+        "targets": [{"expr": "omada_client_connected_total{connection_mode=\"wired\"}", "refId": "A"}]
+      },
+      {
+        "type": "stat",
+        "title": "Wireless",
+        "gridPos": {"h": 4, "w": 3, "x": 6, "y": 1},
+        "id": 3,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "thresholds": {"mode": "absolute", "steps": [{"color": "#ec4899", "value": null}]}
+          }
+        },
+        "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": {"calcs": ["lastNotNull"]}},
+        "targets": [{"expr": "sum(omada_client_connected_total{connection_mode=\"wireless\"})", "refId": "A"}]
+      },
+      {
+        "type": "stat",
+        "title": "Controller Uptime",
+        "gridPos": {"h": 4, "w": 3, "x": 9, "y": 1},
+        "id": 4,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "unit": "dtdurations",
+            "thresholds": {"mode": "absolute", "steps": [{"color": "#8b5cf6", "value": null}]}
+          }
+        },
+        "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": {"calcs": ["lastNotNull"]}},
+        "targets": [{"expr": "omada_controller_uptime_seconds", "refId": "A"}]
+      },
+      {
+        "type": "gauge",
+        "title": "Controller Storage",
+        "gridPos": {"h": 4, "w": 3, "x": 12, "y": 1},
+        "id": 5,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "unit": "percentunit",
+            "min": 0, "max": 1,
+            "thresholds": {"mode": "absolute", "steps": [{"color": "#22c55e", "value": null}, {"color": "#f59e0b", "value": 0.7}, {"color": "#ef4444", "value": 0.9}]}
+          }
+        },
+        "options": {"showThresholdLabels": false, "showThresholdMarkers": true, "reduceOptions": {"calcs": ["lastNotNull"]}},
+        "targets": [{"expr": "omada_controller_storage_used_bytes / (omada_controller_storage_used_bytes + omada_controller_storage_available_bytes)", "refId": "A"}]
+      },
+      {
+        "type": "stat",
+        "title": "Upgrade Needed",
+        "gridPos": {"h": 4, "w": 3, "x": 15, "y": 1},
+        "id": 6,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "thresholds": {"mode": "absolute", "steps": [{"color": "#22c55e", "value": null}, {"color": "#f59e0b", "value": 1}]}
+          }
+        },
+        "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": {"calcs": ["lastNotNull"]}},
+        "targets": [{"expr": "sum(omada_device_need_upgrade) or vector(0)", "refId": "A"}]
+      },
+      {
+        "type": "piechart",
+        "title": "WiFi Mode Distribution",
+        "gridPos": {"h": 4, "w": 6, "x": 18, "y": 1},
+        "id": 7,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}}},
+        "options": {"pieType": "donut", "legend": {"displayMode": "table", "placement": "right", "showLegend": true, "values": ["value", "percent"]}, "reduceOptions": {"calcs": ["lastNotNull"]}},
+        "targets": [{"expr": "omada_client_connected_total{connection_mode=\"wireless\"}", "legendFormat": "{{wifi_mode}}", "refId": "A"}]
+      },
+      {
+        "type": "row",
+        "title": "🖥️ Device Health",
+        "gridPos": {"h": 1, "w": 24, "x": 0, "y": 5},
+        "id": 101,
+        "collapsed": false
+      },
+      {
+        "type": "gauge",
+        "title": "Gateway CPU",
+        "gridPos": {"h": 5, "w": 4, "x": 0, "y": 6},
+        "id": 10,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "unit": "percent", "min": 0, "max": 100,
+            "thresholds": {"mode": "absolute", "steps": [{"color": "#22c55e", "value": null}, {"color": "#f59e0b", "value": 50}, {"color": "#ef4444", "value": 80}]}
+          }
+        },
+        "options": {"showThresholdLabels": false, "showThresholdMarkers": true, "reduceOptions": {"calcs": ["lastNotNull"]}},
+        "targets": [{"expr": "omada_device_cpu_percentage{device_type=\"gateway\"}", "refId": "A"}]
+      },
+      {
+        "type": "gauge",
+        "title": "Gateway Memory",
+        "gridPos": {"h": 5, "w": 4, "x": 4, "y": 6},
+        "id": 11,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "unit": "percent", "min": 0, "max": 100,
+            "thresholds": {"mode": "absolute", "steps": [{"color": "#22c55e", "value": null}, {"color": "#f59e0b", "value": 70}, {"color": "#ef4444", "value": 90}]}
+          }
+        },
+        "options": {"showThresholdLabels": false, "showThresholdMarkers": true, "reduceOptions": {"calcs": ["lastNotNull"]}},
+        "targets": [{"expr": "omada_device_mem_percentage{device_type=\"gateway\"}", "refId": "A"}]
+      },
+      {
+        "type": "bargauge",
+        "title": "Switch CPU Usage",
+        "gridPos": {"h": 5, "w": 8, "x": 8, "y": 6},
+        "id": 12,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "continuous-GrYlRd"},
+            "unit": "percent", "min": 0, "max": 100
+          }
+        },
+        "options": {"displayMode": "gradient", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"]}, "showUnfilled": true, "minVizHeight": 10},
+        "targets": [{"expr": "omada_device_cpu_percentage{device_type=\"switch\"}", "legendFormat": "{{device}}", "refId": "A"}]
+      },
+      {
+        "type": "bargauge",
+        "title": "AP CPU Usage",
+        "gridPos": {"h": 5, "w": 8, "x": 16, "y": 6},
+        "id": 13,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "continuous-BlPu"},
+            "unit": "percent", "min": 0, "max": 100
+          }
+        },
+        "options": {"displayMode": "gradient", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"]}, "showUnfilled": true, "minVizHeight": 10},
+        "targets": [{"expr": "omada_device_cpu_percentage{device_type=\"ap\"}", "legendFormat": "{{device}}", "refId": "A"}]
+      },
+      {
+        "type": "stat",
+        "title": "Gateway Uptime",
+        "gridPos": {"h": 4, "w": 4, "x": 0, "y": 11},
+        "id": 14,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "unit": "dtdurations",
+            "thresholds": {"mode": "absolute", "steps": [{"color": "#22c55e", "value": null}]}
+          }
+        },
+        "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "textMode": "auto", "reduceOptions": {"calcs": ["lastNotNull"]}},
+        "targets": [{"expr": "omada_device_uptime_seconds{device_type=\"gateway\"}", "legendFormat": "Gateway", "refId": "A"}]
+      },
+      {
+        "type": "stat",
+        "title": "Core Switch",
+        "gridPos": {"h": 4, "w": 4, "x": 4, "y": 11},
+        "id": 15,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "unit": "dtdurations",
+            "thresholds": {"mode": "absolute", "steps": [{"color": "#8b5cf6", "value": null}]}
+          }
+        },
+        "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "textMode": "auto", "reduceOptions": {"calcs": ["lastNotNull"]}},
+        "targets": [{"expr": "omada_device_uptime_seconds{device_type=\"switch\",device=~\".*SG3210.*|.*Core.*\"}", "legendFormat": "Core Switch", "refId": "A"}]
+      },
+      {
+        "type": "stat",
+        "title": "Switch 2",
+        "gridPos": {"h": 4, "w": 4, "x": 8, "y": 11},
+        "id": 16,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "unit": "dtdurations",
+            "thresholds": {"mode": "absolute", "steps": [{"color": "#6366f1", "value": null}]}
+          }
+        },
+        "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "textMode": "auto", "reduceOptions": {"calcs": ["lastNotNull"]}},
+        "targets": [{"expr": "omada_device_uptime_seconds{device_type=\"switch\",device=~\".*Morpheus.*|.*SG2008P.*\"}", "legendFormat": "Switch 2", "refId": "A"}]
+      },
+      {
+        "type": "stat",
+        "title": "Living Room AP",
+        "gridPos": {"h": 4, "w": 4, "x": 12, "y": 11},
+        "id": 17,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "unit": "dtdurations",
+            "thresholds": {"mode": "absolute", "steps": [{"color": "#06b6d4", "value": null}]}
+          }
+        },
+        "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "textMode": "auto", "reduceOptions": {"calcs": ["lastNotNull"]}},
+        "targets": [{"expr": "omada_device_uptime_seconds{device_type=\"ap\",device=~\".*Living.*|.*EAP610.*\"}", "legendFormat": "Living Room", "refId": "A"}]
+      },
+      {
+        "type": "stat",
+        "title": "Outdoor AP",
+        "gridPos": {"h": 4, "w": 4, "x": 16, "y": 11},
+        "id": 18,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "unit": "dtdurations",
+            "thresholds": {"mode": "absolute", "steps": [{"color": "#14b8a6", "value": null}]}
+          }
+        },
+        "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "textMode": "auto", "reduceOptions": {"calcs": ["lastNotNull"]}},
+        "targets": [{"expr": "omada_device_uptime_seconds{device_type=\"ap\",device=~\".*Outdoor.*|.*EAP603.*\"}", "legendFormat": "Outdoor", "refId": "A"}]
+      },
+      {
+        "type": "stat",
+        "title": "Computer Room AP",
+        "gridPos": {"h": 4, "w": 4, "x": 20, "y": 11},
+        "id": 19,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "unit": "dtdurations",
+            "thresholds": {"mode": "absolute", "steps": [{"color": "#0ea5e9", "value": null}]}
+          }
+        },
+        "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "textMode": "auto", "reduceOptions": {"calcs": ["lastNotNull"]}},
+        "targets": [{"expr": "omada_device_uptime_seconds{device_type=\"ap\",device=~\".*Computer.*|.*EAP225.*\"}", "legendFormat": "Computer Room", "refId": "A"}]
+      },
+      {
+        "type": "row",
+        "title": "📶 WiFi Signal Quality",
+        "gridPos": {"h": 1, "w": 24, "x": 0, "y": 15},
+        "id": 102,
+        "collapsed": false
+      },
+      {
+        "type": "bargauge",
+        "title": "Client Signal Strength (RSSI)",
+        "description": "Signal strength in dBm. Green (-50+) = Excellent, Yellow (-70 to -50) = Good, Red (<-70) = Weak",
+        "gridPos": {"h": 12, "w": 12, "x": 0, "y": 16},
+        "id": 20,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "unit": "dBm", "min": -100, "max": -20,
+            "thresholds": {"mode": "absolute", "steps": [{"color": "#ef4444", "value": null}, {"color": "#f59e0b", "value": -70}, {"color": "#22c55e", "value": -50}]}
+          }
+        },
+        "options": {"displayMode": "gradient", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"]}, "showUnfilled": true, "minVizHeight": 10, "namePlacement": "left"},
+        "targets": [{"expr": "topk(15, omada_client_rssi_dbm)", "legendFormat": "{{client}}", "refId": "A"}]
+      },
+      {
+        "type": "bargauge",
+        "title": "Signal-to-Noise Ratio (SNR)",
+        "description": "SNR in dB. Green (35+) = Excellent, Yellow (20-35) = Good, Red (<20) = Poor",
+        "gridPos": {"h": 12, "w": 12, "x": 12, "y": 16},
+        "id": 21,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "unit": "dB", "min": 0, "max": 60,
+            "thresholds": {"mode": "absolute", "steps": [{"color": "#ef4444", "value": null}, {"color": "#f59e0b", "value": 20}, {"color": "#22c55e", "value": 35}]}
+          }
+        },
+        "options": {"displayMode": "gradient", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"]}, "showUnfilled": true, "minVizHeight": 10, "namePlacement": "left"},
+        "targets": [{"expr": "topk(15, omada_client_snr_dbm)", "legendFormat": "{{client}}", "refId": "A"}]
+      },
+      {
+        "type": "timeseries",
+        "title": "WiFi Signal Over Time",
+        "gridPos": {"h": 10, "w": 24, "x": 0, "y": 28},
+        "id": 22,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "unit": "dBm",
+            "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "gradientMode": "opacity", "showPoints": "never", "lineInterpolation": "smooth"}
+          }
+        },
+        "options": {"legend": {"displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["mean", "lastNotNull"]}, "tooltip": {"mode": "multi", "sort": "desc"}},
+        "targets": [{"expr": "topk(10, omada_client_rssi_dbm)", "legendFormat": "{{client}}", "refId": "A"}]
+      },
+      {
+        "type": "row",
+        "title": "🔌 Switch Port Status",
+        "gridPos": {"h": 1, "w": 24, "x": 0, "y": 38},
+        "id": 103,
+        "collapsed": false
+      },
+      {
+        "type": "table",
+        "title": "Port Status Overview",
+        "description": "Switch port status, link speeds, and PoE power",
+        "gridPos": {"h": 10, "w": 24, "x": 0, "y": 39},
+        "id": 30,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "targets": [
+          {"expr": "omada_port_link_status", "format": "table", "instant": true, "refId": "A"},
+          {"expr": "omada_port_link_speed_mbps", "format": "table", "instant": true, "refId": "B"},
+          {"expr": "omada_port_power_watts", "format": "table", "instant": true, "refId": "C"}
+        ],
+        "transformations": [
+          {"id": "merge", "options": {}},
+          {"id": "organize", "options": {
+            "excludeByName": {"Time": true, "__name__": true, "instance": true, "job": true, "site_id": true, "site": true},
+            "indexByName": {"device": 0, "port": 1, "Value #A": 2, "Value #B": 3, "Value #C": 4, "port_name": 5, "poe_mode": 6},
+            "renameByName": {"device": "Switch", "port": "Port", "port_name": "Port Name", "Value #A": "Status", "Value #B": "Speed (Mbps)", "Value #C": "PoE (W)", "poe_mode": "PoE Mode"}
+          }},
+          {"id": "sortBy", "options": {"fields": {}, "sort": [{"field": "Switch"}, {"field": "Port"}]}}
+        ],
+        "fieldConfig": {
+          "defaults": {},
+          "overrides": [
+            {
+              "matcher": {"id": "byName", "options": "Status"},
+              "properties": [
+                {"id": "mappings", "value": [{"type": "value", "options": {"0": {"text": "DOWN", "color": "#ef4444"}, "1": {"text": "UP", "color": "#22c55e"}}}]},
+                {"id": "custom.cellOptions", "value": {"type": "color-background"}}
+              ]
+            },
+            {
+              "matcher": {"id": "byName", "options": "Speed (Mbps)"},
+              "properties": [
+                {"id": "custom.cellOptions", "value": {"type": "color-text"}},
+                {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "#6b7280", "value": null}, {"color": "#f59e0b", "value": 100}, {"color": "#22c55e", "value": 1000}]}}
+              ]
+            },
+            {
+              "matcher": {"id": "byName", "options": "PoE (W)"},
+              "properties": [
+                {"id": "unit", "value": "watt"},
+                {"id": "decimals", "value": 1}
+              ]
+            }
+          ]
+        },
+        "options": {
+          "showHeader": true,
+          "cellHeight": "sm",
+          "footer": {"show": false}
+        }
+      },
+      {
+        "type": "bargauge",
+        "title": "Port Link Speeds",
+        "gridPos": {"h": 6, "w": 12, "x": 0, "y": 49},
+        "id": 31,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "unit": "Mbps",
+            "thresholds": {"mode": "absolute", "steps": [{"color": "#f59e0b", "value": null}, {"color": "#3b82f6", "value": 100}, {"color": "#22c55e", "value": 1000}]}
+          }
+        },
+        "options": {"displayMode": "gradient", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"]}, "showUnfilled": true, "minVizHeight": 8},
+        "targets": [{"expr": "omada_port_link_speed_mbps > 0", "legendFormat": "{{device}} Port {{port}}", "refId": "A"}]
+      },
+      {
+        "type": "timeseries",
+        "title": "Port Traffic (RX/TX)",
+        "gridPos": {"h": 6, "w": 12, "x": 12, "y": 49},
+        "id": 32,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "unit": "Bps",
+            "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 20, "gradientMode": "opacity", "showPoints": "never"}
+          }
+        },
+        "options": {"legend": {"displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi"}},
+        "targets": [
+          {"expr": "rate(omada_port_link_rx[5m])", "legendFormat": "{{device}} P{{port}} RX", "refId": "A"},
+          {"expr": "rate(omada_port_link_tx[5m])", "legendFormat": "{{device}} P{{port}} TX", "refId": "B"}
+        ]
+      },
+      {
+        "type": "row",
+        "title": "⚡ PoE Power Usage",
+        "gridPos": {"h": 1, "w": 24, "x": 0, "y": 55},
+        "id": 104,
+        "collapsed": false
+      },
+      {
+        "type": "gauge",
+        "title": "Total PoE Power",
+        "gridPos": {"h": 6, "w": 6, "x": 0, "y": 56},
+        "id": 40,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "unit": "watt", "min": 0, "max": 150,
+            "thresholds": {"mode": "absolute", "steps": [{"color": "#22c55e", "value": null}, {"color": "#f59e0b", "value": 100}, {"color": "#ef4444", "value": 130}]}
+          }
+        },
+        "options": {"showThresholdLabels": false, "showThresholdMarkers": true, "reduceOptions": {"calcs": ["lastNotNull"]}},
+        "targets": [{"expr": "sum(omada_port_power_watts)", "refId": "A"}]
+      },
+      {
+        "type": "stat",
+        "title": "PoE Remaining",
+        "gridPos": {"h": 6, "w": 6, "x": 6, "y": 56},
+        "id": 41,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "unit": "watt",
+            "thresholds": {"mode": "absolute", "steps": [{"color": "#ef4444", "value": null}, {"color": "#f59e0b", "value": 30}, {"color": "#22c55e", "value": 60}]}
+          }
+        },
+        "options": {"colorMode": "background", "graphMode": "area", "justifyMode": "center", "reduceOptions": {"calcs": ["lastNotNull"]}},
+        "targets": [{"expr": "sum(omada_device_poe_remain_watts)", "refId": "A"}]
+      },
+      {
+        "type": "bargauge",
+        "title": "PoE Power Per Port",
+        "gridPos": {"h": 6, "w": 12, "x": 12, "y": 56},
+        "id": 42,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "continuous-BlPu"},
+            "unit": "watt", "min": 0
+          }
+        },
+        "options": {"displayMode": "gradient", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"]}, "showUnfilled": true, "minVizHeight": 8},
+        "targets": [{"expr": "omada_port_power_watts > 0", "legendFormat": "{{device}} Port {{port}}", "refId": "A"}]
+      },
+      {
+        "type": "row",
+        "title": "📈 Traffic Analysis",
+        "gridPos": {"h": 1, "w": 24, "x": 0, "y": 62},
+        "id": 105,
+        "collapsed": false
+      },
+      {
+        "type": "timeseries",
+        "title": "Client Connection Trend",
+        "gridPos": {"h": 7, "w": 12, "x": 0, "y": 63},
+        "id": 50,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 20, "gradientMode": "opacity", "showPoints": "never", "lineInterpolation": "smooth"}
+          },
+          "overrides": [
+            {"matcher": {"id": "byName", "options": "Total"}, "properties": [{"id": "color", "value": {"fixedColor": "#22c55e", "mode": "fixed"}}]},
+            {"matcher": {"id": "byName", "options": "Wired"}, "properties": [{"id": "color", "value": {"fixedColor": "#3b82f6", "mode": "fixed"}}]},
+            {"matcher": {"id": "byName", "options": "Wireless"}, "properties": [{"id": "color", "value": {"fixedColor": "#ec4899", "mode": "fixed"}}]}
+          ]
+        },
+        "options": {"legend": {"displayMode": "table", "placement": "bottom", "showLegend": true, "calcs": ["mean", "max"]}, "tooltip": {"mode": "multi", "sort": "desc"}},
+        "targets": [
+          {"expr": "sum(omada_client_connected_total)", "legendFormat": "Total", "refId": "A"},
+          {"expr": "omada_client_connected_total{connection_mode=\"wired\"}", "legendFormat": "Wired", "refId": "B"},
+          {"expr": "sum(omada_client_connected_total{connection_mode=\"wireless\"})", "legendFormat": "Wireless", "refId": "C"}
+        ]
+      },
+      {
+        "type": "bargauge",
+        "title": "Top 10 Clients by Traffic",
+        "gridPos": {"h": 7, "w": 12, "x": 12, "y": 63},
+        "id": 51,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "continuous-GrYlRd"},
+            "unit": "bytes"
+          }
+        },
+        "options": {"displayMode": "gradient", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"]}, "showUnfilled": true, "minVizHeight": 8},
+        "targets": [{"expr": "topk(10, omada_client_traffic_down_bytes + omada_client_traffic_up_bytes)", "legendFormat": "{{client}}", "refId": "A"}]
+      },
+      {
+        "type": "timeseries",
+        "title": "Device Download Traffic",
+        "gridPos": {"h": 7, "w": 12, "x": 0, "y": 70},
+        "id": 52,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "unit": "Bps",
+            "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 20, "gradientMode": "opacity", "showPoints": "never"}
+          }
+        },
+        "options": {"legend": {"displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["mean", "max"]}, "tooltip": {"mode": "multi"}},
+        "targets": [{"expr": "rate(omada_device_download[5m])", "legendFormat": "{{device}}", "refId": "A"}]
+      },
+      {
+        "type": "timeseries",
+        "title": "Device Upload Traffic",
+        "gridPos": {"h": 7, "w": 12, "x": 12, "y": 70},
+        "id": 53,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "unit": "Bps",
+            "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 20, "gradientMode": "opacity", "showPoints": "never"}
+          }
+        },
+        "options": {"legend": {"displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["mean", "max"]}, "tooltip": {"mode": "multi"}},
+        "targets": [{"expr": "rate(omada_device_upload[5m])", "legendFormat": "{{device}}", "refId": "A"}]
+      },
+      {
+        "type": "bargauge",
+        "title": "Client TX Rate",
+        "gridPos": {"h": 6, "w": 12, "x": 0, "y": 77},
+        "id": 54,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "continuous-BlPu"},
+            "unit": "bps"
+          }
+        },
+        "options": {"displayMode": "gradient", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"]}, "showUnfilled": true, "minVizHeight": 8},
+        "targets": [{"expr": "topk(10, omada_client_tx_rate * 1000000)", "legendFormat": "{{client}}", "refId": "A"}]
+      },
+      {
+        "type": "bargauge",
+        "title": "Client RX Rate",
+        "gridPos": {"h": 6, "w": 12, "x": 12, "y": 77},
+        "id": 55,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "continuous-GrYlRd"},
+            "unit": "bps"
+          }
+        },
+        "options": {"displayMode": "gradient", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"]}, "showUnfilled": true, "minVizHeight": 8},
+        "targets": [{"expr": "topk(10, omada_client_rx_rate * 1000000)", "legendFormat": "{{client}}", "refId": "A"}]
+      },
+      {
+        "type": "row",
+        "title": "📋 Client Details",
+        "gridPos": {"h": 1, "w": 24, "x": 0, "y": 83},
+        "id": 106,
+        "collapsed": false
+      },
+      {
+        "type": "table",
+        "title": "All Connected Clients",
+        "gridPos": {"h": 10, "w": 24, "x": 0, "y": 84},
+        "id": 60,
+        "transparent": true,
+        "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+        "targets": [{"expr": "omada_client_download_activity_bytes", "format": "table", "instant": true, "refId": "A"}],
+        "transformations": [
+          {"id": "organize", "options": {"excludeByName": {"Time": true, "__name__": true, "instance": true, "job": true, "site_id": true, "site": true}, "renameByName": {"client": "Client", "ip": "IP Address", "mac": "MAC", "vlan_id": "VLAN", "switch_port": "Port", "connection_mode": "Mode", "ssid": "SSID", "ap_name": "Access Point", "vendor": "Vendor", "wifi_mode": "WiFi", "Value": "Activity (B)"}}}
+        ]
+      }
+    ]
+  },
+  "overwrite": true
+}

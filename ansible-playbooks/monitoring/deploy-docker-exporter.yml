@@ -1,0 +1,117 @@
+---
+# Docker Stats Exporter Deployment
+# Exposes container metrics with proper names for Prometheus/Grafana
+#
+# Usage:
+#   ansible-playbook monitoring/deploy-docker-exporter.yml
+
+- name: Deploy Docker Stats Exporter
+  hosts: docker_utilities:docker_media
+  become: yes
+  vars:
+    exporter_path: /opt/docker-exporter
+    exporter_port: 9417
+
+  tasks:
+    - name: Create exporter directory
+      file:
+        path: "{{ exporter_path }}"
+        state: directory
+        mode: '0755'
+
+    - name: Copy exporter script
+      copy:
+        src: docker-stats-exporter.py
+        dest: "{{ exporter_path }}/exporter.py"
+        mode: '0755'
+
+    - name: Create requirements file
+      copy:
+        dest: "{{ exporter_path }}/requirements.txt"
+        content: |
+          docker>=6.0.0
+          prometheus-client>=0.17.0
+        mode: '0644'
+
+    - name: Create Dockerfile
+      copy:
+        dest: "{{ exporter_path }}/Dockerfile"
+        content: |
+          FROM python:3.12-slim
+          WORKDIR /app
+          COPY requirements.txt .
+          RUN pip install --no-cache-dir -r requirements.txt
+          COPY exporter.py .
+          CMD ["python", "-u", "exporter.py"]
+        mode: '0644'
+
+    - name: Create Docker Compose file
+      copy:
+        dest: "{{ exporter_path }}/docker-compose.yml"
+        content: |
+          services:
+            docker-exporter:
+              build: .
+              container_name: docker-exporter
+              restart: unless-stopped
+              ports:
+                - "{{ exporter_port }}:9417"
+              volumes:
+                - /var/run/docker.sock:/var/run/docker.sock:ro
+              environment:
+                - REFRESH_INTERVAL=15
+                - EXPORTER_PORT=9417
+        mode: '0644'
+
+    - name: Build and deploy exporter
+      community.docker.docker_compose_v2:
+        project_src: "{{ exporter_path }}"
+        state: present
+        build: always
+
+    - name: Wait for exporter to be ready
+      uri:
+        url: "http://localhost:{{ exporter_port }}/metrics"
+        status_code: [200]
+      register: exporter_status
+      until: exporter_status.status == 200
+      retries: 30
+      delay: 2
+
+
+- name: Update Prometheus Configuration
+  hosts: docker-vm-utilities01
+  become: yes
+
+  tasks:
+    - name: Update Prometheus scrape config for docker-exporter
+      blockinfile:
+        path: /opt/monitoring/prometheus/prometheus.yml
+        marker: "# {mark} DOCKER EXPORTER SCRAPE JOBS"
+        insertafter: "scrape_configs:"
+        block: |2
+            - job_name: 'docker-stats-media'
+              static_configs:
+                - targets: ['192.168.40.11:9417']
+                  labels:
+                    host: 'docker-vm-media01'
+
+            - job_name: 'docker-stats-utilities'
+              static_configs:
+                - targets: ['192.168.40.10:9417']
+                  labels:
+                    host: 'docker-vm-utilities01'
+
+    - name: Restart Prometheus
+      community.docker.docker_compose_v2:
+        project_src: /opt/monitoring
+        services:
+          - prometheus
+        state: restarted
+
+    - name: Display info
+      debug:
+        msg: |
+          Docker Stats Exporter deployed!
+          - Media Host: http://192.168.40.11:9417/metrics
+          - Utilities Host: http://192.168.40.10:9417/metrics

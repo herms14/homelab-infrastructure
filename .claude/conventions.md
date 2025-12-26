@@ -170,6 +170,7 @@ tf-proxmox/
 - **Home** - Service monitors, bookmarks, markets
 - **Compute** - Proxmox cluster + Container Status History dashboard
 - **Storage** - Synology NAS Storage dashboard
+- **Network** - Omada Network Overview dashboard
 - **Media** - Media stats, downloads, queue
 
 ### Protected Grafana Dashboards (DO NOT MODIFY)
@@ -184,6 +185,13 @@ tf-proxmox/
   - Dashboard JSON: `temp-synology-nas-dashboard.json`
   - Ansible: `ansible-playbooks/monitoring/deploy-synology-nas-dashboard.yml`
   - Panels: 6 disk health tiles, temperatures, storage consumption timeline
+
+- **Omada Network Overview** (`omada-network`) - Network devices, WiFi, switches, PoE, clients
+  - Iframe height: 2200px
+  - Dashboard JSON: `temp-omada-full-dashboard.json`
+  - Ansible: `ansible-playbooks/monitoring/deploy-omada-full-dashboard.yml`
+  - Data source: Omada Exporter (192.168.20.30:9202)
+  - Sections: Overview, Device Health, WiFi Signal, Switch Ports, PoE, Traffic, Clients
 
 ### Configuration Scripts
 
@@ -210,7 +218,7 @@ tf-proxmox/
 | Exporter | Port | Target | Status |
 |----------|------|--------|--------|
 | OPNsense Exporter | 9198 | 192.168.91.30 | Active |
-| Omada Exporter | 9202 | 192.168.0.103 | Pending |
+| Omada Exporter | 9202 | 192.168.0.103 | Active |
 | Docker Exporter | 9417 | docker hosts | Active |
 
 ---

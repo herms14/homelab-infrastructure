@@ -8,20 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added - Comprehensive Omada Network Dashboard (December 26, 2025)
-- **Dashboard JSON**: `temp-omada-full-dashboard.json` with 7 row sections and 28 panels
+- **Dashboard JSON**: `temp-omada-full-dashboard.json` with 7 row sections and 28 panels (Version 3)
 - **Sections**:
   - **Overview**: Total/Wired/Wireless clients, Controller uptime/storage/upgrades, WiFi mode distribution
-  - **Device Health**: Gateway CPU/Memory gauges, Switch/AP CPU bar gauges, Device uptimes
-  - **WiFi Signal Quality**: Client RSSI (-100 to -20 dBm), SNR (0-60 dB), Signal over time
-  - **Switch Port Status**: Port link status (UP/DOWN), Link speeds (Mbps), RX/TX traffic
+  - **Device Health**: Gateway CPU/Memory gauges, Switch/AP CPU bar gauges, Pi-hole style uptime boxes
+  - **WiFi Signal Quality**: Client RSSI (-100 to -20 dBm), SNR (0-60 dB), Signal over time (h=12, h=10)
+  - **Switch Port Status**: Table with Switch, Port, Status (colored), Speed, PoE, Port Name
   - **PoE Power Usage**: Total power gauge, Remaining power, Per-port power consumption
   - **Traffic Analysis**: Client trends, Top 10 clients by traffic, Device download/upload rates
   - **Client Details**: Full table with Client, IP, MAC, VLAN, Port, Mode, SSID, AP, Vendor, WiFi, Activity
 - **Ansible Playbooks**:
   - `deploy-omada-full-dashboard.yml` - Deploys comprehensive dashboard from JSON
-  - `update-glance-network-tab.yml` - Updates Glance Network tab with 1900px iframe
-- **Configuration**: UID `omada-network`, iframe height 1900px, Omada exporter at 192.168.20.30:9202
-- **Documentation**: Updated `docs/OMADA_NETWORK_DASHBOARD.md` with layout diagram
+  - `update-glance-network-tab.yml` - Updates Glance Network tab with 2200px iframe
+- **Configuration**: UID `omada-network`, iframe height 2200px, Omada exporter at 192.168.20.30:9202
+- **Documentation**: Added comprehensive tutorial in `docs/OMADA_NETWORK_DASHBOARD.md` covering:
+  - Part 1: Understanding the Data Source (Omada SDN, available metrics)
+  - Part 2: Setting Up Data Collection (exporter, Prometheus)
+  - Part 3: Building the Dashboard (JSON structure, panel types, PromQL)
+  - Part 4: Deploying the Dashboard (API, Ansible)
+  - Part 5: Design Decisions (Pi-hole style, table for ports, heights)
+  - Part 6: Maintenance Notes (protected status, version history)
+- **PROTECTED**: Dashboard marked as protected - do not modify without permission
 
 ### Added - Tailscale Subnet Router for Remote Access (December 26, 2025)
 - **node01 configured as Tailscale subnet router** for full homelab remote access

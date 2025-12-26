@@ -1,0 +1,542 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "type": "stat",
+      "title": "System Uptime",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0},
+      "id": 1,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "#22c55e", "value": null}]},
+          "unit": "dtdurations",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "sysUpTime{job=\"synology\"} / 100", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Total Storage",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 0},
+      "id": 2,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "#3b82f6", "value": null}]},
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "sum(synologyRaidTotalSize{job=\"synology\",raidIndex=\"0\"})", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Used Storage",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 0},
+      "id": 3,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "#f59e0b", "value": null}]},
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "synologyRaidTotalSize{job=\"synology\",raidIndex=\"0\"} - synologyRaidFreeSize{job=\"synology\",raidIndex=\"0\"}", "refId": "A"}]
+    },
+    {
+      "type": "gauge",
+      "title": "Storage Used %",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 4, "w": 4, "x": 12, "y": 0},
+      "id": 4,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "decimals": 1,
+          "max": 100,
+          "min": 0,
+          "thresholds": {"mode": "absolute", "steps": [{"color": "#22c55e", "value": null}, {"color": "#f59e0b", "value": 70}, {"color": "#ef4444", "value": 90}]},
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "options": {"orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showThresholdLabels": false, "showThresholdMarkers": true, "minVizHeight": 75, "minVizWidth": 75},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "(1 - (synologyRaidFreeSize{job=\"synology\",raidIndex=\"0\"} / synologyRaidTotalSize{job=\"synology\",raidIndex=\"0\"})) * 100", "refId": "A"}]
+    },
+    {
+      "type": "gauge",
+      "title": "CPU Usage",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 4, "w": 4, "x": 16, "y": 0},
+      "id": 5,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "decimals": 1,
+          "max": 100,
+          "min": 0,
+          "thresholds": {"mode": "absolute", "steps": [{"color": "#22c55e", "value": null}, {"color": "#f59e0b", "value": 50}, {"color": "#ef4444", "value": 80}]},
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "options": {"orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showThresholdLabels": false, "showThresholdMarkers": true, "minVizHeight": 75, "minVizWidth": 75},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "avg(hrProcessorLoad{job=\"synology\"})", "refId": "A"}]
+    },
+    {
+      "type": "gauge",
+      "title": "Memory Usage",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 4, "w": 4, "x": 20, "y": 0},
+      "id": 6,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "decimals": 1,
+          "max": 100,
+          "min": 0,
+          "thresholds": {"mode": "absolute", "steps": [{"color": "#22c55e", "value": null}, {"color": "#f59e0b", "value": 70}, {"color": "#ef4444", "value": 90}]},
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "options": {"orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showThresholdLabels": false, "showThresholdMarkers": true, "minVizHeight": 75, "minVizWidth": 75},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "(1 - (memAvailReal{job=\"synology\"} / memTotalReal{job=\"synology\"})) * 100", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Drive 1 - Seagate 8TB",
+      "description": "ST8000VN004-3CP101 (HDD)",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 4},
+      "id": 10,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "#ef4444", "value": null}, {"color": "#22c55e", "value": 1}]},
+          "mappings": [{"options": {"0": {"color": "#ef4444", "index": 0, "text": "FAILED"}, "1": {"color": "#22c55e", "index": 1, "text": "Healthy"}}, "type": "value"}],
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "value"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "synologyDiskHealthStatus{job=\"synology\",diskIndex=\"0\"}", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Drive 2 - Seagate 4TB",
+      "description": "ST4000VN006-3CW104 (HDD)",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 4},
+      "id": 11,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "#ef4444", "value": null}, {"color": "#22c55e", "value": 1}]},
+          "mappings": [{"options": {"0": {"color": "#ef4444", "index": 0, "text": "FAILED"}, "1": {"color": "#22c55e", "index": 1, "text": "Healthy"}}, "type": "value"}],
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "value"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "synologyDiskHealthStatus{job=\"synology\",diskIndex=\"1\"}", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Drive 3 - Seagate 12TB",
+      "description": "ST12000VN0008-2YS101 (HDD)",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 4},
+      "id": 12,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "#ef4444", "value": null}, {"color": "#22c55e", "value": 1}]},
+          "mappings": [{"options": {"0": {"color": "#ef4444", "index": 0, "text": "FAILED"}, "1": {"color": "#22c55e", "index": 1, "text": "Healthy"}}, "type": "value"}],
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "value"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "synologyDiskHealthStatus{job=\"synology\",diskIndex=\"2\"}", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Drive 4 - Seagate 10TB",
+      "description": "ST10000VN000-3AK101 (HDD)",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 4, "w": 4, "x": 12, "y": 4},
+      "id": 13,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "#ef4444", "value": null}, {"color": "#22c55e", "value": 1}]},
+          "mappings": [{"options": {"0": {"color": "#ef4444", "index": 0, "text": "FAILED"}, "1": {"color": "#22c55e", "index": 1, "text": "Healthy"}}, "type": "value"}],
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "value"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "synologyDiskHealthStatus{job=\"synology\",diskIndex=\"3\"}", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "M.2 Drive 1 - Kingston 1TB",
+      "description": "SNV2S1000G (NVMe SSD)",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 4, "w": 4, "x": 16, "y": 4},
+      "id": 14,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "#ef4444", "value": null}, {"color": "#8b5cf6", "value": 1}]},
+          "mappings": [{"options": {"0": {"color": "#ef4444", "index": 0, "text": "FAILED"}, "1": {"color": "#8b5cf6", "index": 1, "text": "Healthy"}}, "type": "value"}],
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "value"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "synologyDiskHealthStatus{job=\"synology\",diskIndex=\"4\"}", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "M.2 Drive 2 - Crucial 1TB",
+      "description": "CT1000P2SSD8 (NVMe SSD)",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 4, "w": 4, "x": 20, "y": 4},
+      "id": 15,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "#ef4444", "value": null}, {"color": "#8b5cf6", "value": 1}]},
+          "mappings": [{"options": {"0": {"color": "#ef4444", "index": 0, "text": "FAILED"}, "1": {"color": "#8b5cf6", "index": 1, "text": "Healthy"}}, "type": "value"}],
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "value"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "synologyDiskHealthStatus{job=\"synology\",diskIndex=\"5\"}", "refId": "A"}]
+    },
+    {
+      "type": "bargauge",
+      "title": "Disk Temperatures",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 6, "w": 12, "x": 0, "y": 8},
+      "id": 20,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "continuous-BlYlRd"},
+          "decimals": 0,
+          "max": 60,
+          "min": 20,
+          "thresholds": {"mode": "absolute", "steps": [{"color": "#22c55e", "value": null}, {"color": "#f59e0b", "value": 45}, {"color": "#ef4444", "value": 55}]},
+          "unit": "celsius"
+        },
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "Drive 1"}, "properties": [{"id": "displayName", "value": "Drive 1 (8TB)"}]},
+          {"matcher": {"id": "byName", "options": "Drive 2"}, "properties": [{"id": "displayName", "value": "Drive 2 (4TB)"}]},
+          {"matcher": {"id": "byName", "options": "Drive 3"}, "properties": [{"id": "displayName", "value": "Drive 3 (12TB)"}]},
+          {"matcher": {"id": "byName", "options": "Drive 4"}, "properties": [{"id": "displayName", "value": "Drive 4 (10TB)"}]},
+          {"matcher": {"id": "byName", "options": "M.2 SSD 1"}, "properties": [{"id": "displayName", "value": "M.2 SSD 1 (Kingston)"}]},
+          {"matcher": {"id": "byName", "options": "M.2 SSD 2"}, "properties": [{"id": "displayName", "value": "M.2 SSD 2 (Crucial)"}]}
+        ]
+      },
+      "options": {"displayMode": "gradient", "minVizHeight": 10, "minVizWidth": 0, "namePlacement": "auto", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showUnfilled": true, "sizing": "auto", "valueMode": "color"},
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "synologyDiskTemperature{job=\"synology\",diskIndex=\"0\"}", "legendFormat": "Drive 1", "refId": "A"},
+        {"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "synologyDiskTemperature{job=\"synology\",diskIndex=\"1\"}", "legendFormat": "Drive 2", "refId": "B"},
+        {"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "synologyDiskTemperature{job=\"synology\",diskIndex=\"2\"}", "legendFormat": "Drive 3", "refId": "C"},
+        {"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "synologyDiskTemperature{job=\"synology\",diskIndex=\"3\"}", "legendFormat": "Drive 4", "refId": "D"},
+        {"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "synologyDiskTemperature{job=\"synology\",diskIndex=\"4\"}", "legendFormat": "M.2 SSD 1", "refId": "E"},
+        {"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "synologyDiskTemperature{job=\"synology\",diskIndex=\"5\"}", "legendFormat": "M.2 SSD 2", "refId": "F"}
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "System Temperature",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 3, "w": 4, "x": 12, "y": 8},
+      "id": 21,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "#22c55e", "value": null}, {"color": "#f59e0b", "value": 50}, {"color": "#ef4444", "value": 60}]},
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "synologySystemTemperature{job=\"synology\"}", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Healthy Disks",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 3, "w": 4, "x": 16, "y": 8},
+      "id": 22,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "#ef4444", "value": null}, {"color": "#22c55e", "value": 6}]},
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "value_and_name"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "count(synologyDiskHealthStatus{job=\"synology\"} == 1)", "legendFormat": "of 6", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Total RAM",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 3, "w": 4, "x": 20, "y": 8},
+      "id": 23,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "#3b82f6", "value": null}]},
+          "unit": "kbytes"
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "memTotalReal{job=\"synology\"}", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "CPU Cores",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 3, "w": 4, "x": 12, "y": 11},
+      "id": 24,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "#06b6d4", "value": null}]},
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "value_and_name"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "count(hrProcessorLoad{job=\"synology\"})", "legendFormat": "Cores", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Free Storage",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 3, "w": 4, "x": 16, "y": 11},
+      "id": 25,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "#22c55e", "value": null}]},
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "synologyRaidFreeSize{job=\"synology\",raidIndex=\"0\"}", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Available RAM",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 3, "w": 4, "x": 20, "y": 11},
+      "id": 26,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "#22c55e", "value": null}]},
+          "unit": "kbytes"
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "memAvailReal{job=\"synology\"}", "refId": "A"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU Usage Over Time",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 7, "w": 12, "x": 0, "y": 14},
+      "id": 30,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "gradientMode": "opacity",
+            "hideFrom": {"legend": false, "tooltip": false, "viz": false},
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {"type": "linear"},
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {"group": "A", "mode": "none"},
+            "thresholdsStyle": {"mode": "off"}
+          },
+          "max": 100,
+          "min": 0,
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "hrProcessorLoad{job=\"synology\",hrProcessorIndex=\"196608\"}", "legendFormat": "Core 1", "refId": "A"},
+        {"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "hrProcessorLoad{job=\"synology\",hrProcessorIndex=\"196609\"}", "legendFormat": "Core 2", "refId": "B"},
+        {"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "hrProcessorLoad{job=\"synology\",hrProcessorIndex=\"196610\"}", "legendFormat": "Core 3", "refId": "C"},
+        {"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "hrProcessorLoad{job=\"synology\",hrProcessorIndex=\"196611\"}", "legendFormat": "Core 4", "refId": "D"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory Usage Over Time",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 7, "w": 12, "x": 12, "y": 14},
+      "id": 31,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "gradientMode": "opacity",
+            "hideFrom": {"legend": false, "tooltip": false, "viz": false},
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {"type": "linear"},
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {"group": "A", "mode": "none"},
+            "thresholdsStyle": {"mode": "off"}
+          },
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+          "unit": "kbytes"
+        },
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "Used"}, "properties": [{"id": "color", "value": {"fixedColor": "#f59e0b", "mode": "fixed"}}]},
+          {"matcher": {"id": "byName", "options": "Available"}, "properties": [{"id": "color", "value": {"fixedColor": "#22c55e", "mode": "fixed"}}]}
+        ]
+      },
+      "options": {"legend": {"calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "memTotalReal{job=\"synology\"} - memAvailReal{job=\"synology\"}", "legendFormat": "Used", "refId": "A"},
+        {"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "memAvailReal{job=\"synology\"}", "legendFormat": "Available", "refId": "B"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Storage Consumption Over Time",
+      "description": "Track how storage usage changes over time",
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 21},
+      "id": 40,
+      "transparent": true,
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 30,
+            "gradientMode": "opacity",
+            "hideFrom": {"legend": false, "tooltip": false, "viz": false},
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {"type": "linear"},
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {"group": "A", "mode": "none"},
+            "thresholdsStyle": {"mode": "off"}
+          },
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+          "unit": "bytes"
+        },
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "Used Storage"}, "properties": [{"id": "color", "value": {"fixedColor": "#f59e0b", "mode": "fixed"}}]},
+          {"matcher": {"id": "byName", "options": "Free Storage"}, "properties": [{"id": "color", "value": {"fixedColor": "#22c55e", "mode": "fixed"}}]},
+          {"matcher": {"id": "byName", "options": "Total Storage"}, "properties": [{"id": "color", "value": {"fixedColor": "#3b82f6", "mode": "fixed"}}, {"id": "custom.lineStyle", "value": {"dash": [10, 10], "fill": "dash"}}, {"id": "custom.fillOpacity", "value": 0}]}
+        ]
+      },
+      "options": {"legend": {"calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "synologyRaidTotalSize{job=\"synology\",raidIndex=\"0\"} - synologyRaidFreeSize{job=\"synology\",raidIndex=\"0\"}", "legendFormat": "Used Storage", "refId": "A"},
+        {"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "synologyRaidFreeSize{job=\"synology\",raidIndex=\"0\"}", "legendFormat": "Free Storage", "refId": "B"},
+        {"datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}, "expr": "synologyRaidTotalSize{job=\"synology\",raidIndex=\"0\"}", "legendFormat": "Total Storage", "refId": "C"}
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["synology", "nas", "storage", "monitoring"],
+  "templating": {"list": []},
+  "time": {"from": "now-7d", "to": "now"},
+  "timepicker": {},
+  "timezone": "",
+  "title": "Synology NAS Storage",
+  "uid": "synology-nas-modern",
+  "version": 1,
+  "weekStart": ""
+}

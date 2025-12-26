@@ -228,6 +228,57 @@ ssh hermes-admin@192.168.20.30
 - Dashboard JSON: `temp-synology-nas-dashboard.json`
 - Ansible Playbook: `ansible-playbooks/monitoring/deploy-synology-nas-dashboard.yml`
 
+### Network Tab Structure (PROTECTED)
+
+**DO NOT MODIFY without explicit user permission.**
+
+**Grafana Dashboard**: `omada-network` (UID)
+**Glance Iframe Height**: 2200px
+**URL**: `https://grafana.hrmsmrflrii.xyz/d/omada-network/omada-network-overview?orgId=1&kiosk&theme=transparent&refresh=30s`
+**Dashboard Version**: 3
+
+**Layout:**
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ 📊 OVERVIEW                                                                   │
+│ [Total Clients] [Wired] [Wireless] [Uptime] [Storage] [Upgrade] [WiFi Pie]   │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ 🖥️ DEVICE HEALTH                                                              │
+│ [Gateway CPU] [Gateway Mem] [Switch CPU Bar] [AP CPU Bar]                    │
+│ [Gateway] [Core Switch] [Switch 2] [Living AP] [Outdoor AP] [Computer AP]   │  <- Pi-hole style boxes
+├──────────────────────────────────────────────────────────────────────────────┤
+│ 📶 WIFI SIGNAL QUALITY (h=12 each)                                           │
+│ [Client RSSI Bar Gauge]              │ [SNR Bar Gauge]                       │
+│ [WiFi Signal Over Time - h=10]                                               │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ 🔌 SWITCH PORT STATUS                                                         │
+│ [Port Status Table: Switch, Port, Status, Speed, PoE, Port Name, PoE Mode]   │
+│ [Port Link Speeds Bar]               │ [Port Traffic RX/TX Time Series]      │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ ⚡ POE POWER USAGE                                                            │
+│ [Total PoE Gauge] [PoE Remaining]    │ [PoE Per Port Bar Gauge]              │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ 📈 TRAFFIC ANALYSIS                                                           │
+│ [Client Connection Trend]            │ [Top 10 Clients by Traffic]           │
+│ [Device Download Traffic]            │ [Device Upload Traffic]               │
+│ [Client TX Rate]                     │ [Client RX Rate]                      │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ 📋 CLIENT DETAILS                                                             │
+│ [All Connected Clients Table]                                                │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Data Source**: Omada Exporter (`192.168.20.30:9202`)
+**Exporter**: `ghcr.io/charlie-haley/omada_exporter`
+**Omada Controller**: `192.168.0.103` (OC300)
+**Credentials**: `claude-reader` (viewer role)
+
+**Files:**
+- Dashboard JSON: `temp-omada-full-dashboard.json`
+- Ansible Playbook: `ansible-playbooks/monitoring/deploy-omada-full-dashboard.yml`
+- Glance Update: `ansible-playbooks/monitoring/update-glance-network-tab.yml`
+- Documentation: `docs/OMADA_NETWORK_DASHBOARD.md`
+
 ### Tab Order
 Home | Compute | Storage | Network | Media | Web | Reddit
 

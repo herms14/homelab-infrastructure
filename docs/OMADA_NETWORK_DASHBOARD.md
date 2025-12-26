@@ -61,8 +61,9 @@ The Omada Network Dashboard combines metrics from:
 ```
 
 **Grafana UID**: `omada-network`
-**Glance Iframe Height**: 1900px
+**Glance Iframe Height**: 2200px
 **Dashboard JSON**: `temp-omada-full-dashboard.json`
+**Dashboard Version**: 3 (PROTECTED - Do not modify without permission)
 
 ## Prerequisites
 
@@ -320,3 +321,292 @@ https://github.com/charlie-haley/omada_exporter/issues
 - [omada_exporter GitHub](https://github.com/charlie-haley/omada_exporter)
 - [Grafana Dashboard ID 20854](https://grafana.com/grafana/dashboards/20854-omada-overview/)
 - [Omada SDN API](https://www.tp-link.com/us/support/faq/3231/)
+
+---
+
+# Tutorial: How This Dashboard Was Built
+
+This section documents the complete process of scraping Omada network data and building the Grafana dashboard.
+
+## Part 1: Understanding the Data Source
+
+### What is Omada SDN?
+
+TP-Link Omada SDN (Software Defined Networking) is a centralized management platform for:
+- **Gateway/Router** (ER605, ER7206, etc.)
+- **Managed Switches** (SG3210, SG2008P, etc.)
+- **Access Points** (EAP610, EAP603, EAP225, etc.)
+
+The Omada Controller (OC300 hardware or software) manages all devices and exposes an API.
+
+### Available Metrics from Omada Exporter
+
+The `omada_exporter` project by Charlie Haley scrapes the Omada Controller API and exposes metrics in Prometheus format.
+
+**Device Metrics:**
+```
+omada_device_uptime_seconds{device="DeviceName", device_type="gateway|switch|ap"}
+omada_device_cpu_percentage{device="DeviceName", device_type="..."}
+omada_device_mem_percentage{device="DeviceName", device_type="..."}
+omada_device_poe_remain_watts{device="SwitchName"}
+omada_device_need_upgrade{device="DeviceName"}
+```
+
+**Controller Metrics:**
+```
+omada_controller_uptime_seconds
+omada_controller_storage_used_bytes
+omada_controller_storage_available_bytes
+```
+
+**Client Metrics:**
+```
+omada_client_connected_total{connection_mode="wired|wireless", wifi_mode="5GHz|2.4GHz"}
+omada_client_rssi_dbm{client="ClientName"}
+omada_client_snr_dbm{client="ClientName"}
+omada_client_tx_rate{client="ClientName"}
+omada_client_rx_rate{client="ClientName"}
+omada_client_traffic_down_bytes{client="ClientName"}
+omada_client_traffic_up_bytes{client="ClientName"}
+omada_client_download_activity_bytes{client="ClientName", ip="...", mac="...", ...}
+```
+
+**Switch Port Metrics:**
+```
+omada_port_link_status{device="SwitchName", port="1"}  # 0=DOWN, 1=UP
+omada_port_link_speed_mbps{device="SwitchName", port="1"}
+omada_port_power_watts{device="SwitchName", port="1"}
+omada_port_link_rx{device="SwitchName", port="1"}  # bytes counter
+omada_port_link_tx{device="SwitchName", port="1"}  # bytes counter
+```
+
+## Part 2: Setting Up Data Collection
+
+### Step 1: Create Read-Only Omada User
+
+```
+Controller → Settings → Admin → Add Admin
+Username: claude-reader
+Role: Viewer (read-only, cannot modify anything)
+```
+
+### Step 2: Deploy the Exporter
+
+The exporter runs as a Docker container that periodically polls the Omada API:
+
+```yaml
+# /opt/omada-exporter/docker-compose.yml
+services:
+  omada-exporter:
+    image: ghcr.io/charlie-haley/omada_exporter:latest
+    container_name: omada-exporter
+    restart: unless-stopped
+    ports:
+      - "9202:9202"
+    environment:
+      OMADA_HOST: "https://192.168.0.103"
+      OMADA_USER: "claude-reader"
+      OMADA_PASS: "your-password"
+      OMADA_SITE: "Default"
+      OMADA_INSECURE: "true"  # Skip TLS verification for self-signed cert
+```
+
+### Step 3: Verify Metrics Export
+
+```bash
+curl http://192.168.20.30:9202/metrics | grep omada_
+```
+
+Example output:
+```
+omada_device_uptime_seconds{device="ER605",device_type="gateway"} 1234567
+omada_client_connected_total{connection_mode="wireless",wifi_mode="5GHz"} 8
+omada_port_link_status{device="SG3210",port="1"} 1
+```
+
+### Step 4: Configure Prometheus Scraping
+
+```yaml
+# prometheus.yml
+scrape_configs:
+  - job_name: 'omada'
+    static_configs:
+      - targets: ['192.168.20.30:9202']
+    scrape_interval: 30s
+```
+
+## Part 3: Building the Dashboard
+
+### Dashboard JSON Structure
+
+Grafana dashboards are JSON documents with this structure:
+
+```json
+{
+  "dashboard": {
+    "uid": "unique-identifier",
+    "title": "Dashboard Title",
+    "panels": [
+      {
+        "id": 1,
+        "type": "stat|gauge|timeseries|table|bargauge|piechart",
+        "title": "Panel Title",
+        "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+        "targets": [
+          {"expr": "prometheus_query_here", "legendFormat": "{{label}}"}
+        ],
+        "fieldConfig": {...},
+        "options": {...}
+      }
+    ]
+  },
+  "overwrite": true
+}
+```
+
+### Panel Types Used
+
+| Type | Use Case | Example |
+|------|----------|---------|
+| `stat` | Single value with background color | Total Clients, Device Uptimes |
+| `gauge` | Circular gauge with thresholds | CPU%, Memory%, PoE Power |
+| `bargauge` | Horizontal bars with gradient | Client RSSI, Switch CPU |
+| `timeseries` | Line charts over time | Signal Over Time, Traffic |
+| `table` | Tabular data | Port Status, Client List |
+| `piechart` | Distribution visualization | WiFi Mode Distribution |
+
+### Key PromQL Queries
+
+**Total connected clients:**
+```promql
+sum(omada_client_connected_total)
+```
+
+**Wireless clients only:**
+```promql
+sum(omada_client_connected_total{connection_mode="wireless"})
+```
+
+**Top 15 clients by signal strength:**
+```promql
+topk(15, omada_client_rssi_dbm)
+```
+
+**Port traffic rate (bytes/sec):**
+```promql
+rate(omada_port_link_rx[5m])
+```
+
+**Device uptime by type:**
+```promql
+omada_device_uptime_seconds{device_type="gateway"}
+```
+
+### Color Thresholds
+
+WiFi Signal (RSSI) thresholds:
+```json
+"thresholds": {
+  "steps": [
+    {"color": "#ef4444", "value": null},      // Red: < -70 dBm (weak)
+    {"color": "#f59e0b", "value": -70},        // Yellow: -70 to -50 (good)
+    {"color": "#22c55e", "value": -50}         // Green: > -50 dBm (excellent)
+  ]
+}
+```
+
+### Grid Positioning
+
+Grafana uses a 24-column grid:
+```json
+"gridPos": {
+  "h": 4,    // Height in grid units
+  "w": 6,    // Width (6 = 1/4 of screen)
+  "x": 0,    // X position (0-23)
+  "y": 0     // Y position (row)
+}
+```
+
+## Part 4: Deploying the Dashboard
+
+### Method 1: Grafana API
+
+```bash
+curl -X POST "http://192.168.40.10:3030/api/dashboards/db" \
+  -H "Content-Type: application/json" \
+  -u admin:admin \
+  -d @temp-omada-full-dashboard.json
+```
+
+### Method 2: Ansible Playbook
+
+```yaml
+# deploy-omada-full-dashboard.yml
+- name: Deploy dashboard to Grafana
+  uri:
+    url: "{{ grafana_url }}/api/dashboards/db"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ grafana_api_key }}"
+    body: "{{ lookup('file', dashboard_file) | from_json | to_json }}"
+    body_format: json
+```
+
+## Part 5: Design Decisions
+
+### Why Pi-hole Style Uptime Boxes?
+
+The original design showed all device uptimes in a single horizontal stat panel, which was hard to read. We changed to individual colored boxes (like Pi-hole's dashboard) for:
+- Better visibility of each device
+- Clear device identification
+- Consistent color coding per device type
+
+### Why Table for Port Status?
+
+The original stat visualization for port status showed "UP" and "DOWN" labels but:
+- No context about which switch/port
+- No speed information
+- No PoE power data
+
+A table provides:
+- Switch name
+- Port number
+- Status with color (green=UP, red=DOWN)
+- Link speed with color coding
+- PoE power consumption
+
+### Why Increased Heights for WiFi Panels?
+
+Signal quality panels need more vertical space because:
+- 15 clients with bar gauges need room
+- Client names can be long
+- Time series needs legend table
+
+## Part 6: Maintenance Notes
+
+### Protected Status
+
+This dashboard is **PROTECTED** and should not be modified without explicit permission.
+
+Files involved:
+- `temp-omada-full-dashboard.json` - Dashboard definition
+- `ansible-playbooks/monitoring/deploy-omada-full-dashboard.yml` - Deployment
+- `ansible-playbooks/monitoring/update-glance-network-tab.yml` - Glance integration
+
+### Version History
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 1 | Dec 25, 2025 | Initial simple dashboard |
+| 2 | Dec 26, 2025 | Added comprehensive panels |
+| 3 | Dec 26, 2025 | Fixed uptimes (Pi-hole style), increased WiFi heights, table for ports |
+
+### Updating the Dashboard
+
+If changes are needed in the future:
+
+1. Edit `temp-omada-full-dashboard.json`
+2. Increment version number
+3. Deploy via API or Ansible
+4. Update Glance iframe height if dashboard height changed
+5. Document changes in this file and CHANGELOG.md

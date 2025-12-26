@@ -80,7 +80,18 @@
       "Bash(time curl -s \"http://192.168.40.10:5053/api/feed\")",
       "WebFetch(domain:simpleicons.org)",
       "WebFetch(domain:edgeshark.siemens.io)",
-      "WebFetch(domain:yamlresume.dev)"
+      "WebFetch(domain:yamlresume.dev)",
+      "Bash(bash \"C:\\\\Users\\\\herms\\\\.claude\\\\statusline-command.sh\")",
+      "Bash(python:*)",
+      "Bash(py:*)",
+      "Bash(node --version)",
+      "Bash(git fetch:*)",
+      "Bash(node:*)",
+      "Bash(git pull:*)",
+      "WebFetch(domain:docs.wizarr.dev)",
+      "WebFetch(domain:docs.karakeep.app)",
+      "Bash(git checkout:*)",
+      "Bash(terraform init:*)"
     ],
     "deny": [],
     "ask": []
