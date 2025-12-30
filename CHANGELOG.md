@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - HashiCorp Packer Installation (December 30, 2025)
+- **Installed Packer v1.14.3** on Ansible Controller (192.168.20.30)
+  - Used for creating Proxmox VM templates with cloud-init support
+  - Integrates with existing Terraform and Ansible workflows
+- **Created Ansible playbook** `ansible-playbooks/infrastructure/install-packer.yml`
+  - Installs Packer from official HashiCorp repository
+  - Creates working directory at `/home/hermes-admin/packer/`
+- **Created example Proxmox template** `/home/hermes-admin/packer/proxmox-ubuntu-template.pkr.hcl`
+  - Ubuntu 24.04 Server template with cloud-init
+  - VM ID 9000, 2 cores, 2GB RAM, 20GB disk
+  - QEMU Guest Agent and cloud-init pre-configured
+  - Ready for Terraform cloning
+- **Created documentation** `docs/PACKER.md`
+  - Quick start guide, command reference, troubleshooting
+  - Integration examples with Terraform and Ansible
+- **Updated CLAUDE.md** - Added Packer to Quick Reference table
+
 ### Changed - Repository Cleanup & Reorganization (December 30, 2025)
 - **Deleted 30+ temporary files** from root directory
   - Removed all `temp-*.py` development scripts (one-time use artifacts)

@@ -1,0 +1,247 @@
+---
+# Packer Installation Playbook
+# Installs HashiCorp Packer for creating VM/container images
+#
+# Usage: ansible-playbook infrastructure/install-packer.yml
+#
+# Run this on the Ansible controller (localhost) since Packer
+# will be used alongside Ansible for image provisioning.
+#
+# What this installs:
+# - HashiCorp Packer (latest stable)
+# - Required dependencies (gnupg, curl)
+#
+# After installation, Packer can:
+# - Create Proxmox VM templates
+# - Build cloud-init enabled images
+# - Provision images with Ansible
+
+- name: Install HashiCorp Packer
+  hosts: localhost
+  become: yes
+  gather_facts: yes
+
+  vars:
+    packer_version: "latest"  # or specify version like "1.10.0"
+
+  tasks:
+    - name: Display installation info
+      debug:
+        msg: |
+          ================================================
+          Installing HashiCorp Packer
+          ================================================
+          Host: {{ ansible_hostname }}
+          OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          Architecture: {{ ansible_architecture }}
+          ================================================
+
+    - name: Install required packages
+      apt:
+        name:
+          - gnupg
+          - software-properties-common
+          - curl
+          - apt-transport-https
+        state: present
+        update_cache: yes
+
+    - name: Add HashiCorp GPG key
+      shell: |
+        curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+      args:
+        creates: /usr/share/keyrings/hashicorp-archive-keyring.gpg
+
+    - name: Add HashiCorp repository
+      apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com {{ ansible_distribution_release }} main"
+        state: present
+        filename: hashicorp
+
+    - name: Install Packer
+      apt:
+        name: packer
+        state: latest
+        update_cache: yes
+
+    - name: Verify Packer installation
+      command: packer version
+      register: packer_version_output
+      changed_when: false
+
+    - name: Display Packer version
+      debug:
+        msg: |
+          ================================================
+          Packer Installation Complete!
+          ================================================
+          {{ packer_version_output.stdout }}
+          ================================================
+
+          Next Steps:
+          1. Create Packer templates in /home/hermes-admin/packer/
+          2. Configure Proxmox credentials for the Proxmox builder
+          3. Run: packer init <template.pkr.hcl>
+          4. Run: packer build <template.pkr.hcl>
+
+          Example Proxmox template location:
+          /home/hermes-admin/packer/proxmox-ubuntu-template.pkr.hcl
+          ================================================
+
+    - name: Create Packer working directory
+      file:
+        path: /home/hermes-admin/packer
+        state: directory
+        owner: hermes-admin
+        group: hermes-admin
+        mode: '0755'
+
+    - name: Create example Proxmox Packer template
+      copy:
+        dest: /home/hermes-admin/packer/proxmox-ubuntu-template.pkr.hcl
+        owner: hermes-admin
+        group: hermes-admin
+        mode: '0644'
+        content: |
+          # Proxmox Ubuntu Template
+          # Creates a cloud-init enabled Ubuntu template for Proxmox
+          #
+          # Usage:
+          #   packer init proxmox-ubuntu-template.pkr.hcl
+          #   packer build proxmox-ubuntu-template.pkr.hcl
+          #
+          # Prerequisites:
+          #   - Upload Ubuntu ISO to Proxmox storage
+          #   - Create Proxmox API token with appropriate permissions
+
+          packer {
+            required_plugins {
+              proxmox = {
+                version = ">= 1.1.0"
+                source  = "github.com/hashicorp/proxmox"
+              }
+            }
+          }
+
+          # Variables - override with -var or .pkrvars.hcl file
+          variable "proxmox_api_url" {
+            type    = string
+            default = "https://192.168.20.21:8006/api2/json"
+          }
+
+          variable "proxmox_api_token_id" {
+            type    = string
+            default = "terraform-deployment-user@pve!tf"
+          }
+
+          variable "proxmox_api_token_secret" {
+            type      = string
+            sensitive = true
+          }
+
+          variable "proxmox_node" {
+            type    = string
+            default = "node02"
+          }
+
+          variable "template_name" {
+            type    = string
+            default = "ubuntu-2404-template"
+          }
+
+          variable "iso_file" {
+            type    = string
+            default = "local:iso/ubuntu-24.04-live-server-amd64.iso"
+          }
+
+          source "proxmox-iso" "ubuntu" {
+            # Proxmox Connection
+            proxmox_url              = var.proxmox_api_url
+            username                 = var.proxmox_api_token_id
+            token                    = var.proxmox_api_token_secret
+            insecure_skip_tls_verify = true
+            node                     = var.proxmox_node
+
+            # VM Settings
+            vm_id                = 9000
+            vm_name              = var.template_name
+            template_description = "Ubuntu 24.04 Template - Built with Packer"
+
+            # ISO
+            iso_file    = var.iso_file
+            unmount_iso = true
+
+            # System
+            qemu_agent = true
+            cores      = 2
+            memory     = 2048
+            cpu_type   = "host"
+
+            # Disk
+            disks {
+              disk_size    = "20G"
+              storage_pool = "local-lvm"
+              type         = "scsi"
+            }
+
+            # Network
+            network_adapters {
+              model    = "virtio"
+              bridge   = "vmbr0"
+              vlan_tag = "20"
+            }
+
+            # Cloud-Init
+            cloud_init              = true
+            cloud_init_storage_pool = "local-lvm"
+
+            # Boot
+            boot_command = [
+              "<esc><wait>",
+              "e<wait>",
+              "<down><down><down><end>",
+              " autoinstall ds=nocloud-net\\;s=http://{{ '{{' }} .HTTPIP {{ '}}' }}:{{ '{{' }} .HTTPPort {{ '}}' }}/",
+              "<f10>"
+            ]
+            boot_wait = "5s"
+
+            # HTTP server for autoinstall
+            http_directory = "http"
+
+            # SSH
+            ssh_username = "hermes-admin"
+            ssh_password = "changeme"
+            ssh_timeout  = "20m"
+          }
+
+          build {
+            sources = ["source.proxmox-iso.ubuntu"]
+
+            # Install packages and configure
+            provisioner "shell" {
+              inline = [
+                "sudo apt-get update",
+                "sudo apt-get install -y qemu-guest-agent cloud-init",
+                "sudo systemctl enable qemu-guest-agent",
+                "sudo cloud-init clean"
+              ]
+            }
+
+            # Optional: Run Ansible playbook
+            # provisioner "ansible" {
+            #   playbook_file = "../ansible/base-config.yml"
+            # }
+          }
+
+    - name: Create credentials template file
+      copy:
+        dest: /home/hermes-admin/packer/credentials.pkrvars.hcl.example
+        owner: hermes-admin
+        group: hermes-admin
+        mode: '0600'
+        content: |
+          # Packer Credentials Template
+          # Copy to credentials.pkrvars.hcl and fill in values
+          # Usage: packer build -var-file=credentials.pkrvars.hcl proxmox-ubuntu-template.pkr.hcl
+
+          proxmox_api_token_secret = "your-api-token-secret-here"

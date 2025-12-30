@@ -55,6 +55,7 @@ Before tokens exhaust, write a handoff:
 | **Compute** | [docs/PROXMOX.md](./docs/PROXMOX.md) |
 | **Storage** | [docs/STORAGE.md](./docs/STORAGE.md) |
 | **Terraform** | [docs/TERRAFORM.md](./docs/TERRAFORM.md) |
+| **Packer** | [docs/PACKER.md](./docs/PACKER.md) |
 | **Services** | [docs/SERVICES.md](./docs/SERVICES.md) |
 | **App Config** | [docs/APPLICATION_CONFIGURATIONS.md](./docs/APPLICATION_CONFIGURATIONS.md) |
 | **Ansible** | [docs/ANSIBLE.md](./docs/ANSIBLE.md) |
