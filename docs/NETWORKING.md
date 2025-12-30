@@ -123,7 +123,7 @@ The infrastructure uses two primary VLANs:
 
 - **Bridge**: vmbr0 (all VMs and containers use this bridge)
 - **VLAN Support**: Bridge must be VLAN-aware on all nodes
-- **DNS Server**: 192.168.91.30 (OPNsense Unbound)
+- **DNS Server**: 192.168.90.53 (Pi-hole + Unbound)
 
 ### Required `/etc/network/interfaces` Configuration
 
@@ -166,7 +166,7 @@ ip -d link show vmbr0 | grep vlan_filtering
 
 | Range | Purpose | Hosts |
 |-------|---------|-------|
-| 20-22 | Proxmox cluster nodes | node01, node02, node03 |
+| 20-21 | Proxmox cluster nodes | node01, node02 |
 | 30 | Ansible automation | ansible-controller01 |
 | 31 | Synology NAS | NFS storage |
 | 32-34 | K8s control plane | k8s-controller01-03 |
@@ -220,9 +220,11 @@ Traefik automatically obtains and renews Let's Encrypt certificates:
 - **Challenge**: DNS-01 via Cloudflare API
 - **Type**: Wildcard (*.hrmsmrflrii.xyz)
 
-### DNS Configuration (OPNsense)
+### DNS Configuration (Pi-hole)
 
-All `*.hrmsmrflrii.xyz` subdomains resolve to `192.168.40.20` (Traefik)
+**DNS Server**: Pi-hole v6 with Unbound recursive resolver at `192.168.90.53` (VLAN 90 - Management)
+
+All `*.hrmsmrflrii.xyz` subdomains resolve to `192.168.40.20` (Traefik) via Pi-hole local DNS records.
 
 ## WiFi SSIDs
 
@@ -247,7 +249,6 @@ All `*.hrmsmrflrii.xyz` subdomains resolve to `192.168.40.20` (Traefik)
 | Proxmox Cluster | https://proxmox.hrmsmrflrii.xyz | 192.168.20.21:8006 |
 | Proxmox Node01 | https://node01.hrmsmrflrii.xyz | 192.168.20.20:8006 |
 | Proxmox Node02 | https://node02.hrmsmrflrii.xyz | 192.168.20.21:8006 |
-| Proxmox Node03 | https://node03.hrmsmrflrii.xyz | 192.168.20.22:8006 |
 | Traefik Dashboard | https://traefik.hrmsmrflrii.xyz | localhost:8080 |
 
 ### Core Services
@@ -338,7 +339,6 @@ Tailscale provides secure remote access to the homelab from outside the local ne
 |--------|----------|--------------|------|
 | node01 | 192.168.20.20 | 100.89.33.5 | **Subnet Router** |
 | node02 | 192.168.20.21 | 100.96.195.27 | Peer |
-| node03 | 192.168.20.22 | 100.76.81.39 | Peer |
 | Synology NAS | 192.168.20.31 | 100.84.128.43 | Peer (inactive) |
 | MacBook Pro | - | 100.90.207.58 | Client |
 
@@ -416,7 +416,6 @@ ssh hermes-admin@192.168.40.10    # Docker utilities
 # SSH via Tailscale IPs (direct)
 ssh root@100.89.33.5              # node01
 ssh root@100.96.195.27            # node02
-ssh root@100.76.81.39             # node03
 
 # Access services via domain (with split DNS)
 curl https://grafana.hrmsmrflrii.xyz

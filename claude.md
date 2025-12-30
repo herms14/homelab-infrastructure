@@ -72,11 +72,14 @@ Before tokens exhaust, write a handoff:
 
 ### Proxmox Cluster
 
+**Cluster**: MorpheusCluster (2-node + Qdevice)
+
 | Node | Local IP | Tailscale IP | Purpose |
 |------|----------|--------------|---------|
-| node01 | 192.168.20.20 | 100.89.33.5 | VM Host |
-| node02 | 192.168.20.21 | 100.96.195.27 | LXC/Service Host |
-| node03 | 192.168.20.22 | 100.76.81.39 | Kubernetes |
+| node01 | 192.168.20.20 | 100.89.33.5 | Primary VM Host (K8s, LXCs, Core Services) |
+| node02 | 192.168.20.21 | 100.96.195.27 | Service Host (Traefik, Authentik, GitLab, Immich) |
+
+> **Note**: node03 was removed from cluster on 2025-12-30. All workloads now run on node01/node02.
 
 ### Remote Access (Tailscale)
 
@@ -84,7 +87,6 @@ When outside the local network:
 ```bash
 ssh root@100.89.33.5         # node01
 ssh root@100.96.195.27       # node02
-ssh root@100.76.81.39        # node03
 ```
 
 ### Networks

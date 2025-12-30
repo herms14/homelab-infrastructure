@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Network Dashboard & Pi-hole Integration (December 30, 2025)
+- **Fixed Glance YAML corruption** - Paperless/Pi-hole bookmark entries were malformed at line 261
+  - Fixed YAML syntax error preventing Glance from loading
+  - Restored Pi-hole bookmark in Monitoring section
+- **Fixed Omada exporter connectivity** - Ansible VM (192.168.20.30) was unreachable after DNS change
+  - Restarted Ansible VM to restore network connectivity
+  - Omada exporter now successfully scraping data from controller (192.168.0.103)
+  - Prometheus target health restored to "up"
+- **Added Pi-hole DNS Stats widget** to Network page sidebar
+  - Created Pi-hole Stats Proxy API (`/opt/pihole-stats-api/`) on LXC 200
+  - Handles Pi-hole v6 session-based authentication
+  - Displays: Queries Today, Blocked, Block Rate %, Active Clients, Blocklist Domains, Cached
+  - API runs on port 5055 with 60-second cache
+  - Set Pi-hole password for API access: `glance-api-2024`
+
+### Added - New Node Onboarding Guide (December 30, 2025)
+- **Comprehensive checklist** for adding new Proxmox nodes to `docs/PROXMOX.md`
+- Covers: cluster join, Prometheus, Glance, WoL, DNS, Tailscale, documentation
+- Documents which systems auto-update (Grafana) vs manual (Glance, WoL scripts)
+
+### Fixed - Grafana Dashboard Issues (December 30, 2025)
+- **Compute dashboard**: Fixed Running VMs/LXCs showing wrong counts (was 36/4, now 18/2)
+  - Added `max by(id)` to deduplicate metrics from multiple nodes
+- **Storage dashboard**: Fixed "Healthy Disks" showing "of 6 6"
+  - Changed textMode to "value", title now "Healthy Disks (of 6)"
+- **Glance**: Removed node03 from Proxmox Nodes monitor widget
+- Created `scripts/proxmox-nodes-api.py` - Dynamic node discovery API (port 5061)
+
+### Added - Wake-on-LAN Support (December 30, 2025)
+- **Enabled WoL** on node01 (`38:05:25:32:82:76`) and node02 (`84:47:09:4d:7a:ca`)
+- Configured persistent WoL via `/etc/network/interfaces` (post-up ethtool)
+- Created `scripts/wake-nodes.py` - Python script to wake nodes (no dependencies)
+- Created `scripts/wake-nodes.sh` - Bash script alternative
+- **Usage**: `python3 scripts/wake-nodes.py [node01|node02|all]`
+
+### Changed - Proxmox Cluster Reduced to 2 Nodes (December 30, 2025)
+- **Removed node03** (192.168.20.22) from MorpheusCluster
+- Cluster now operates with 2 nodes + Qdevice for quorum
+- All workloads were already migrated to node01/node02 prior to removal
+- Cleaned up corosync configuration and /etc/pve/nodes/node03 directory
+- Updated expected_votes from 4 to 3 for proper quorum
+- **Documentation updated**: CLAUDE.md, context.md, PROXMOX.md, NETWORKING.md, INVENTORY.md
+
 ### Added - Homelab Blog (December 27, 2025)
 - **Deployed Hugo blog** on GitHub Pages: https://herms14.github.io/Clustered-Thoughts/
 - **Theme**: PaperMod with dark/light mode toggle

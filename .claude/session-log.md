@@ -5,6 +5,87 @@
 
 ---
 
+## 2025-12-30
+
+### 13:30 - Pi-hole Migration to VLAN 90 (Management Network)
+**Status**: Completed
+**Request**: Move Pi-hole from VLAN 20 (192.168.20.53) to VLAN 90 (192.168.90.53)
+
+**Changes Made**:
+- Updated Pi-hole LXC 202 network config to VLAN 90 with tag=90
+- Added VLAN 90 to Proxmox node01 bridge-vids (was missing)
+- Updated Traefik service backend URL to 192.168.90.53
+- Updated Authentik proxy provider internal host
+- Updated Glance dashboard monitor URL
+- Updated Pi-hole /etc/hosts with new IP
+- Updated DNS on all Proxmox nodes, LXCs, and VMs
+- Added VLAN 90 to Tailscale subnet routes on node01
+
+**Proxmox Bridge Fix**:
+- node01 `bridge-vids` was only `10 20 40`, added `90`
+- node02 already had `2-4094` (all VLANs)
+
+**Documentation Updated**:
+- `.claude/context.md` - Added VLAN 90, Pi-hole LXC
+- `docs/INVENTORY.md` - Added VLAN 90 section, Pi-hole entry
+- `docs/NETWORKING.md` - Updated DNS server reference
+
+**Verification**:
+- DNS resolution working from all VLANs
+- Pi-hole accessible via https://pihole.hrmsmrflrii.xyz (with Authentik SSO)
+- Glance monitoring Pi-hole on new IP
+
+---
+
+### 12:00 - Proxmox Cluster Node Removal (node03)
+**Status**: Completed
+**Request**: Remove node03 from the Proxmox cluster safely and update all documentation
+
+**Cluster Changes**:
+- Removed node03 (192.168.20.22) from MorpheusCluster
+- Cluster now operates with 2 nodes + Qdevice for quorum
+- Fixed quorum by setting expected_votes to 3
+- Cleaned up corosync.conf (removed node03 entry)
+- Removed /etc/pve/nodes/node03/ directory (stale VM configs)
+
+**Pre-Removal State**:
+- node03 VMs were all orphaned/stale (unknown status, locked clones)
+- All production workloads already on node01/node02
+- node03 was partially unresponsive to cluster commands
+
+**Commands Used**:
+```bash
+# Remove node from cluster
+pvecm delnode node03
+
+# Fix quorum
+pvecm expected 3
+
+# Remove stale configs
+rm -rf /etc/pve/nodes/node03
+
+# Update corosync.conf (removed node03 entry, version 5)
+```
+
+**Documentation Updated**:
+- `.claude/context.md` - Updated to 2-node cluster
+- `CLAUDE.md` - Updated Infrastructure Overview
+- `docs/PROXMOX.md` - Updated Cluster Nodes section
+- `docs/INVENTORY.md` - Updated with LXC containers, corrected VM nodes
+- `docs/NETWORKING.md` - Removed node03 references
+- `CHANGELOG.md` - Added node removal entry
+- GitHub Wiki (Home.md, Proxmox-Cluster.md) - Updated diagrams and stats
+- Obsidian (02 - Proxmox Cluster.md) - Updated cluster info
+
+**Final Cluster Status**:
+| Node | IP | Status |
+|------|-----|--------|
+| node01 | 192.168.20.20 | Online |
+| node02 | 192.168.20.21 | Online |
+| Qdevice | 192.168.20.51 | Active |
+
+---
+
 ## 2025-12-27
 
 ### 21:30 - Homelab Blog Deployment

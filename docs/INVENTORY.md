@@ -4,14 +4,19 @@
 
 ## Summary
 
+**Cluster**: MorpheusCluster (2-node + Qdevice)
+
 | Category | Count | vCPUs | RAM | Storage |
 |----------|-------|-------|-----|---------|
 | Ansible | 1 | 2 | 8GB | 20GB |
 | Kubernetes | 9 | 18 | 72GB | 180GB |
 | Services | 8 | 18 | 58GB | 190GB |
-| **Total** | **18** | **38** | **138GB** | **390GB** |
+| LXC Containers | 3 | 6 | 7GB | 36GB |
+| **Total** | **21** | **44** | **145GB** | **426GB** |
 
-*Last updated: December 21, 2025*
+*Last updated: December 30, 2025*
+
+> **Note**: node03 was removed from cluster on 2025-12-30. All workloads now run on node01/node02.
 
 ## VLAN 20 - Infrastructure (192.168.20.0/24)
 
@@ -55,20 +60,32 @@
 
 ### Application Services
 
-| Hostname | Node | IP | Cores | RAM | Disk | Purpose |
-|----------|------|----|-------|-----|------|---------|
-| linux-syslog-server01 | node02 | 192.168.40.5 | 8 | 8GB | 50GB | Centralized logging |
-| docker-vm-utilities01 | node02 | 192.168.40.10 | 2 | 8GB | 20GB | Docker utilities (n8n, Paperless, Glance, OpenSpeedTest) |
-| docker-vm-media01 | node02 | 192.168.40.11 | 2 | 8GB | 20GB | Arr media stack (12 services) |
-| traefik-vm01 | node02 | 192.168.40.20 | 2 | 8GB | 20GB | Reverse proxy |
-| authentik-vm01 | node02 | 192.168.40.21 | 2 | 8GB | 20GB | Identity/SSO |
-| immich-vm01 | node02 | 192.168.40.22 | 2 | 8GB | 20GB | Photo management |
-| gitlab-vm01 | node02 | 192.168.40.23 | 2 | 8GB | 20GB | DevOps platform |
-| gitlab-runner-vm01 | node02 | 192.168.40.24 | 2 | 2GB | 20GB | CI/CD job executor |
+| Hostname | Node | VMID | IP | Cores | RAM | Disk | Purpose |
+|----------|------|------|----|-------|-----|------|---------|
+| linux-syslog-server01 | node02 | 109 | 192.168.40.5 | 8 | 8GB | 50GB | Centralized logging |
+| docker-vm-media01 | node01 | 111 | 192.168.40.11 | 2 | 12GB | 100GB | Arr media stack, Mnemosyne Bot |
+| docker-vm-core-utilities01 | node01 | 107 | 192.168.40.13 | 4 | 12GB | 40GB | Grafana, Prometheus, Uptime Kuma, Speedtest, n8n, Jaeger |
+| traefik-vm01 | node02 | 102 | 192.168.40.20 | 2 | 8GB | 20GB | Reverse proxy |
+| authentik-vm01 | node02 | 100 | 192.168.40.21 | 2 | 8GB | 20GB | Identity/SSO |
+| immich-vm01 | node02 | 108 | 192.168.40.22 | 10 | 12GB | 20GB | Photo management |
+| gitlab-vm01 | node02 | 106 | 192.168.40.23 | 2 | 8GB | 20GB | DevOps platform |
+| gitlab-runner-vm01 | node02 | 121 | 192.168.40.24 | 2 | 2GB | 20GB | CI/CD job executor |
+
+> **Note**: docker-vm-utilities01 (192.168.40.10) was decommissioned. Services moved to LXC 200 and VM 107.
+
+## VLAN 90 - Management (192.168.90.0/24)
+
+| Hostname | Node | VMID | IP | Cores | RAM | Disk | Purpose |
+|----------|------|------|----|-------|-----|------|---------|
+| pihole | node01 | 202 | 192.168.90.53 | 2 | 1GB | 8GB | DNS server (Pi-hole v6 + Unbound) |
 
 ## LXC Containers
 
-Currently disabled. Will be enabled after VM infrastructure is stable.
+| Hostname | Node | VMID | IP | Cores | RAM | Disk | Purpose |
+|----------|------|------|----|-------|-----|------|---------|
+| docker-lxc-glance | node01 | 200 | 192.168.40.12 | 2 | 4GB | 20GB | Glance, Media Stats API, Reddit Manager, NBA Stats API |
+| docker-lxc-bots | node01 | 201 | 192.168.40.14 | 2 | 2GB | 8GB | Argus Bot, Chronos Bot |
+| pihole | node01 | 202 | 192.168.90.53 | 2 | 1GB | 8GB | Pi-hole v6 + Unbound DNS |
 
 **Reserved IP Range**: 192.168.20.100-199
 
@@ -80,7 +97,7 @@ Currently disabled. Will be enabled after VM infrastructure is stable.
 | Templates | tpl-ubuntu-shared-v1, tpl-ubuntuv24.04-v1 |
 | Storage | VMDisks (NFS on Synology) |
 | Network | vmbr0 (VLAN 20/40 tagged) |
-| DNS | 192.168.91.30 |
+| DNS | 192.168.90.53 (Pi-hole) |
 | SSH User | hermes-admin |
 | SSH Auth | Key-based only |
 | Management | Ansible from ansible-controller01 |

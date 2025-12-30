@@ -1,15 +1,33 @@
 # Infrastructure Context
 
 > Core infrastructure reference. This file contains stable information that rarely changes.
-> Last updated: 2025-12-27
+> Last updated: 2025-12-30
 
 ## Proxmox Cluster
 
+**Cluster**: MorpheusCluster (2-node + Qdevice)
+
 | Node | Local IP | Tailscale IP | Purpose |
 |------|----------|--------------|---------|
-| node01 | 192.168.20.20 | 100.89.33.5 | VM Host |
-| node02 | 192.168.20.21 | 100.96.195.27 | LXC/Service Host |
-| node03 | 192.168.20.22 | 100.76.81.39 | Kubernetes |
+| node01 | 192.168.20.20 | 100.89.33.5 | Primary VM Host (K8s, LXCs, Core Services) |
+| node02 | 192.168.20.21 | 100.96.195.27 | Service Host (Traefik, Authentik, GitLab, Immich) |
+
+**Note**: node03 (192.168.20.22) was removed from the cluster on 2025-12-30. All workloads migrated to node01/node02.
+
+### Wake-on-LAN
+
+| Node | MAC Address | Status |
+|------|-------------|--------|
+| node01 | `38:05:25:32:82:76` | Enabled & Persistent |
+| node02 | `84:47:09:4d:7a:ca` | Enabled & Persistent |
+
+**Wake nodes from MacBook**:
+```bash
+python3 scripts/wake-nodes.py          # Wake both
+python3 scripts/wake-nodes.py node01   # Wake node01 only
+```
+
+**BIOS**: Ensure WoL is enabled in each node's BIOS/UEFI (Power Management → Wake on LAN).
 
 ### Remote Access (Tailscale)
 
@@ -19,12 +37,10 @@ When outside the local network, use Tailscale IPs:
 # SSH via Tailscale
 ssh root@100.89.33.5         # node01
 ssh root@100.96.195.27       # node02
-ssh root@100.76.81.39        # node03
 
 # Proxmox Web UI via Tailscale
 # https://100.89.33.5:8006    (node01)
 # https://100.96.195.27:8006  (node02)
-# https://100.76.81.39:8006   (node03)
 ```
 
 **Other Tailscale Devices**:
@@ -39,6 +55,9 @@ ssh root@100.76.81.39        # node03
 |------|---------|---------|
 | VLAN 20 | 192.168.20.0/24 | Infrastructure (K8s, Ansible) |
 | VLAN 40 | 192.168.40.0/24 | Services (Docker, Apps) |
+| VLAN 90 | 192.168.90.0/24 | Management (Pi-hole DNS) |
+
+**DNS Server**: 192.168.90.53 (Pi-hole v6 + Unbound)
 
 ---
 
@@ -50,6 +69,7 @@ ssh root@100.76.81.39        # node03
 |------|-----|------|----------|
 | docker-lxc-glance | 192.168.40.12 | LXC 200 | Glance, Media Stats API, Reddit Manager, NBA Stats API |
 | docker-lxc-bots | 192.168.40.14 | LXC 201 | Argus Bot, Chronos Bot |
+| pihole | 192.168.90.53 | LXC 202 | Pi-hole v6 + Unbound DNS |
 | docker-vm-core-utilities | 192.168.40.13 | VM 107 | Grafana, Prometheus, Uptime Kuma, Speedtest, cAdvisor, SNMP Exporter, Life Progress API |
 | docker-media | 192.168.40.11 | VM | Jellyfin, *arr stack, downloads, Mnemosyne Bot |
 | traefik | 192.168.40.20 | VM | Reverse proxy |
@@ -61,7 +81,7 @@ ssh root@100.76.81.39        # node03
 |----------|-------|---------|
 | Kubernetes | 9 VMs | 3 controllers + 6 workers (v1.28.15) |
 | Services | 8 VMs | Traefik, Authentik, Immich, GitLab, GitLab Runner, Arr Stack |
-| LXC Containers | 2 LXC | Glance (200), Discord Bots (201) |
+| LXC Containers | 3 LXC | Glance (200), Discord Bots (201), Pi-hole (202) |
 | Ansible | 1 VM | Configuration management controller |
 
 ---
@@ -304,6 +324,17 @@ ssh hermes-admin@192.168.20.30
 **Omada Controller**: `192.168.0.103` (OC300)
 **Credentials**: `claude-reader` (viewer role)
 
+**Sidebar Widgets:**
+- Network Device Status (Prometheus query)
+- Pi-hole DNS Stats (via `/opt/pihole-stats-api/` on port 5055)
+- Latest Speedtest
+
+**Pi-hole Stats API:**
+- URL: `http://172.17.0.1:5055/api/pihole/stats`
+- Authenticates with Pi-hole v6 API (password: `glance-api-2024`)
+- Caches stats for 60 seconds
+- Displays: Queries, Blocked, Block Rate, Active Clients, Blocklist Domains, Cached
+
 **Files:**
 - Dashboard JSON: `temp-omada-full-dashboard.json`
 - Ansible Playbook: `ansible-playbooks/monitoring/deploy-omada-full-dashboard.yml`
@@ -324,6 +355,7 @@ Home | Compute | Storage | Network | Media | Web | Reddit
 | Media Stats API | `/opt/media-stats-api/media-stats-api.py` |
 | Reddit Manager | `/opt/reddit-manager/reddit-manager.py` |
 | NBA Stats API | `/opt/nba-stats-api/nba-stats-api.py` |
+| Pi-hole Stats API | `/opt/pihole-stats-api/pihole-stats-api.py` |
 
 **On LXC 201 (192.168.40.14)**:
 | Purpose | Path |

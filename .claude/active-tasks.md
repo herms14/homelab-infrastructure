@@ -13,6 +13,25 @@
 
 ## Recently Completed (Last 24 Hours)
 
+## Proxmox Cluster Node Removal (node03)
+**Completed**: 2025-12-30 ~12:00 UTC+8
+**Session**: MacBook via Tailscale
+**Changes**:
+- Removed node03 (192.168.20.22) from MorpheusCluster
+- Cluster now operates with 2 nodes + Qdevice
+- Fixed quorum (expected_votes = 3)
+- Cleaned up corosync.conf and /etc/pve/nodes/node03/
+- Updated all documentation (CLAUDE.md, PROXMOX.md, NETWORKING.md, INVENTORY.md, CHANGELOG.md, GitHub Wiki, Obsidian)
+
+**Final Cluster**:
+| Node | IP | Status |
+|------|-----|--------|
+| node01 | 192.168.20.20 | Online (Primary Host) |
+| node02 | 192.168.20.21 | Online (Service Host) |
+| Qdevice | - | Active |
+
+---
+
 ## Homelab Blog Deployment
 **Completed**: 2025-12-27 ~21:30 UTC+8
 **Session**: MacBook via Tailscale
@@ -430,6 +449,7 @@ Leave notes here for future sessions:
 - User preferences discovered
 -->
 
+- **CLUSTER**: Now 2-node (node01, node02) + Qdevice. node03 was removed 2025-12-30.
 - User prefers documentation updates to happen incrementally, not at the end
 - Multiple Claude instances may run in parallel - always check active-tasks first
 - Glance Home, Media, Compute, Storage, Network, and Sports pages are protected - don't modify without permission

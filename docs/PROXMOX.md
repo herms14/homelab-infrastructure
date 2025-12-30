@@ -4,11 +4,198 @@
 
 ## Cluster Nodes
 
+**Cluster**: MorpheusCluster (2-node + Qdevice)
+
 | Node | IP Address | Purpose | Workload Type |
 |------|------------|---------|---------------|
-| **node01** | 192.168.20.20 | VM Host | Virtual machines |
-| **node02** | 192.168.20.21 | LXC Host | LXC containers, Service VMs |
-| **node03** | 192.168.20.22 | General Purpose | Mixed workloads, Kubernetes |
+| **node01** | 192.168.20.20 | Primary VM Host | K8s cluster, LXCs, Core Services |
+| **node02** | 192.168.20.21 | Service Host | Traefik, Authentik, GitLab, Immich |
+
+> **Note**: node03 (192.168.20.22) was removed from the cluster on 2025-12-30. All workloads migrated to node01/node02.
+
+## Wake-on-LAN
+
+Both nodes have Wake-on-LAN enabled and configured to persist across reboots.
+
+| Node | MAC Address | Interface |
+|------|-------------|-----------|
+| node01 | `38:05:25:32:82:76` | nic0 |
+| node02 | `84:47:09:4d:7a:ca` | nic0 |
+
+### Wake Nodes Remotely
+
+```bash
+# From MacBook (Python, no dependencies)
+python3 scripts/wake-nodes.py          # Wake both nodes
+python3 scripts/wake-nodes.py node01   # Wake node01 only
+python3 scripts/wake-nodes.py node02   # Wake node02 only
+
+# Using wakeonlan tool
+brew install wakeonlan                 # macOS
+wakeonlan 38:05:25:32:82:76           # node01
+wakeonlan 84:47:09:4d:7a:ca           # node02
+```
+
+### Configuration Details
+
+WoL is enabled via `/etc/network/interfaces` on each node:
+```
+iface nic0 inet manual
+    post-up ethtool -s nic0 wol g
+```
+
+**BIOS Requirement**: Ensure WoL is enabled in each node's BIOS/UEFI:
+- Look for: Power Management → Wake on LAN → Enabled
+- May also be called "Resume on LAN" or "Power On by PCIe"
+
+## Adding a New Node to the Cluster
+
+When adding a new Proxmox node (e.g., node03), follow this checklist to ensure all systems are updated.
+
+### Checklist Overview
+
+| System | Auto-Updates? | Action Required |
+|--------|---------------|-----------------|
+| Proxmox Cluster | Manual | Join node to cluster |
+| Prometheus/PVE Exporter | Manual | Add target (if separate exporter) |
+| Grafana Dashboards | ✓ Auto | None - uses dynamic queries |
+| Glance Monitor Widget | Manual | Add node to `glance.yml` |
+| Wake-on-LAN | Manual | Enable WoL, add to script |
+| DNS (OPNsense) | Manual | Add DNS record |
+| Tailscale | Manual | Install and authenticate |
+| Documentation | Manual | Update all docs |
+
+### Step 1: Join Node to Proxmox Cluster
+
+On the **new node**:
+```bash
+# Get join command from existing node
+ssh root@192.168.20.20 "pvecm add <new_node_ip>"
+
+# Or from new node, join existing cluster
+pvecm add 192.168.20.20
+```
+
+Verify cluster status:
+```bash
+pvecm status
+# Should show all nodes with "Quorate: Yes"
+```
+
+### Step 2: Update Prometheus Monitoring
+
+If using a centralized PVE exporter, add the new node to `/opt/monitoring/prometheus/prometheus.yml`:
+
+```yaml
+- job_name: 'proxmox'
+  static_configs:
+    - targets:
+      - 192.168.20.20:9221  # node01
+      - 192.168.20.21:9221  # node02
+      - 192.168.20.22:9221  # node03 (NEW)
+```
+
+Restart Prometheus:
+```bash
+ssh hermes-admin@192.168.40.13 "cd /opt/monitoring && sudo docker compose restart prometheus"
+```
+
+**Note**: Grafana dashboards auto-discover new nodes via regex queries like `pve_up{id=~"node/.*"}`.
+
+### Step 3: Update Glance Dashboard
+
+Edit `/opt/glance/config/glance.yml` on the Glance LXC (192.168.40.12):
+
+```yaml
+    - type: monitor
+      title: Proxmox Cluster
+      cache: 1m
+      sites:
+      - title: Node 01
+        url: https://192.168.20.20:8006
+        icon: si:proxmox
+        allow-insecure: true
+      - title: Node 02
+        url: https://192.168.20.21:8006
+        icon: si:proxmox
+        allow-insecure: true
+      # Add new node:
+      - title: Node 03
+        url: https://192.168.20.22:8006
+        icon: si:proxmox
+        allow-insecure: true
+```
+
+Restart Glance:
+```bash
+ssh hermes-admin@192.168.40.12 "cd /opt/glance && sudo docker compose restart"
+```
+
+### Step 4: Enable Wake-on-LAN
+
+On the **new node**:
+```bash
+# Enable WoL
+ethtool -s nic0 wol g
+
+# Make persistent - add to /etc/network/interfaces under "iface nic0":
+#     post-up ethtool -s nic0 wol g
+
+# Get MAC address
+ip link show nic0 | grep ether
+```
+
+Update `scripts/wake-nodes.py` with the new MAC address.
+
+**BIOS**: Ensure WoL is enabled in BIOS (Power Management → Wake on LAN).
+
+### Step 5: Configure DNS
+
+Add DNS record in OPNsense (192.168.91.30):
+- **Services → Unbound DNS → Host Overrides**
+- Add: `node03.hrmsmrflrii.xyz` → `192.168.20.22`
+
+### Step 6: Install Tailscale (Optional)
+
+For remote access via Tailscale:
+```bash
+# Install Tailscale
+curl -fsSL https://tailscale.com/install.sh | sh
+
+# Authenticate
+tailscale up
+
+# Note the Tailscale IP for documentation
+tailscale ip -4
+```
+
+### Step 7: Update Documentation
+
+Update these files with the new node:
+- `.claude/context.md` - Add to cluster table
+- `CLAUDE.md` - Update Infrastructure Overview
+- `docs/PROXMOX.md` - Add to Cluster Nodes table
+- `docs/NETWORKING.md` - Add to IP allocations and Tailscale mapping
+- `docs/INVENTORY.md` - Update node count
+- `scripts/wake-nodes.py` - Add MAC address
+- Obsidian vault - Update `02 - Proxmox Cluster.md`
+- GitHub Wiki - Update `Proxmox-Cluster.md`
+
+### Step 8: Verify Everything
+
+```bash
+# Check cluster status
+ssh root@192.168.20.20 "pvecm status"
+
+# Check Prometheus targets
+curl -s http://192.168.40.13:9090/api/v1/targets | jq '.data.activeTargets[] | select(.job=="proxmox") | .labels.instance'
+
+# Check Grafana shows new node
+# Visit: https://grafana.hrmsmrflrii.xyz/d/proxmox-compute
+
+# Test WoL (after shutting down node)
+python3 scripts/wake-nodes.py node03
+```
 
 ## Proxmox Version
 
