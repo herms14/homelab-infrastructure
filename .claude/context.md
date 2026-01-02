@@ -69,7 +69,7 @@ ssh root@100.96.195.27       # node02
 | docker-lxc-bots | 192.168.40.14 | LXC 201 | (Deprecated - bots consolidated to Sentinel) |
 | pihole | 192.168.90.53 | LXC 202 | Pi-hole v6 + Unbound DNS |
 | docker-vm-core-utilities | 192.168.40.13 | VM 107 | Grafana, Prometheus, Uptime Kuma, Speedtest, cAdvisor, SNMP Exporter, Life Progress API, **Sentinel Bot** |
-| docker-media | 192.168.40.11 | VM | Jellyfin, *arr stack, downloads |
+| docker-media | 192.168.40.11 | VM | Jellyfin, *arr stack, MeTube, YouTube Stats API |
 | traefik | 192.168.40.20 | VM | Reverse proxy |
 | authentik | 192.168.40.21 | VM | SSO/Authentication |
 
@@ -152,6 +152,7 @@ ssh hermes-admin@192.168.20.30
 | Jellyfin | https://jellyfin.hrmsmrflrii.xyz |
 | Deluge | https://deluge.hrmsmrflrii.xyz |
 | SABnzbd | https://sabnzbd.hrmsmrflrii.xyz |
+| MeTube | https://metube.hrmsmrflrii.xyz |
 | n8n | https://n8n.hrmsmrflrii.xyz |
 | **Productivity** | |
 | BentoPDF | https://bentopdf.hrmsmrflrii.xyz |

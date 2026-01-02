@@ -10,19 +10,16 @@ All services deployed via Docker Compose, managed by Ansible automation from `an
 |----------|------|----------|
 | Reverse Proxy | traefik-vm01 | Traefik |
 | Identity | authentik-vm01 | Authentik |
-| Photos | immich-vm01, docker-vm-utilities01 | Immich, Lagident |
+| Photos | immich-vm01 | Immich |
 | DevOps | gitlab-vm01 | GitLab CE |
 | CI/CD | gitlab-runner-vm01 | GitLab Runner, Ansible |
-| Media | docker-vm-media01 | Arr Stack (12 services), Download Monitor |
-| Media Tools | docker-vm-utilities01 | Wizarr (invites), Tracearr (tracking) |
-| Dashboard | docker-vm-utilities01 | Glance, Life Progress API, Reddit Manager |
-| Utilities | docker-vm-utilities01 | n8n, Paperless, Speedtest Tracker |
-| Productivity | docker-vm-utilities01 | BentoPDF, Reactive Resume, Karakeep |
-| RSS & News | docker-vm-utilities01 | Feeds Fun (AI RSS Reader) |
-| Network Tools | docker-vm-utilities01 | Edgeshark (container network inspector) |
-| Update Management | docker-vm-utilities01 | Watchtower, Update Manager (Discord bot) |
-| Discord Bots | docker-vm-utilities01 | Argus SysAdmin Bot, Project Bot |
-| Container Metrics | Both Docker hosts | Docker Stats Exporter |
+| Media | docker-vm-media01 | Arr Stack (12 services) |
+| Dashboard | docker-lxc-glance (192.168.40.12) | Glance, Media Stats API, Reddit Manager, NBA Stats API, Pi-hole Stats API |
+| Monitoring | docker-vm-core-utilities01 (192.168.40.13) | Grafana, Prometheus, Uptime Kuma, Life Progress API |
+| Utilities | docker-vm-core-utilities01 (192.168.40.13) | n8n, Paperless, Speedtest Tracker, Jaeger |
+| Media Tools | docker-vm-core-utilities01 (192.168.40.13) | Wizarr, Tracearr, Karakeep |
+| Discord Bots | docker-vm-core-utilities01 (192.168.40.13) | Sentinel Bot (consolidated) |
+| Container Metrics | Both Docker hosts | cAdvisor, Docker Stats Exporter |
 
 ## Traefik Reverse Proxy
 
@@ -68,6 +65,72 @@ ssh hermes-admin@192.168.40.20 "cd /opt/traefik && sudo docker compose restart"
 
 ---
 
+## Plex Media Server
+
+**Host**: Synology NAS (192.168.20.31)
+**Status**: Deployed on Synology DSM
+
+| Port | URL | Purpose |
+|------|-----|---------|
+| 32400 | http://192.168.20.31:32400/web | Web interface |
+
+### Overview
+
+Plex Media Server runs natively on the Synology NAS via DSM Package Center, providing media streaming to TVs, mobile devices, and web browsers. It accesses the same media library as Jellyfin.
+
+### Features
+
+- Hardware transcoding (Intel QuickSync on NAS CPU)
+- Remote access via Plex.tv relay
+- Multi-user support with managed accounts
+- Mobile apps (iOS, Android)
+- Smart TV apps (Samsung, LG, Roku, Fire TV, Apple TV)
+- Offline sync for mobile devices (Plex Pass)
+
+### Media Libraries
+
+| Library | Path on NAS | Content |
+|---------|-------------|---------|
+| Movies | `/volume2/Proxmox-Media/Movies` | Radarr-managed movies |
+| TV Shows | `/volume2/Proxmox-Media/Series` | Sonarr-managed TV series |
+| Music | `/volume2/Proxmox-Media/Music` | Lidarr-managed music |
+
+### Initial Setup
+
+1. Open Plex web UI: http://192.168.20.31:32400/web
+2. Sign in with Plex account (or create one)
+3. Name your server (e.g., "Homelab Media Server")
+4. Add libraries:
+   - **Movies**: Browse to `/volume2/Proxmox-Media/Movies`
+   - **TV Shows**: Browse to `/volume2/Proxmox-Media/Series`
+   - **Music**: Browse to `/volume2/Proxmox-Media/Music`
+5. Enable remote access (Settings → Remote Access)
+
+### TV App Setup
+
+1. Install Plex app on your TV (Samsung, LG, Roku, Fire TV, Apple TV)
+2. Open the app and note the 4-character code
+3. Go to https://plex.tv/link on any device
+4. Enter the code to link your TV
+
+### Management
+
+Access DSM Package Center to manage Plex:
+1. Open https://192.168.20.31:5001
+2. Go to Package Center → Installed
+3. Find Plex Media Server → Open
+
+### Coexistence with Jellyfin
+
+Both Plex and Jellyfin point to the same media folders. Changes made by Radarr/Sonarr are visible to both servers after a library scan.
+
+| Server | Host | Purpose |
+|--------|------|---------|
+| **Plex** | Synology NAS (192.168.20.31) | Primary for TV apps, remote access |
+| **Jellyfin** | docker-vm-media01 (192.168.40.11) | Open-source alternative, Jellyseerr integration |
+
+---
+
 ## Arr Media Stack
 
 **Host**: docker-vm-media01 (192.168.40.11)
@@ -87,6 +150,7 @@ ssh hermes-admin@192.168.40.20 "cd /opt/traefik && sudo docker compose restart"
 | Autobrr | 7474 | Torrent automation |
 | Deluge | 8112 | BitTorrent download client |
 | SABnzbd | 8081 | Usenet download client |
+| MeTube | 8082 | YouTube video downloader |
 
 ### Storage
 
@@ -157,6 +221,24 @@ All arr-stack services use a unified `/data` mount inside containers pointing to
   - Temporary: `/data/Incomplete`
   - Completed: `/data/Completed`
   - Downloading: `/data/Downloading`
+
+**MeTube** (YouTube):
+- Web UI: http://192.168.40.11:8082 | https://metube.hrmsmrflrii.xyz
+- Paste YouTube URL to download videos
+- Supports playlists (auto-creates folders)
+- Downloads with English subtitles, merged to MP4
+- Download path: `/mnt/media/YouTube Videos`
+- Config: `/opt/metube/docker-compose.yml`
+
+**YouTube Stats API**:
+- API: http://192.168.40.11:5060
+- Provides stats for Glance dashboard
+- Endpoints:
+  - `/api/stats` - Total videos, size, download status
+  - `/api/recent` - Last 10 downloaded videos
+  - `/api/queue` - Current download queue
+  - `/api/playlists` - Videos grouped by playlist
+- Config: `/opt/youtube-stats-api/`
 
 ### Download Storage (NFS)
 
@@ -397,7 +479,7 @@ ssh hermes-admin@192.168.40.24 "sudo gitlab-runner status"
 ssh hermes-admin@192.168.40.24 "sudo gitlab-runner verify"
 
 # Test Ansible connectivity
-ssh hermes-admin@192.168.40.24 "sudo -u gitlab-runner ansible docker-vm-utilities01 -m ping"
+ssh hermes-admin@192.168.40.24 "sudo -u gitlab-runner ansible docker-vm-core-utilities01 -m ping"
 ```
 
 **Full Guide**: [CICD.md](./CICD.md)
@@ -406,12 +488,12 @@ ssh hermes-admin@192.168.40.24 "sudo -u gitlab-runner ansible docker-vm-utilitie
 
 ## n8n Workflow Automation
 
-**Host**: docker-vm-utilities01 (192.168.40.10)
+**Host**: docker-vm-core-utilities01 (192.168.40.13)
 **Status**: Deployed December 19, 2025
 
 | Port | URL | Purpose |
 |------|-----|---------|
-| 5678 | http://192.168.40.10:5678 | Workflow editor |
+| 5678 | http://192.168.40.13:5678 | Workflow editor |
 | 443 | https://n8n.hrmsmrflrii.xyz | Via Traefik |
 
 ### Features
@@ -436,7 +518,7 @@ ssh hermes-admin@192.168.40.24 "sudo -u gitlab-runner ansible docker-vm-utilitie
 
 ```bash
 # Update
-ssh hermes-admin@192.168.40.10 "cd /opt/n8n && sudo docker compose pull && sudo docker compose up -d"
+ssh hermes-admin@192.168.40.13 "cd /opt/n8n && sudo docker compose pull && sudo docker compose up -d"
 ```
 
 **Ansible**: `~/ansible/n8n/deploy-n8n.yml`
@@ -445,12 +527,12 @@ ssh hermes-admin@192.168.40.10 "cd /opt/n8n && sudo docker compose pull && sudo 
 
 ## Speedtest Tracker
 
-**Host**: docker-vm-utilities01 (192.168.40.10)
+**Host**: docker-vm-core-utilities01 (192.168.40.13)
 **Status**: Deployed December 22, 2025
 
 | Port | URL | Purpose |
 |------|-----|---------|
-| 3000 | http://192.168.40.10:3000 | Web interface |
+| 3000 | http://192.168.40.13:3000 | Web interface |
 | 443 | https://speedtest.hrmsmrflrii.xyz | Via Traefik |
 
 ### Purpose
@@ -485,13 +567,13 @@ Tests run automatically every 6 hours (configurable via `SPEEDTEST_SCHEDULE` cro
 
 ```bash
 # View logs
-ssh hermes-admin@192.168.40.10 "docker logs speedtest-tracker"
+ssh hermes-admin@192.168.40.13 "docker logs speedtest-tracker"
 
 # Trigger manual test
-ssh hermes-admin@192.168.40.10 "docker exec speedtest-tracker php artisan app:ookla-speedtest"
+ssh hermes-admin@192.168.40.13 "docker exec speedtest-tracker php artisan app:ookla-speedtest"
 
 # Update
-ssh hermes-admin@192.168.40.10 "cd /opt/speedtest-tracker && sudo docker compose pull && sudo docker compose up -d"
+ssh hermes-admin@192.168.40.13 "cd /opt/speedtest-tracker && sudo docker compose pull && sudo docker compose up -d"
 ```
 
 **GitHub**: https://github.com/alexjustesen/speedtest-tracker
@@ -500,13 +582,13 @@ ssh hermes-admin@192.168.40.10 "cd /opt/speedtest-tracker && sudo docker compose
 
 ## Glance Dashboard
 
-**Host**: docker-vm-utilities01 (192.168.40.10)
+**Host**: docker-lxc-glance (192.168.40.12)
 **Status**: Deployed December 2025
 
 | Port | URL | Purpose |
 |------|-----|---------|
-| 8080 | http://192.168.40.10:8080 | Dashboard |
-| 5054 | http://192.168.40.10:5054 | Media Stats API |
+| 8080 | http://192.168.40.12:8080 | Dashboard |
+| 5054 | http://192.168.40.12:5054 | Media Stats API |
 | 443 | https://glance.hrmsmrflrii.xyz | Via Traefik |
 
 ### Features
@@ -567,13 +649,13 @@ See [GLANCE.md](./GLANCE.md) for detailed implementation guide.
 
 ```bash
 # View logs
-ssh hermes-admin@192.168.40.10 "cd /opt/glance && sudo docker compose logs -f"
+ssh hermes-admin@192.168.40.12 "cd /opt/glance && sudo docker compose logs -f"
 
 # Restart
-ssh hermes-admin@192.168.40.10 "cd /opt/glance && sudo docker compose restart"
+ssh hermes-admin@192.168.40.12 "docker restart glance"
 
 # Update
-ssh hermes-admin@192.168.40.10 "cd /opt/glance && sudo docker compose pull && sudo docker compose up -d"
+ssh hermes-admin@192.168.40.12 "cd /opt/glance && sudo docker compose pull && sudo docker compose up -d"
 ```
 
 **Ansible**: `~/ansible/glance/deploy-glance-dashboard.yml`
@@ -582,12 +664,12 @@ ssh hermes-admin@192.168.40.10 "cd /opt/glance && sudo docker compose pull && su
 
 ## Reddit Manager
 
-**Host**: docker-vm-utilities01 (192.168.40.10)
+**Host**: docker-lxc-glance (192.168.40.12)
 **Status**: Deployed December 22, 2025
 
 | Port | URL | Purpose |
 |------|-----|---------|
-| 5053 | http://192.168.40.10:5053 | Management UI & API |
+| 5053 | http://192.168.40.12:5053 | Management UI & API |
 
 ### Purpose
 
@@ -632,7 +714,7 @@ Uses `custom-api` widget with Go template:
 - type: custom-api
   title: Reddit Feed
   cache: 5m
-  url: http://192.168.40.10:5053/api/feed
+  url: http://192.168.40.12:5053/api/feed
   template: |
     {{ range .JSON.Array "groups" }}
     <div>r/{{ .String "name" }}</div>
@@ -659,19 +741,19 @@ homelab, selfhosted, linux, devops, kubernetes, docker
 
 ```bash
 # View logs
-ssh hermes-admin@192.168.40.10 "docker logs reddit-manager --tail 50"
+ssh hermes-admin@192.168.40.12 "docker logs reddit-manager --tail 50"
 
 # Test API
-curl http://192.168.40.10:5053/api/feed
+curl http://192.168.40.12:5053/api/feed
 
 # Add subreddit
-curl -X POST http://192.168.40.10:5053/api/subreddits -H "Content-Type: application/json" -d '{"name": "programming"}'
+curl -X POST http://192.168.40.12:5053/api/subreddits -H "Content-Type: application/json" -d '{"name": "programming"}'
 
 # Change sort to "new"
-curl -X POST http://192.168.40.10:5053/api/settings -H "Content-Type: application/json" -d '{"sort": "new"}'
+curl -X POST http://192.168.40.12:5053/api/settings -H "Content-Type: application/json" -d '{"sort": "new"}'
 
 # Rebuild after code changes
-ssh hermes-admin@192.168.40.10 "cd /opt/reddit-manager && sudo docker compose build --no-cache && sudo docker compose up -d"
+ssh hermes-admin@192.168.40.12 "cd /opt/reddit-manager && sudo docker compose build --no-cache && sudo docker compose up -d"
 ```
 
 ### Troubleshooting
@@ -679,7 +761,7 @@ ssh hermes-admin@192.168.40.10 "cd /opt/reddit-manager && sudo docker compose bu
 **Glance shows timeout error**:
 - Reddit Manager fetches all subreddits in parallel to stay under Glance's timeout
 - Check if Reddit API is accessible from the container
-- Verify with: `curl http://192.168.40.10:5053/api/feed`
+- Verify with: `curl http://192.168.40.12:5053/api/feed`
 
 **Template errors in Glance**:
 - Glance uses Go templates with specific syntax
@@ -692,13 +774,13 @@ ssh hermes-admin@192.168.40.10 "cd /opt/reddit-manager && sudo docker compose bu
 
 ## Life Progress API
 
-**Host**: docker-vm-utilities01 (192.168.40.10)
+**Host**: docker-vm-core-utilities01 (192.168.40.13)
 **Status**: Deployed December 22, 2025
 
 | Port | URL | Purpose |
 |------|-----|---------|
-| 5051 | http://192.168.40.10:5051/progress | JSON API |
-| 5051 | http://192.168.40.10:5051/health | Health check |
+| 5051 | http://192.168.40.13:5051/progress | JSON API |
+| 5051 | http://192.168.40.13:5051/health | Health check |
 
 ### Purpose
 
@@ -734,7 +816,7 @@ Uses `custom-api` widget with gjson templates:
 
 ```yaml
 - type: custom-api
-  url: http://192.168.40.10:5051/progress
+  url: http://192.168.40.13:5051/progress
   template: |
     {{ .JSON.Float "year" }}
     {{ .JSON.String "quote" }}
@@ -751,13 +833,13 @@ Uses `custom-api` widget with gjson templates:
 
 ```bash
 # View logs
-ssh hermes-admin@192.168.40.10 "docker logs life-progress"
+ssh hermes-admin@192.168.40.13:/opt/life-progress"
 
 # Test API
-curl http://192.168.40.10:5051/progress
+curl http://192.168.40.13:5051/progress
 
 # Rebuild (after config changes)
-ssh hermes-admin@192.168.40.10 "cd /opt/life-progress && sudo docker compose up -d --build"
+ssh hermes-admin@192.168.40.13:/opt/life-progress && sudo docker compose up -d --build"
 ```
 
 **Ansible**: `~/ansible/glance/deploy-life-progress-api.yml`
@@ -767,7 +849,7 @@ ssh hermes-admin@192.168.40.10 "cd /opt/life-progress && sudo docker compose up 
 
 ## Monitoring Stack
 
-**Host**: docker-vm-utilities01 (192.168.40.10)
+**Host**: docker-vm-core-utilities01 (192.168.40.13)
 **Status**: Deployed December 20, 2025
 
 | Service | Port | URL | Purpose |
@@ -799,10 +881,10 @@ ssh hermes-admin@192.168.40.10 "cd /opt/life-progress && sudo docker compose up 
 | Prometheus | localhost:9090 | Self-monitoring |
 | Proxmox VE | via PVE Exporter | Node metrics |
 | Traefik | 192.168.40.20:8082 | Request metrics |
-| OTEL Collector | 192.168.40.10:8888 | Collector metrics |
-| OTEL Pipeline | 192.168.40.10:8889 | Pipeline metrics |
-| Jaeger | 192.168.40.10:14269 | Tracing metrics |
-| Demo App | 192.168.40.10:8080 | Application metrics |
+| OTEL Collector | 192.168.40.13:8888 | Collector metrics |
+| OTEL Pipeline | 192.168.40.13:8889 | Pipeline metrics |
+| Jaeger | 192.168.40.13:14269 | Tracing metrics |
+| Demo App | 192.168.40.12:8080 | Application metrics |
 
 ### Storage
 
@@ -816,13 +898,13 @@ ssh hermes-admin@192.168.40.10 "cd /opt/life-progress && sudo docker compose up 
 
 ```bash
 # View logs
-ssh hermes-admin@192.168.40.10 "cd /opt/monitoring && sudo docker compose logs -f"
+ssh hermes-admin@192.168.40.13 "cd /opt/monitoring && sudo docker compose logs -f"
 
 # Restart all
-ssh hermes-admin@192.168.40.10 "cd /opt/monitoring && sudo docker compose restart"
+ssh hermes-admin@192.168.40.13 "cd /opt/monitoring && sudo docker compose restart"
 
 # Update
-ssh hermes-admin@192.168.40.10 "cd /opt/monitoring && sudo docker compose pull && sudo docker compose up -d"
+ssh hermes-admin@192.168.40.13 "cd /opt/monitoring && sudo docker compose pull && sudo docker compose up -d"
 ```
 
 **Ansible**: `~/ansible-playbooks/monitoring/deploy-monitoring-stack.yml`
@@ -831,7 +913,7 @@ ssh hermes-admin@192.168.40.10 "cd /opt/monitoring && sudo docker compose pull &
 
 ## Observability Stack
 
-**Host**: docker-vm-utilities01 (192.168.40.10)
+**Host**: docker-vm-core-utilities01 (192.168.40.13)
 **Status**: Deployed December 21, 2025
 
 | Service | Port | URL | Purpose |
@@ -876,13 +958,13 @@ Demo App ↗
 
 ```bash
 # View logs
-ssh hermes-admin@192.168.40.10 "cd /opt/observability && sudo docker compose logs -f"
+ssh hermes-admin@192.168.40.13 "cd /opt/observability && sudo docker compose logs -f"
 
 # Restart all
-ssh hermes-admin@192.168.40.10 "cd /opt/observability && sudo docker compose restart"
+ssh hermes-admin@192.168.40.13 "cd /opt/observability && sudo docker compose restart"
 
 # Update
-ssh hermes-admin@192.168.40.10 "cd /opt/observability && sudo docker compose pull && sudo docker compose up -d"
+ssh hermes-admin@192.168.40.13 "cd /opt/observability && sudo docker compose pull && sudo docker compose up -d"
 ```
 
 **Ansible**: `~/ansible-playbooks/monitoring/deploy-observability-stack.yml`
@@ -892,7 +974,7 @@ ssh hermes-admin@192.168.40.10 "cd /opt/observability && sudo docker compose pul
 
 ## Watchtower & Update Manager
 
-**Host**: docker-vm-utilities01 (192.168.40.10) + All Docker hosts
+**Host**: docker-vm-core-utilities01 (192.168.40.13) + All Docker hosts
 **Status**: Deployed December 2025
 
 | Service | Port | Purpose |
@@ -971,16 +1053,16 @@ radarr          |  ✓  |  ✓  |  ✓  |   ✓  |  ✓  |   -  |   ✓
 
 ```bash
 # Check Update Manager status
-ssh hermes-admin@192.168.40.10 "docker ps --filter name=update-manager"
+ssh hermes-admin@192.168.40.13 "docker ps --filter name=update-manager"
 
 # View Update Manager logs
-ssh hermes-admin@192.168.40.10 "docker logs update-manager --tail 50"
+ssh hermes-admin@192.168.40.13 "docker logs update-manager --tail 50"
 
 # Trigger manual update check (media host)
 ssh hermes-admin@192.168.40.11 "docker exec watchtower /watchtower --run-once"
 
 # Rebuild after code changes
-ssh hermes-admin@192.168.40.10 "cd /opt/update-manager && sudo docker compose build --no-cache && sudo docker compose up -d"
+ssh hermes-admin@192.168.40.13 "cd /opt/update-manager && sudo docker compose build --no-cache && sudo docker compose up -d"
 ```
 
 **Full Guide**: [WATCHTOWER.md](./WATCHTOWER.md)
@@ -989,12 +1071,12 @@ ssh hermes-admin@192.168.40.10 "cd /opt/update-manager && sudo docker compose bu
 
 ## BentoPDF
 
-**Host**: docker-vm-utilities01 (192.168.40.10)
+**Host**: docker-vm-core-utilities01 (192.168.40.13)
 **Status**: Deployed December 24, 2025
 
 | Port | URL | Purpose |
 |------|-----|---------|
-| 5055 | http://192.168.40.10:5055 | Web interface |
+| 5055 | http://192.168.40.12:5055 | Web interface |
 | 443 | https://bentopdf.hrmsmrflrii.xyz | Via Traefik |
 
 ### Purpose
@@ -1017,10 +1099,10 @@ Privacy-first PDF toolkit for document manipulation without uploading to cloud s
 
 ```bash
 # View logs
-ssh hermes-admin@192.168.40.10 "docker logs bentopdf"
+ssh hermes-admin@192.168.40.13 "docker logs bentopdf"
 
 # Update
-ssh hermes-admin@192.168.40.10 "cd /opt/bentopdf && sudo docker compose pull && sudo docker compose up -d"
+ssh hermes-admin@192.168.40.13 "cd /opt/bentopdf && sudo docker compose pull && sudo docker compose up -d"
 ```
 
 **Docker Image**: `bentopdf/bentopdf:latest`
@@ -1029,12 +1111,12 @@ ssh hermes-admin@192.168.40.10 "cd /opt/bentopdf && sudo docker compose pull && 
 
 ## Edgeshark
 
-**Host**: docker-vm-utilities01 (192.168.40.10)
+**Host**: docker-vm-core-utilities01 (192.168.40.13)
 **Status**: Deployed December 24, 2025
 
 | Port | URL | Purpose |
 |------|-----|---------|
-| 5056 | http://192.168.40.10:5056 | Web interface |
+| 5056 | http://192.168.40.13:5056 | Web interface |
 | 443 | https://edgeshark.hrmsmrflrii.xyz | Via Traefik |
 
 ### Purpose
@@ -1064,10 +1146,10 @@ Docker container network inspector by Siemens. Visualizes container network conn
 
 ```bash
 # View logs
-ssh hermes-admin@192.168.40.10 "docker logs edgeshark && docker logs ghostwire"
+ssh hermes-admin@192.168.40.13 "docker logs edgeshark && docker logs ghostwire"
 
 # Update
-ssh hermes-admin@192.168.40.10 "cd /opt/edgeshark && sudo docker compose pull && sudo docker compose up -d"
+ssh hermes-admin@192.168.40.13 "cd /opt/edgeshark && sudo docker compose pull && sudo docker compose up -d"
 ```
 
 **GitHub**: https://github.com/siemens/edgeshark
@@ -1076,12 +1158,12 @@ ssh hermes-admin@192.168.40.10 "cd /opt/edgeshark && sudo docker compose pull &&
 
 ## Reactive Resume
 
-**Host**: docker-vm-utilities01 (192.168.40.10)
+**Host**: docker-vm-core-utilities01 (192.168.40.13)
 **Status**: Deployed December 24, 2025
 
 | Port | URL | Purpose |
 |------|-----|---------|
-| 5057 | http://192.168.40.10:5057 | Web interface |
+| 5057 | http://192.168.40.13:5057 | Web interface |
 | 443 | https://resume.hrmsmrflrii.xyz | Via Traefik |
 
 ### Purpose
@@ -1116,88 +1198,155 @@ Self-hosted resume builder with modern templates and real-time preview. Create p
 
 ```bash
 # View logs
-ssh hermes-admin@192.168.40.10 "docker logs reactive-resume"
+ssh hermes-admin@192.168.40.13 "docker logs reactive-resume"
 
 # Update
-ssh hermes-admin@192.168.40.10 "cd /opt/reactive-resume && sudo docker compose pull && sudo docker compose up -d"
+ssh hermes-admin@192.168.40.13 "cd /opt/reactive-resume && sudo docker compose pull && sudo docker compose up -d"
 ```
 
 **GitHub**: https://github.com/AmruthPillai/Reactive-Resume (30k+ stars)
 
 ---
 
-## Argus SysAdmin Discord Bot
+## Sentinel Discord Bot
 
-**Host**: docker-vm-utilities01 (192.168.40.10)
-**Status**: Deployed December 22, 2025
+**Host**: docker-vm-core-utilities01 (192.168.40.13)
+**Status**: Deployed January 2026
 
 ### Purpose
 
-Discord bot for comprehensive homelab management via slash commands. Named "Argus" after the all-seeing giant of Greek mythology.
-
-### Features
-
-- Proxmox cluster management (VMs, nodes)
-- Docker container operations
-- System monitoring and health checks
-- Media request integration (Radarr/Sonarr)
-- Infrastructure deployment via Ansible
-
-### Commands
-
-| Command | Description |
-|---------|-------------|
-| `/status` | Get Proxmox cluster status |
-| `/shutdown <node>` | Shutdown Proxmox node |
-| `/reboot <target>` | Reboot VM or node |
-| `/start <vm>` | Start a VM |
-| `/stop <vm>` | Stop a VM |
-| `/vms` | List all VMs with status |
-| `/uptime` | Show cluster uptime |
-| `/restart <container>` | Restart Docker container |
-| `/logs <container>` | View container logs |
-| `/containers <host>` | List containers on host |
-| `/deploy <playbook>` | Run Ansible playbook |
-| `/health` | System health check |
-| `/disk` | Show disk usage |
-| `/top` | Top resource consumers |
-| `/bandwidth` | Network bandwidth stats |
-| `/request <type> <title>` | Request movie/show |
-| `/media` | Media library stats |
-| `/help` | Show all commands |
+Unified Discord bot consolidating 4 previous bots (Argus, Chronos, Mnemosyne, Athena) into a single modular cog-based architecture. Provides homelab management, container updates, media monitoring, GitLab integration, and Claude task queue management.
 
 ### Architecture
 
-Uses SSH for all Proxmox operations (no API token required):
-- Connects to nodes as `root` via SSH key
-- Connects to VMs as `hermes-admin`
-- All operations executed via paramiko SSH client
+```
+Discord ←→ Sentinel Bot (discord.py 2.3+)
+              ├── Cogs (7 modules)
+              │   ├── homelab.py   → Proxmox cluster management
+              │   ├── updates.py   → Container updates + reaction approvals
+              │   ├── media.py     → Download monitoring + Jellyseerr
+              │   ├── gitlab.py    → GitLab issue management
+              │   ├── tasks.py     → Claude task queue
+              │   ├── onboarding.py → Service verification
+              │   └── scheduler.py  → Daily reports
+              ├── Core
+              │   ├── database.py  → SQLite (tasks, downloads)
+              │   └── channel_router.py → Notification routing
+              └── Webhooks (Quart on port 5050)
+                  ├── /webhook/watchtower
+                  ├── /webhook/jellyseerr
+                  └── /api/tasks
+```
 
-### Discord Channel
+### Cog Modules & Channels
 
-- **Channel**: `#argus-assistant` (1452673126314803338)
-- All commands and responses restricted to this channel
+| Cog | Channel | Purpose |
+|-----|---------|---------|
+| **Homelab** | #homelab-infrastructure | Proxmox status, VM/node management |
+| **Updates** | #container-updates | Container updates with reaction approvals |
+| **Media** | #media-downloads | Download progress, library stats |
+| **GitLab** | #project-management | Issue creation and tracking |
+| **Tasks** | #claude-tasks | Claude task queue management |
+| **Onboarding** | #new-service-onboarding-workflow | Service verification checks |
+| **Scheduler** | Various | Daily 7pm update reports, 9am onboarding |
+
+### Commands
+
+**Homelab** (`#homelab-infrastructure`):
+| Command | Description |
+|---------|-------------|
+| `/homelab status` | Cluster overview with progress bars |
+| `/homelab uptime` | Node/VM/LXC uptime |
+| `/node <name> restart` | Restart Proxmox node |
+| `/vm list` | List VMs with status |
+| `/vm <name> restart` | Restart a VM |
+| `/lxc list` | List LXC containers |
+
+**Updates** (`#container-updates`):
+| Command | Description |
+|---------|-------------|
+| `/check` | Scan containers for updates |
+| `/update <container>` | Update specific container |
+| `/updateall` | Update all pending |
+| `/containers` | List monitored containers |
+
+**Media** (`#media-downloads`):
+| Command | Description |
+|---------|-------------|
+| `/downloads` | Current download queue |
+| `/download <title>` | Search and add via Jellyseerr |
+| `/library movies` | Movie library stats |
+| `/library shows` | TV library stats |
+| `/recent` | Recently added media |
+
+**GitLab** (`#project-management`):
+| Command | Description |
+|---------|-------------|
+| `/todo <description>` | Create GitLab issue |
+| `/issues` | List open issues |
+| `/close <id>` | Close an issue |
+| `/quick <tasks>` | Bulk create (semicolon-separated) |
+
+**Tasks** (`#claude-tasks`):
+| Command | Description |
+|---------|-------------|
+| `/task <description>` | Submit new task |
+| `/queue` | View pending tasks |
+| `/status` | Claude instance status |
+| `/done` | Completed tasks |
+| `/cancel <id>` | Cancel pending task |
+
+**Onboarding** (`#new-service-onboarding-workflow`):
+| Command | Description |
+|---------|-------------|
+| `/onboard <service>` | Check service configuration |
+| `/onboard-all` | Check all services |
+| `/onboard-services` | List discovered services |
+
+### Webhook Endpoints (Port 5050)
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/health` | GET | Health check |
+| `/webhook/watchtower` | POST | Container update notifications |
+| `/webhook/jellyseerr` | POST | Media request notifications |
+| `/api/tasks` | GET/POST | Claude task queue |
+| `/api/tasks/<id>/claim` | POST | Claim task |
+| `/api/tasks/<id>/complete` | POST | Complete task |
+
+### Update Approval Flow
+
+1. Watchtower detects updates → posts to #container-updates
+2. User reacts with :thumbsup: to approve ALL updates
+3. Number emojis (1️⃣, 2️⃣) for individual updates
+4. Bot executes approved updates via SSH
+5. Completion notification with status
 
 ### Storage
 
-- Bot Code: `/opt/sysadmin-bot/sysadmin-bot.py`
-- Docker Compose: `/opt/sysadmin-bot/docker-compose.yml`
-- SSH Keys: `/opt/sysadmin-bot/ssh/` (mounted read-only)
+- Bot Code: `/opt/sentinel-bot/`
+- Database: `/opt/sentinel-bot/data/sentinel.db`
+- Docker Compose: `/opt/sentinel-bot/docker-compose.yml`
+- SSH Keys: `/opt/sentinel-bot/ssh/` (mounted read-only)
 
 ### Management
 
 ```bash
 # View bot logs
-ssh hermes-admin@192.168.40.10 "docker logs sysadmin-bot --tail 50"
+ssh hermes-admin@192.168.40.13 "docker logs sentinel-bot --tail 50"
 
 # Restart bot
-ssh hermes-admin@192.168.40.10 "cd /opt/sysadmin-bot && sudo docker compose restart"
+ssh hermes-admin@192.168.40.13 "cd /opt/sentinel-bot && sudo docker compose restart"
 
 # Rebuild after code changes
-ssh hermes-admin@192.168.40.10 "cd /opt/sysadmin-bot && sudo docker compose build --no-cache && sudo docker compose up -d"
+ssh hermes-admin@192.168.40.13 "cd /opt/sentinel-bot && sudo docker compose build --no-cache && sudo docker compose up -d"
+
+# Check webhook health
+curl http://192.168.40.13:5050/health
 ```
 
-**Ansible**: `~/ansible-playbooks/sysadmin-bot/deploy-sysadmin-bot.yml`
+**Ansible**: `ansible-playbooks/sentinel-bot/deploy-sentinel-bot.yml`
+**Full Guide**: [DISCORD_BOTS.md](./DISCORD_BOTS.md)
 
 ---
 
@@ -1257,7 +1406,7 @@ ssh hermes-admin@192.168.40.11 "cd /opt/download-monitor && sudo docker compose 
 
 ## Docker Stats Exporter
 
-**Hosts**: docker-vm-utilities01 (192.168.40.10), docker-vm-media01 (192.168.40.11)
+**Hosts**: docker-vm-core-utilities01 (192.168.40.13), docker-vm-media01 (192.168.40.11)
 **Status**: Deployed December 22, 2025
 
 | Port | Purpose |
@@ -1287,7 +1436,7 @@ Exports Docker container metrics to Prometheus for monitoring in Grafana dashboa
 - job_name: 'docker-stats'
   static_configs:
     - targets:
-      - 192.168.40.10:9417
+      - 192.168.40.13:9417
       - 192.168.40.11:9417
 ```
 
@@ -1300,10 +1449,10 @@ Exports Docker container metrics to Prometheus for monitoring in Grafana dashboa
 
 ```bash
 # View metrics
-curl http://192.168.40.10:9417/metrics
+curl http://192.168.40.13:9417/metrics
 
 # Check status
-ssh hermes-admin@192.168.40.10 "docker ps --filter name=docker-stats-exporter"
+ssh hermes-admin@192.168.40.13 "docker ps --filter name=docker-stats-exporter"
 ```
 
 ### Grafana Dashboard
@@ -1321,7 +1470,7 @@ Container metrics displayed in Grafana at:
 
 ### Lagident - Photo Gallery
 
-**Host**: docker-vm-utilities01 (192.168.40.10)
+**Host**: docker-vm-core-utilities01 (192.168.40.13)
 **Port**: 9933
 **URL**: https://lagident.hrmsmrflrii.xyz
 **Status**: Deployed December 25, 2025
@@ -1343,10 +1492,10 @@ Simple, elegant photo gallery with SQLite backend.
 
 ```bash
 # View logs
-ssh hermes-admin@192.168.40.10 "docker logs lagident"
+ssh hermes-admin@192.168.40.13 "docker logs lagident"
 
 # Update
-ssh hermes-admin@192.168.40.10 "cd /opt/lagident && sudo docker compose pull && sudo docker compose up -d"
+ssh hermes-admin@192.168.40.13 "cd /opt/lagident && sudo docker compose pull && sudo docker compose up -d"
 ```
 
 **Ansible**: `ansible-playbooks/services/deploy-lagident.yml`
@@ -1355,7 +1504,7 @@ ssh hermes-admin@192.168.40.10 "cd /opt/lagident && sudo docker compose pull && 
 
 ### Karakeep - Bookmark Manager
 
-**Host**: docker-vm-utilities01 (192.168.40.10)
+**Host**: docker-vm-core-utilities01 (192.168.40.13)
 **Port**: 3005
 **URL**: https://karakeep.hrmsmrflrii.xyz
 **Status**: Deployed December 25, 2025
@@ -1383,10 +1532,10 @@ AI-powered bookmark and content manager (formerly Hoarder).
 
 ```bash
 # View logs
-ssh hermes-admin@192.168.40.10 "docker logs karakeep"
+ssh hermes-admin@192.168.40.13 "docker logs karakeep"
 
 # Update
-ssh hermes-admin@192.168.40.10 "cd /opt/karakeep && sudo docker compose pull && sudo docker compose up -d"
+ssh hermes-admin@192.168.40.13 "cd /opt/karakeep && sudo docker compose pull && sudo docker compose up -d"
 ```
 
 **Ansible**: `ansible-playbooks/services/deploy-karakeep.yml`
@@ -1395,7 +1544,7 @@ ssh hermes-admin@192.168.40.10 "cd /opt/karakeep && sudo docker compose pull && 
 
 ### Wizarr - Jellyfin Invitation System
 
-**Host**: docker-vm-utilities01 (192.168.40.10)
+**Host**: docker-vm-core-utilities01 (192.168.40.13)
 **Port**: 5690
 **URL**: https://wizarr.hrmsmrflrii.xyz
 **Status**: Deployed December 25, 2025
@@ -1423,10 +1572,10 @@ User invitation and onboarding system for Jellyfin.
 
 ```bash
 # View logs
-ssh hermes-admin@192.168.40.10 "docker logs wizarr"
+ssh hermes-admin@192.168.40.13 "docker logs wizarr"
 
 # Update
-ssh hermes-admin@192.168.40.10 "cd /opt/wizarr && sudo docker compose pull && sudo docker compose up -d"
+ssh hermes-admin@192.168.40.13 "cd /opt/wizarr && sudo docker compose pull && sudo docker compose up -d"
 ```
 
 **Ansible**: `ansible-playbooks/services/deploy-wizarr.yml`
@@ -1435,7 +1584,7 @@ ssh hermes-admin@192.168.40.10 "cd /opt/wizarr && sudo docker compose pull && su
 
 ### Feeds Fun - AI RSS Reader
 
-**Host**: docker-vm-utilities01 (192.168.40.10)
+**Host**: docker-vm-core-utilities01 (192.168.40.13)
 **Port**: 8001
 **URL**: https://feeds.hrmsmrflrii.xyz
 **Status**: Not Deployed (no public Docker image)
@@ -1462,7 +1611,7 @@ Self-hosted RSS reader with AI-powered tagging.
 
 ### Tracearr - Media Tracking
 
-**Host**: docker-vm-utilities01 (192.168.40.10)
+**Host**: docker-vm-core-utilities01 (192.168.40.13)
 **Port**: 3002
 **URL**: https://tracearr.hrmsmrflrii.xyz
 **Status**: Deployed December 25, 2025
@@ -1489,10 +1638,10 @@ Streaming access manager for Plex, Jellyfin, and Emby servers. Tracks who's usin
 
 ```bash
 # View logs
-ssh hermes-admin@192.168.40.10 "docker logs tracearr"
+ssh hermes-admin@192.168.40.13 "docker logs tracearr"
 
 # Update
-ssh hermes-admin@192.168.40.10 "cd /opt/tracearr && sudo docker compose pull && sudo docker compose up -d"
+ssh hermes-admin@192.168.40.13 "cd /opt/tracearr && sudo docker compose pull && sudo docker compose up -d"
 ```
 
 **Ansible**: `ansible-playbooks/services/deploy-tracearr.yml`
