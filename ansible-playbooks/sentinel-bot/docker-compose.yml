@@ -1,0 +1,91 @@
+services:
+  sentinel-bot:
+    build: .
+    image: sentinel-bot:latest
+    container_name: sentinel-bot
+    restart: unless-stopped
+
+    # Environment variables
+    environment:
+      # Discord
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - DISCORD_GUILD_ID=${DISCORD_GUILD_ID}
+
+      # Channels
+      - CHANNEL_CONTAINER_UPDATES=${CHANNEL_CONTAINER_UPDATES:-container-updates}
+      - CHANNEL_MEDIA_DOWNLOADS=${CHANNEL_MEDIA_DOWNLOADS:-media-downloads}
+      - CHANNEL_ONBOARDING=${CHANNEL_ONBOARDING:-new-service-onboarding-workflow}
+      - CHANNEL_ARGUS=${CHANNEL_ARGUS:-argus-assistant}
+      - CHANNEL_PROJECT_MANAGEMENT=${CHANNEL_PROJECT_MANAGEMENT:-project-management}
+      - CHANNEL_CLAUDE_TASKS=${CHANNEL_CLAUDE_TASKS:-claude-tasks}
+      - CHANNEL_ANNOUNCEMENTS=${CHANNEL_ANNOUNCEMENTS:-announcements}
+
+      # API Keys
+      - RADARR_URL=${RADARR_URL:-http://192.168.40.11:7878}
+      - RADARR_API_KEY=${RADARR_API_KEY}
+      - SONARR_URL=${SONARR_URL:-http://192.168.40.11:8989}
+      - SONARR_API_KEY=${SONARR_API_KEY}
+      - JELLYSEERR_URL=${JELLYSEERR_URL:-http://192.168.40.11:5056}
+      - JELLYSEERR_API_KEY=${JELLYSEERR_API_KEY}
+      - JELLYFIN_URL=${JELLYFIN_URL:-https://jellyfin.hrmsmrflrii.xyz}
+      - JELLYFIN_API_KEY=${JELLYFIN_API_KEY}
+      - GITLAB_URL=${GITLAB_URL:-https://gitlab.hrmsmrflrii.xyz}
+      - GITLAB_TOKEN=${GITLAB_TOKEN}
+      - GITLAB_PROJECT_ID=${GITLAB_PROJECT_ID:-2}
+      - AUTHENTIK_URL=${AUTHENTIK_URL:-http://192.168.40.21:9000}
+      - AUTHENTIK_TOKEN=${AUTHENTIK_TOKEN}
+      - OPNSENSE_URL=${OPNSENSE_URL:-https://192.168.91.30}
+      - OPNSENSE_API_KEY=${OPNSENSE_API_KEY}
+      - OPNSENSE_API_SECRET=${OPNSENSE_API_SECRET}
+      - PROMETHEUS_URL=${PROMETHEUS_URL:-http://192.168.40.13:9090}
+
+      # SSH
+      - SSH_KEY_PATH=/app/.ssh/homelab_ed25519
+      - SSH_USER=${SSH_USER:-hermes-admin}
+      - PROXMOX_NODE01_IP=${PROXMOX_NODE01_IP:-192.168.20.20}
+      - PROXMOX_NODE02_IP=${PROXMOX_NODE02_IP:-192.168.20.21}
+      - DOCKER_UTILITIES_IP=${DOCKER_UTILITIES_IP:-192.168.40.13}
+      - DOCKER_MEDIA_IP=${DOCKER_MEDIA_IP:-192.168.40.11}
+      - DOCKER_GLANCE_IP=${DOCKER_GLANCE_IP:-192.168.40.12}
+      - DOCKER_BOTS_IP=${DOCKER_BOTS_IP:-192.168.40.14}
+      - TRAEFIK_IP=${TRAEFIK_IP:-192.168.40.20}
+      - AUTHENTIK_IP=${AUTHENTIK_IP:-192.168.40.21}
+      - ANSIBLE_IP=${ANSIBLE_IP:-192.168.20.30}
+
+      # Webhook
+      - WEBHOOK_PORT=5050
+      - API_KEY=${API_KEY:-sentinel-secret-key}
+
+      # Database
+      - DB_PATH=/app/data/sentinel.db
+
+      # Domain
+      - DOMAIN=${DOMAIN:-hrmsmrflrii.xyz}
+
+    # Port mapping
+    ports:
+      - "5050:5050"
+
+    # Volumes
+    volumes:
+      - sentinel-data:/app/data
+      - ${SSH_KEY_HOST_PATH:-~/.ssh/homelab_ed25519}:/app/.ssh/homelab_ed25519:ro
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    # Network
+    networks:
+      - sentinel-network
+
+volumes:
+  sentinel-data:
+    driver: local
+
+networks:
+  sentinel-network:
+    driver: bridge

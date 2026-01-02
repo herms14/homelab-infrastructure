@@ -1,0 +1,132 @@
+---
+# Sentinel Bot Deployment Playbook
+# Deploys the consolidated Discord bot to docker-vm-core-utilities01
+
+- name: Deploy Sentinel Bot
+  hosts: docker_utilities
+  become: true
+  vars:
+    sentinel_dir: /opt/sentinel-bot
+    sentinel_data_dir: /opt/sentinel-bot/data
+    ssh_key_source: /home/hermes-admin/.ssh/homelab_ed25519
+
+  tasks:
+    - name: Create Sentinel directory
+      ansible.builtin.file:
+        path: "{{ sentinel_dir }}"
+        state: directory
+        owner: hermes-admin
+        group: hermes-admin
+        mode: '0755'
+
+    - name: Create data directory
+      ansible.builtin.file:
+        path: "{{ sentinel_data_dir }}"
+        state: directory
+        owner: hermes-admin
+        group: hermes-admin
+        mode: '0755'
+
+    - name: Copy Sentinel bot files
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "{{ sentinel_dir }}/"
+        owner: hermes-admin
+        group: hermes-admin
+        mode: '0644'
+      loop:
+        - sentinel.py
+        - config.py
+        - requirements.txt
+        - Dockerfile
+        - docker-compose.yml
+
+    - name: Copy core module
+      ansible.builtin.copy:
+        src: core/
+        dest: "{{ sentinel_dir }}/core/"
+        owner: hermes-admin
+        group: hermes-admin
+        mode: '0644'
+
+    - name: Copy cogs module
+      ansible.builtin.copy:
+        src: cogs/
+        dest: "{{ sentinel_dir }}/cogs/"
+        owner: hermes-admin
+        group: hermes-admin
+        mode: '0644'
+
+    - name: Copy webhooks module
+      ansible.builtin.copy:
+        src: webhooks/
+        dest: "{{ sentinel_dir }}/webhooks/"
+        owner: hermes-admin
+        group: hermes-admin
+        mode: '0644'
+
+    - name: Copy environment file
+      ansible.builtin.template:
+        src: .env.j2
+        dest: "{{ sentinel_dir }}/.env"
+        owner: hermes-admin
+        group: hermes-admin
+        mode: '0600'
+      when: env_template is defined
+
+    - name: Check if .env exists
+      ansible.builtin.stat:
+        path: "{{ sentinel_dir }}/.env"
+      register: env_file
+
+    - name: Copy example env if no .env exists
+      ansible.builtin.copy:
+        src: .env.example
+        dest: "{{ sentinel_dir }}/.env.example"
+        owner: hermes-admin
+        group: hermes-admin
+        mode: '0644'
+      when: not env_file.stat.exists
+
+    - name: Warn if .env missing
+      ansible.builtin.debug:
+        msg: "WARNING: .env file does not exist. Copy .env.example to .env and configure before starting."
+      when: not env_file.stat.exists
+
+    - name: Build Docker image
+      community.docker.docker_image:
+        name: sentinel-bot
+        tag: latest
+        source: build
+        build:
+          path: "{{ sentinel_dir }}"
+        state: present
+        force_source: true
+
+    - name: Stop existing container
+      community.docker.docker_container:
+        name: sentinel-bot
+        state: absent
+      ignore_errors: true
+
+    - name: Start Sentinel bot container
+      community.docker.docker_compose_v2:
+        project_src: "{{ sentinel_dir }}"
+        state: present
+      when: env_file.stat.exists
+
+    - name: Display status message
+      ansible.builtin.debug:
+        msg: |
+          Sentinel Bot deployment complete!
+
+          {% if not env_file.stat.exists %}
+          ACTION REQUIRED:
+          1. SSH to the server: ssh docker-utilities
+          2. Configure environment: cp {{ sentinel_dir }}/.env.example {{ sentinel_dir }}/.env
+          3. Edit .env with your API keys and tokens
+          4. Start the bot: cd {{ sentinel_dir }} && docker compose up -d
+          {% else %}
+          Bot should now be running. Check with:
+          docker logs sentinel-bot -f
+          {% endif %}

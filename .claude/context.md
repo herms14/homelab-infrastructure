@@ -1,7 +1,7 @@
 # Infrastructure Context
 
 > Core infrastructure reference. This file contains stable information that rarely changes.
-> Last updated: 2025-12-30
+> Last updated: 2025-12-31
 
 ## Proxmox Cluster
 
@@ -66,10 +66,10 @@ ssh root@100.96.195.27       # node02
 | Host | IP | Type | Services |
 |------|-----|------|----------|
 | docker-lxc-glance | 192.168.40.12 | LXC 200 | Glance, Media Stats API, Reddit Manager, NBA Stats API |
-| docker-lxc-bots | 192.168.40.14 | LXC 201 | Argus Bot, Chronos Bot |
+| docker-lxc-bots | 192.168.40.14 | LXC 201 | (Deprecated - bots consolidated to Sentinel) |
 | pihole | 192.168.90.53 | LXC 202 | Pi-hole v6 + Unbound DNS |
-| docker-vm-core-utilities | 192.168.40.13 | VM 107 | Grafana, Prometheus, Uptime Kuma, Speedtest, cAdvisor, SNMP Exporter, Life Progress API |
-| docker-media | 192.168.40.11 | VM | Jellyfin, *arr stack, downloads, Mnemosyne Bot |
+| docker-vm-core-utilities | 192.168.40.13 | VM 107 | Grafana, Prometheus, Uptime Kuma, Speedtest, cAdvisor, SNMP Exporter, Life Progress API, **Sentinel Bot** |
+| docker-media | 192.168.40.11 | VM | Jellyfin, *arr stack, downloads |
 | traefik | 192.168.40.20 | VM | Reverse proxy |
 | authentik | 192.168.40.21 | VM | SSO/Authentication |
 
@@ -100,7 +100,7 @@ ssh root@100.96.195.27       # node02
 ssh node01              # Proxmox node01 as root
 ssh ansible             # Ansible controller
 ssh k8s-controller01    # K8s primary controller
-ssh docker-utilities    # Docker utilities host
+ssh docker-vm-core-utilities01    # Docker utilities host
 
 # Direct IP access (auto-selects key)
 ssh root@192.168.20.20
@@ -109,11 +109,42 @@ ssh hermes-admin@192.168.20.30
 
 ---
 
+## Synology NAS
+
+**Address**: 192.168.20.31
+**DSM Web UI**: https://192.168.20.31:5001
+**Tailscale IP**: 100.84.128.43 (inactive)
+
+### NAS Services
+
+| Service | Port | Purpose |
+|---------|------|---------|
+| DSM | 5001 (HTTPS) | Synology management |
+| **Plex Media Server** | 32400 | Media streaming |
+| NFS | 2049 | File shares for Proxmox |
+| SNMP | 161 | Monitoring metrics |
+
+### Plex Media Server
+
+| Setting | Value |
+|---------|-------|
+| Web UI | http://192.168.20.31:32400/web |
+| Direct Stream | http://192.168.20.31:32400 |
+| Media Location | `/volume2/Proxmox-Media/` |
+
+**Library Paths** (on Synology):
+- Movies: `/volume2/Proxmox-Media/Movies`
+- TV Shows: `/volume2/Proxmox-Media/Series`
+- Music: `/volume2/Proxmox-Media/Music`
+
+---
+
 ## Service URLs
 
 | Service | URL |
 |---------|-----|
 | Proxmox | https://proxmox.hrmsmrflrii.xyz |
+| **Plex** | http://192.168.20.31:32400/web |
 | Traefik | https://traefik.hrmsmrflrii.xyz |
 | Authentik | https://auth.hrmsmrflrii.xyz |
 | Immich | https://photos.hrmsmrflrii.xyz |
@@ -136,32 +167,54 @@ ssh hermes-admin@192.168.20.30
 | **Observability** | |
 | Jaeger | https://jaeger.hrmsmrflrii.xyz |
 | Demo App | https://demo.hrmsmrflrii.xyz |
-| **Discord Bots** | |
-| Argus (SysAdmin) | Discord: #argus-assistant |
-| Update Manager | Discord: #update-manager |
-| Download Monitor | Discord: #media-downloads |
-| Project Bot | Discord: #project-management |
+| **Sentinel Bot** | All Discord channels (unified bot) |
 
 ---
 
 ## Discord Bot Ecosystem
 
-| Bot | Channel | Host | Config Location |
-|-----|---------|------|-----------------|
-| **Argus** | #container-updates | LXC 201 (192.168.40.14) | `/opt/argus-bot/` |
-| **Chronos** | #project-management | LXC 201 (192.168.40.14) | `/opt/chronos-bot/` |
-| **Mnemosyne** | #media-downloads | docker-media (192.168.40.11) | `/opt/mnemosyne-bot/` |
+| Bot | Channel(s) | Host | Config Location |
+|-----|------------|------|-----------------|
+| **Sentinel** | All channels | docker-vm-core-utilities01 (192.168.40.13) | `/opt/sentinel-bot/` |
 
-**Bot Purposes:**
-- **Argus**: Container update notifications, Watchtower webhook integration, SSH-based container management
-- **Chronos**: GitLab task management, issue creation/tracking via slash commands
-- **Mnemosyne**: Media download tracking, Radarr/Sonarr integration, download progress notifications
+**Sentinel Bot** (Consolidated January 2026):
+Unified homelab management bot combining the functionality of 4 previous bots (Argus, Chronos, Mnemosyne, Athena).
+
+**Cog Modules:**
+| Cog | Channel | Purpose |
+|-----|---------|---------|
+| **Homelab** | #homelab-infrastructure | Proxmox cluster status, VM/LXC/node management |
+| **Updates** | #container-updates | Container updates, Watchtower webhooks, reaction approvals |
+| **Media** | #media-downloads | Download tracking, failed download alerts, Radarr/Sonarr integration |
+| **GitLab** | #project-management | Issue creation/tracking via slash commands |
+| **Tasks** | #claude-tasks | Claude task queue, REST API for Claude instances |
+| **Onboarding** | #new-service-onboarding | DNS/Traefik/SSL verification |
+| **Scheduler** | Various | Background tasks (7pm updates, download monitoring, failed downloads) |
+
+**Key Commands:**
+| Command | Description |
+|---------|-------------|
+| `/homelab status` | Cluster overview |
+| `/homelab uptime` | All node/host uptimes |
+| `/node <name> restart` | Restart Proxmox node (with confirmation) |
+| `/vm <id> restart` | Restart a VM |
+| `/lxc <id> restart` | Restart an LXC container |
+| `/check` | Scan for container updates |
+| `/downloads` | Current download queue |
+
+**Features:**
+- Progress bars on all long-running commands
+- Reaction-based update approvals (thumbsup to approve)
+- Failed download alerts with reaction-based removal (wastebasket emoji)
+- REST API for Claude Code integration (port 5050)
+- SQLite database for persistent storage
+- SSH-based infrastructure management (root for Proxmox, hermes-admin for VMs)
 
 **Deployment Notes:**
-- Argus and Chronos run on dedicated LXC 201 for resource efficiency
-- Mnemosyne runs on docker-media VM because it needs localhost access to Radarr/Sonarr APIs
-- Docker in LXC requires `--security-opt apparmor=unconfined`
-- See `docs/DISCORD_BOT_DEPLOYMENT_TUTORIAL.md` for full deployment guide
+- Runs on docker-vm-core-utilities01 (VM 107)
+- Webhook port: 5050
+- SSH key mounted at `/app/.ssh/homelab_ed25519`
+- See `docs/DISCORD_BOTS.md` for full documentation
 
 ---
 
@@ -356,16 +409,18 @@ Home | Compute | Storage | Network | Media | Web | Reddit
 | NBA Stats API | `/opt/nba-stats-api/nba-stats-api.py` |
 | Pi-hole Stats API | `/opt/pihole-stats-api/pihole-stats-api.py` |
 
-**On LXC 201 (192.168.40.14)**:
+**On LXC 201 (192.168.40.14)** (DEPRECATED - bots consolidated to Sentinel):
 | Purpose | Path |
 |---------|------|
-| Argus Bot | `/opt/argus-bot/argus-bot.py` |
-| Chronos Bot | `/opt/chronos-bot/chronos-bot.py` |
-| SSH Keys (for Argus) | `/root/.ssh/homelab_ed25519` |
+| ~~Argus Bot~~ | `/opt/argus-bot/` (deprecated) |
+| ~~Chronos Bot~~ | `/opt/chronos-bot/` (deprecated) |
 
 **On VM 107 (192.168.40.13)**:
 | Purpose | Path |
 |---------|------|
+| **Sentinel Bot** | `/opt/sentinel-bot/` |
+| Sentinel Config | `/opt/sentinel-bot/.env` |
+| Sentinel SSH Keys | `/opt/sentinel-bot/ssh/homelab_ed25519` |
 | Monitoring Stack | `/opt/monitoring/` |
 | Prometheus Config | `/opt/monitoring/prometheus/prometheus.yml` |
 | Grafana Dashboards | `/opt/monitoring/grafana/dashboards/` |
