@@ -1,0 +1,20 @@
+# Azure Hybrid Lab - Proxmox Terraform Variables
+# Copy this file to terraform.tfvars and fill in values
+
+# Proxmox API configuration
+proxmox_api_url   = "https://192.168.20.20:8006"
+proxmox_api_token = "terraform-deployment-user@pve!tf=YOUR_TOKEN_HERE"
+
+# SSH key for Proxmox node access
+ssh_private_key_path = "~/.ssh/homelab_ed25519"
+
+# Windows ISO filenames (in ISOs storage)
+windows_iso = "en-us_windows_server_2022_updated_oct_2025_x64_dvd_26e9af36.iso"
+virtio_iso  = "virtio-win.iso"
+
+# Domain configuration
+domain_name = "azurelab.local"
+
+# VM resources
+vm_memory_mb    = 2048  # 2GB RAM per VM
+vm_disk_size_gb = 60    # 60GB disk per VM

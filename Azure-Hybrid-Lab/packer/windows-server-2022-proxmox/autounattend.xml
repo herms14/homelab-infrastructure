@@ -1,0 +1,265 @@
+<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend">
+    <!--
+    Windows Server 2022 Unattended Installation for Proxmox VE
+    - UEFI mode with GPT partitions (Generation 2 style)
+    - VirtIO driver installation during setup
+    - Automated installation for Packer image building
+    - Configures WinRM for Ansible connectivity
+    -->
+
+    <!-- Windows PE - Initial Setup Phase -->
+    <settings pass="windowsPE">
+        <component name="Microsoft-Windows-International-Core-WinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <SetupUILanguage>
+                <UILanguage>en-US</UILanguage>
+            </SetupUILanguage>
+            <InputLocale>en-US</InputLocale>
+            <SystemLocale>en-US</SystemLocale>
+            <UILanguage>en-US</UILanguage>
+            <UserLocale>en-US</UserLocale>
+        </component>
+
+        <component name="Microsoft-Windows-PnpCustomizationsWinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <!-- VirtIO Drivers Paths - Multiple drive letters for dynamic assignment -->
+            <DriverPaths>
+                <!-- Drive D: paths -->
+                <PathAndCredentials wcm:action="add" wcm:keyValue="1">
+                    <Path>D:\vioscsi\2k22\amd64</Path>
+                </PathAndCredentials>
+                <PathAndCredentials wcm:action="add" wcm:keyValue="2">
+                    <Path>D:\NetKVM\2k22\amd64</Path>
+                </PathAndCredentials>
+                <PathAndCredentials wcm:action="add" wcm:keyValue="3">
+                    <Path>D:\Balloon\2k22\amd64</Path>
+                </PathAndCredentials>
+                <!-- Drive E: paths -->
+                <PathAndCredentials wcm:action="add" wcm:keyValue="4">
+                    <Path>E:\vioscsi\2k22\amd64</Path>
+                </PathAndCredentials>
+                <PathAndCredentials wcm:action="add" wcm:keyValue="5">
+                    <Path>E:\NetKVM\2k22\amd64</Path>
+                </PathAndCredentials>
+                <PathAndCredentials wcm:action="add" wcm:keyValue="6">
+                    <Path>E:\Balloon\2k22\amd64</Path>
+                </PathAndCredentials>
+                <!-- Drive F: paths -->
+                <PathAndCredentials wcm:action="add" wcm:keyValue="7">
+                    <Path>F:\vioscsi\2k22\amd64</Path>
+                </PathAndCredentials>
+                <PathAndCredentials wcm:action="add" wcm:keyValue="8">
+                    <Path>F:\NetKVM\2k22\amd64</Path>
+                </PathAndCredentials>
+                <PathAndCredentials wcm:action="add" wcm:keyValue="9">
+                    <Path>F:\Balloon\2k22\amd64</Path>
+                </PathAndCredentials>
+            </DriverPaths>
+        </component>
+
+        <component name="Microsoft-Windows-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <!-- GPT Disk Configuration for UEFI -->
+            <DiskConfiguration>
+                <Disk wcm:action="add">
+                    <DiskID>0</DiskID>
+                    <WillWipeDisk>true</WillWipeDisk>
+                    <CreatePartitions>
+                        <!-- EFI System Partition -->
+                        <CreatePartition wcm:action="add">
+                            <Order>1</Order>
+                            <Size>260</Size>
+                            <Type>EFI</Type>
+                        </CreatePartition>
+                        <!-- Microsoft Reserved Partition -->
+                        <CreatePartition wcm:action="add">
+                            <Order>2</Order>
+                            <Size>16</Size>
+                            <Type>MSR</Type>
+                        </CreatePartition>
+                        <!-- Windows Partition (rest of disk) -->
+                        <CreatePartition wcm:action="add">
+                            <Order>3</Order>
+                            <Extend>true</Extend>
+                            <Type>Primary</Type>
+                        </CreatePartition>
+                    </CreatePartitions>
+                    <ModifyPartitions>
+                        <ModifyPartition wcm:action="add">
+                            <Order>1</Order>
+                            <PartitionID>1</PartitionID>
+                            <Label>System</Label>
+                            <Format>FAT32</Format>
+                        </ModifyPartition>
+                        <ModifyPartition wcm:action="add">
+                            <Order>2</Order>
+                            <PartitionID>2</PartitionID>
+                        </ModifyPartition>
+                        <ModifyPartition wcm:action="add">
+                            <Order>3</Order>
+                            <PartitionID>3</PartitionID>
+                            <Label>Windows</Label>
+                            <Letter>C</Letter>
+                            <Format>NTFS</Format>
+                        </ModifyPartition>
+                    </ModifyPartitions>
+                </Disk>
+            </DiskConfiguration>
+
+            <ImageInstall>
+                <OSImage>
+                    <InstallTo>
+                        <DiskID>0</DiskID>
+                        <PartitionID>3</PartitionID>
+                    </InstallTo>
+                    <!-- Datacenter Edition with Desktop Experience - Using exact internal NAME -->
+                    <InstallFrom>
+                        <MetaData wcm:action="add">
+                            <Key>/IMAGE/NAME</Key>
+                            <Value>Windows Server 2022 SERVERDATACENTER</Value>
+                        </MetaData>
+                    </InstallFrom>
+                    <WillShowUI>Never</WillShowUI>
+                </OSImage>
+            </ImageInstall>
+
+            <UserData>
+                <AcceptEula>true</AcceptEula>
+                <FullName>Administrator</FullName>
+                <Organization>Azure Hybrid Lab</Organization>
+                <!-- Windows Server 2022 Product Key -->
+                <ProductKey>
+                    <Key>NTRM9-VKKQQ-RDFG7-XYTMJ-GVM4V</Key>
+                    <WillShowUI>OnError</WillShowUI>
+                </ProductKey>
+            </UserData>
+        </component>
+    </settings>
+
+    <!-- Offline Servicing - Add VirtIO Drivers (multiple drive letters) -->
+    <settings pass="offlineServicing">
+        <component name="Microsoft-Windows-PnpCustomizationsNonWinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <DriverPaths>
+                <PathAndCredentials wcm:action="add" wcm:keyValue="1">
+                    <Path>D:\vioscsi\2k22\amd64</Path>
+                </PathAndCredentials>
+                <PathAndCredentials wcm:action="add" wcm:keyValue="2">
+                    <Path>D:\NetKVM\2k22\amd64</Path>
+                </PathAndCredentials>
+                <PathAndCredentials wcm:action="add" wcm:keyValue="3">
+                    <Path>E:\vioscsi\2k22\amd64</Path>
+                </PathAndCredentials>
+                <PathAndCredentials wcm:action="add" wcm:keyValue="4">
+                    <Path>E:\NetKVM\2k22\amd64</Path>
+                </PathAndCredentials>
+                <PathAndCredentials wcm:action="add" wcm:keyValue="5">
+                    <Path>F:\vioscsi\2k22\amd64</Path>
+                </PathAndCredentials>
+                <PathAndCredentials wcm:action="add" wcm:keyValue="6">
+                    <Path>F:\NetKVM\2k22\amd64</Path>
+                </PathAndCredentials>
+            </DriverPaths>
+        </component>
+    </settings>
+
+    <!-- Specialize Phase -->
+    <settings pass="specialize">
+        <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <ComputerName>WS2022-TPL</ComputerName>
+            <TimeZone>Singapore Standard Time</TimeZone>
+            <RegisteredOwner>Administrator</RegisteredOwner>
+            <RegisteredOrganization>Azure Hybrid Lab</RegisteredOrganization>
+        </component>
+
+        <component name="Microsoft-Windows-ServerManager-SvrMgrNc" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <DoNotOpenServerManagerAtLogon>true</DoNotOpenServerManagerAtLogon>
+        </component>
+
+        <component name="Microsoft-Windows-TerminalServices-LocalSessionManager" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <fDenyTSConnections>false</fDenyTSConnections>
+        </component>
+
+        <component name="Networking-MPSSVC-Svc" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <FirewallGroups>
+                <FirewallGroup wcm:action="add" wcm:keyValue="RemoteDesktop">
+                    <Active>true</Active>
+                    <Group>Remote Desktop</Group>
+                    <Profile>all</Profile>
+                </FirewallGroup>
+            </FirewallGroups>
+        </component>
+    </settings>
+
+    <!-- OOBE Phase -->
+    <settings pass="oobeSystem">
+        <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <OOBE>
+                <HideEULAPage>true</HideEULAPage>
+                <HideLocalAccountScreen>true</HideLocalAccountScreen>
+                <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+                <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+                <NetworkLocation>Work</NetworkLocation>
+                <ProtectYourPC>3</ProtectYourPC>
+                <SkipMachineOOBE>true</SkipMachineOOBE>
+                <SkipUserOOBE>true</SkipUserOOBE>
+            </OOBE>
+
+            <UserAccounts>
+                <AdministratorPassword>
+                    <Value>c@llimachus14</Value>
+                    <PlainText>true</PlainText>
+                </AdministratorPassword>
+            </UserAccounts>
+
+            <!-- Auto Logon for initial setup -->
+            <AutoLogon>
+                <Password>
+                    <Value>c@llimachus14</Value>
+                    <PlainText>true</PlainText>
+                </Password>
+                <Enabled>true</Enabled>
+                <LogonCount>10</LogonCount>
+                <Username>Administrator</Username>
+            </AutoLogon>
+
+            <!-- First Logon Commands - Configure network, install drivers, setup WinRM -->
+            <FirstLogonCommands>
+                <SynchronousCommand wcm:action="add">
+                    <Order>1</Order>
+                    <CommandLine>powershell -ExecutionPolicy Bypass -Command "Set-ExecutionPolicy Unrestricted -Force"</CommandLine>
+                    <Description>Set Execution Policy</Description>
+                    <RequiresUserInput>false</RequiresUserInput>
+                </SynchronousCommand>
+                <SynchronousCommand wcm:action="add">
+                    <Order>2</Order>
+                    <CommandLine>powershell -ExecutionPolicy Bypass -Command "$a=Get-NetAdapter|?{$_.Status -eq 'Up'}|Select -First 1; Remove-NetIPAddress -InterfaceIndex $a.ifIndex -Confirm:$false -EA 0; Remove-NetRoute -InterfaceIndex $a.ifIndex -Confirm:$false -EA 0; New-NetIPAddress -InterfaceIndex $a.ifIndex -IPAddress 192.168.80.99 -PrefixLength 24 -DefaultGateway 192.168.80.1; Set-DnsClientServerAddress -InterfaceIndex $a.ifIndex -ServerAddresses 8.8.8.8"</CommandLine>
+                    <Description>Configure Static IP for Packer build</Description>
+                    <RequiresUserInput>false</RequiresUserInput>
+                </SynchronousCommand>
+                <SynchronousCommand wcm:action="add">
+                    <Order>3</Order>
+                    <CommandLine>powershell -ExecutionPolicy Bypass -Command "$drives = @('D','E','F','G'); foreach($d in $drives){$p=\"${d}:\install-virtio.ps1\"; if(Test-Path $p){&amp; $p; break}}"</CommandLine>
+                    <Description>Install VirtIO Drivers and Guest Agent</Description>
+                    <RequiresUserInput>false</RequiresUserInput>
+                </SynchronousCommand>
+                <SynchronousCommand wcm:action="add">
+                    <Order>4</Order>
+                    <CommandLine>powershell -ExecutionPolicy Bypass -Command "$drives = @('D','E','F','G'); foreach($d in $drives){$p=\"${d}:\setup-winrm.ps1\"; if(Test-Path $p){&amp; $p; break}}"</CommandLine>
+                    <Description>Setup WinRM for Packer</Description>
+                    <RequiresUserInput>false</RequiresUserInput>
+                </SynchronousCommand>
+                <SynchronousCommand wcm:action="add">
+                    <Order>5</Order>
+                    <CommandLine>powershell -ExecutionPolicy Bypass -Command "$drives = @('D','E','F','G'); foreach($d in $drives){$p=\"${d}:\enable-remoting.ps1\"; if(Test-Path $p){&amp; $p; break}}"</CommandLine>
+                    <Description>Enable PowerShell Remoting</Description>
+                    <RequiresUserInput>false</RequiresUserInput>
+                </SynchronousCommand>
+            </FirstLogonCommands>
+        </component>
+
+        <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <InputLocale>en-US</InputLocale>
+            <SystemLocale>en-US</SystemLocale>
+            <UILanguage>en-US</UILanguage>
+            <UserLocale>en-US</UserLocale>
+        </component>
+    </settings>
+</unattend>

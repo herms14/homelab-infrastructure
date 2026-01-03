@@ -1,0 +1,159 @@
+---
+# =============================================================================
+# Install AD Forest - Azure Hybrid Lab
+# =============================================================================
+# Installs Active Directory Domain Services and creates the forest on DC01
+# Run from Ansible Controller: ansible-playbook playbooks/install-ad-forest.yml
+# =============================================================================
+
+- name: Install AD Forest on Primary Domain Controller
+  hosts: DC01
+  gather_facts: no
+  vars:
+    domain_name: "hrmsmrflrii.xyz"
+    netbios_name: "HRMSMRFLRII"
+    safe_mode_password: "{{ vault_safe_mode_password | default('P@ssw0rd123!') }}"
+    forest_mode: "WinThreshold"  # Windows Server 2016 forest mode
+    domain_mode: "WinThreshold"
+
+  tasks:
+    # =========================================================================
+    # Pre-requisites
+    # =========================================================================
+    - name: Set DNS to point to self
+      win_shell: |
+        $adapter = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Select-Object -First 1
+        Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses @("127.0.0.1", "8.8.8.8")
+      changed_when: false
+
+    # =========================================================================
+    # Install AD DS Role
+    # =========================================================================
+    - name: Install AD-Domain-Services feature
+      win_feature:
+        name: AD-Domain-Services
+        include_management_tools: yes
+        include_sub_features: yes
+        state: present
+      register: adds_feature
+
+    - name: Install DNS feature
+      win_feature:
+        name: DNS
+        include_management_tools: yes
+        state: present
+      register: dns_feature
+
+    - name: Install RSAT tools
+      win_feature:
+        name:
+          - RSAT-AD-Tools
+          - RSAT-DNS-Server
+          - GPMC
+        state: present
+
+    # =========================================================================
+    # Create AD Forest
+    # =========================================================================
+    - name: Check if already a domain controller
+      win_shell: |
+        try {
+          $domain = Get-ADDomain -ErrorAction Stop
+          Write-Output "ALREADY_DC"
+        } catch {
+          Write-Output "NOT_DC"
+        }
+      register: dc_check
+      changed_when: false
+      failed_when: false
+
+    - name: Create AD Forest
+      win_shell: |
+        $secpasswd = ConvertTo-SecureString "{{ safe_mode_password }}" -AsPlainText -Force
+
+        Install-ADDSForest `
+          -DomainName "{{ domain_name }}" `
+          -DomainNetbiosName "{{ netbios_name }}" `
+          -ForestMode "{{ forest_mode }}" `
+          -DomainMode "{{ domain_mode }}" `
+          -SafeModeAdministratorPassword $secpasswd `
+          -InstallDns:$true `
+          -CreateDnsDelegation:$false `
+          -DatabasePath "C:\Windows\NTDS" `
+          -LogPath "C:\Windows\NTDS" `
+          -SysvolPath "C:\Windows\SYSVOL" `
+          -NoRebootOnCompletion:$false `
+          -Force:$true
+
+        Write-Output "Forest installation initiated"
+      when: "'NOT_DC' in dc_check.stdout"
+      register: forest_install
+      async: 1800
+      poll: 30
+
+    - name: Wait for reboot after forest creation
+      wait_for_connection:
+        delay: 120
+        timeout: 600
+      when: "'NOT_DC' in dc_check.stdout"
+
+    # =========================================================================
+    # Post-Installation Configuration
+    # =========================================================================
+    - name: Set DNS to point to self after AD install
+      win_shell: |
+        $adapter = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Select-Object -First 1
+        Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses @("192.168.80.2", "192.168.80.3")
+
+    - name: Verify AD Forest
+      win_shell: |
+        $forest = Get-ADForest
+        $domain = Get-ADDomain
+
+        Write-Output "Forest Name: $($forest.Name)"
+        Write-Output "Forest Mode: $($forest.ForestMode)"
+        Write-Output "Domain Name: $($domain.DNSRoot)"
+        Write-Output "Domain Mode: $($domain.DomainMode)"
+        Write-Output "Domain Controllers: $($domain.ReplicaDirectoryServers -join ', ')"
+      register: ad_verify
+
+    - name: Display AD Forest details
+      debug:
+        var: ad_verify.stdout_lines
+
+    # =========================================================================
+    # Create AD Sites and Services
+    # =========================================================================
+    - name: Create AD Sites
+      win_shell: |
+        # Create On-Premises site
+        $onpremSite = Get-ADReplicationSite -Filter "Name -eq 'OnPremises'" -ErrorAction SilentlyContinue
+        if (-not $onpremSite) {
+          New-ADReplicationSite -Name "OnPremises" -Description "On-Premises Hyper-V Infrastructure"
+          Write-Output "Created site: OnPremises"
+        }
+
+        # Create Azure site
+        $azureSite = Get-ADReplicationSite -Filter "Name -eq 'Azure'" -ErrorAction SilentlyContinue
+        if (-not $azureSite) {
+          New-ADReplicationSite -Name "Azure" -Description "Azure Landing Zone"
+          Write-Output "Created site: Azure"
+        }
+
+        # Create subnets
+        $onpremSubnet = Get-ADReplicationSubnet -Filter "Name -eq '192.168.80.0/24'" -ErrorAction SilentlyContinue
+        if (-not $onpremSubnet) {
+          New-ADReplicationSubnet -Name "192.168.80.0/24" -Site "OnPremises"
+          Write-Output "Created subnet: 192.168.80.0/24 -> OnPremises"
+        }
+
+        $azureSubnet = Get-ADReplicationSubnet -Filter "Name -eq '10.0.2.0/24'" -ErrorAction SilentlyContinue
+        if (-not $azureSubnet) {
+          New-ADReplicationSubnet -Name "10.0.2.0/24" -Site "Azure"
+          Write-Output "Created subnet: 10.0.2.0/24 -> Azure"
+        }
+      register: sites_result
+
+    - name: Display Sites configuration
+      debug:
+        var: sites_result.stdout_lines

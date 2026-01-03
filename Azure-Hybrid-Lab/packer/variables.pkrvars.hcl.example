@@ -1,0 +1,65 @@
+# Packer Variables - Azure Hybrid Lab
+# Copy this file to variables.pkrvars.hcl and fill in your values
+# DO NOT commit the actual variables.pkrvars.hcl file!
+
+# =============================================================================
+# Hyper-V Host Configuration
+# =============================================================================
+
+# Path to store VM files (VHD, config)
+hyperv_output_path = "D:\\Hyper-V\\Packer"
+
+# Hyper-V switch name (must be External type for VLAN tagging)
+hyperv_switch_name = "External Switch"
+
+# VLAN ID for VMs (0 = no tagging)
+hyperv_vlan_id = 80
+
+# =============================================================================
+# Windows Server 2025 ISO
+# =============================================================================
+
+ws2025_iso_path     = "D:\\en-us_windows_server_2025_updated_march_2025_x64_dvd_e24d2ee5.iso"
+ws2025_iso_checksum = "sha256:YOUR_CHECKSUM_HERE"
+
+# =============================================================================
+# Windows 11 ISO
+# =============================================================================
+
+win11_iso_path     = "D:\\en-us_windows_11_consumer_editions_version_24h2_updated_feb_2025_x64_dvd_3733c10e.iso"
+win11_iso_checksum = "sha256:YOUR_CHECKSUM_HERE"
+
+# =============================================================================
+# Windows Configuration
+# =============================================================================
+
+# Admin credentials (used during setup, change after deployment)
+admin_username = "Administrator"
+admin_password = "P@ssw0rd123!"  # CHANGE THIS!
+
+# Timezone
+timezone = "Singapore Standard Time"
+
+# Locale
+locale = "en-US"
+
+# Product keys (leave empty for evaluation/KMS)
+# For licensed media, provide your keys here
+ws2025_product_key = ""
+win11_product_key  = ""
+
+# =============================================================================
+# VM Hardware Defaults
+# =============================================================================
+
+# Memory in MB
+default_memory_mb = 4096
+
+# CPU cores
+default_cpu_count = 2
+
+# Disk size in bytes (60GB)
+default_disk_size = 64424509440
+
+# VM Generation (1 = BIOS, 2 = UEFI)
+vm_generation = 1

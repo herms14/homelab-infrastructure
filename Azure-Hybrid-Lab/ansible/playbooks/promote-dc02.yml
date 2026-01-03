@@ -1,0 +1,137 @@
+---
+# =============================================================================
+# Promote DC02 as Secondary Domain Controller - Azure Hybrid Lab
+# =============================================================================
+# Promotes DC02 as an additional domain controller in the forest
+# Run AFTER install-ad-forest.yml completes on DC01
+# Run from Ansible Controller: ansible-playbook playbooks/promote-dc02.yml
+# =============================================================================
+
+- name: Promote DC02 as Secondary Domain Controller
+  hosts: DC02
+  gather_facts: no
+  vars:
+    domain_name: "hrmsmrflrii.xyz"
+    domain_admin_user: "HRMSMRFLRII\\Administrator"
+    domain_admin_password: "{{ vault_domain_admin_password | default('P@ssw0rd123!') }}"
+    safe_mode_password: "{{ vault_safe_mode_password | default('P@ssw0rd123!') }}"
+
+  tasks:
+    # =========================================================================
+    # Pre-requisites
+    # =========================================================================
+    - name: Set DNS to point to DC01
+      win_shell: |
+        $adapter = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Select-Object -First 1
+        Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses @("192.168.80.2", "127.0.0.1")
+
+    - name: Verify DNS resolution to domain
+      win_shell: |
+        $result = Resolve-DnsName -Name "{{ domain_name }}" -Type A -ErrorAction Stop
+        Write-Output "Resolved {{ domain_name }} to: $($result.IPAddress -join ', ')"
+      register: dns_check
+      retries: 5
+      delay: 30
+      until: dns_check.rc == 0
+
+    # =========================================================================
+    # Install AD DS Role
+    # =========================================================================
+    - name: Install AD-Domain-Services feature
+      win_feature:
+        name: AD-Domain-Services
+        include_management_tools: yes
+        include_sub_features: yes
+        state: present
+
+    - name: Install DNS feature
+      win_feature:
+        name: DNS
+        include_management_tools: yes
+        state: present
+
+    - name: Install RSAT tools
+      win_feature:
+        name:
+          - RSAT-AD-Tools
+          - RSAT-DNS-Server
+          - GPMC
+        state: present
+
+    # =========================================================================
+    # Promote as Additional DC
+    # =========================================================================
+    - name: Check if already a domain controller
+      win_shell: |
+        try {
+          $domain = Get-ADDomain -ErrorAction Stop
+          Write-Output "ALREADY_DC"
+        } catch {
+          Write-Output "NOT_DC"
+        }
+      register: dc_check
+      changed_when: false
+      failed_when: false
+
+    - name: Promote as additional domain controller
+      win_shell: |
+        $secpasswd = ConvertTo-SecureString "{{ domain_admin_password }}" -AsPlainText -Force
+        $cred = New-Object System.Management.Automation.PSCredential("{{ domain_admin_user }}", $secpasswd)
+        $safepwd = ConvertTo-SecureString "{{ safe_mode_password }}" -AsPlainText -Force
+
+        Install-ADDSDomainController `
+          -DomainName "{{ domain_name }}" `
+          -Credential $cred `
+          -SafeModeAdministratorPassword $safepwd `
+          -InstallDns:$true `
+          -CreateDnsDelegation:$false `
+          -DatabasePath "C:\Windows\NTDS" `
+          -LogPath "C:\Windows\NTDS" `
+          -SysvolPath "C:\Windows\SYSVOL" `
+          -SiteName "OnPremises" `
+          -NoRebootOnCompletion:$false `
+          -Force:$true
+
+        Write-Output "DC promotion initiated"
+      when: "'NOT_DC' in dc_check.stdout"
+      register: dc_promote
+      async: 1800
+      poll: 30
+
+    - name: Wait for reboot after DC promotion
+      wait_for_connection:
+        delay: 120
+        timeout: 600
+      when: "'NOT_DC' in dc_check.stdout"
+
+    # =========================================================================
+    # Post-Promotion Configuration
+    # =========================================================================
+    - name: Set DNS to point to both DCs
+      win_shell: |
+        $adapter = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Select-Object -First 1
+        Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses @("192.168.80.3", "192.168.80.2")
+
+    - name: Verify DC promotion
+      win_shell: |
+        $domain = Get-ADDomain
+        Write-Output "Domain: $($domain.DNSRoot)"
+        Write-Output "Domain Controllers: $($domain.ReplicaDirectoryServers -join ', ')"
+        Write-Output "FSMO Roles:"
+        Write-Output "  PDC Emulator: $($domain.PDCEmulator)"
+        Write-Output "  RID Master: $($domain.RIDMaster)"
+        Write-Output "  Infrastructure Master: $($domain.InfrastructureMaster)"
+      register: dc_verify
+
+    - name: Display DC details
+      debug:
+        var: dc_verify.stdout_lines
+
+    - name: Test replication
+      win_shell: |
+        repadmin /showrepl
+      register: repl_status
+
+    - name: Display replication status
+      debug:
+        var: repl_status.stdout_lines

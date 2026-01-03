@@ -1,0 +1,266 @@
+---
+# =============================================================================
+# Promote Azure Domain Controllers - Azure Hybrid Lab
+# =============================================================================
+# Promotes Azure VMs as additional DCs in the existing forest
+# Run AFTER:
+# - On-prem DCs (DC01, DC02) are configured
+# - Site-to-Site VPN is established
+# - Terraform has deployed Azure VMs
+# Run from Ansible Controller: ansible-playbook playbooks/promote-azure-dcs.yml
+# =============================================================================
+
+# =========================================================================
+# Promote AZDC01 (Primary Azure DC)
+# =========================================================================
+- name: Promote AZDC01 as Azure Domain Controller
+  hosts: AZDC01
+  gather_facts: no
+  vars:
+    domain_name: "hrmsmrflrii.xyz"
+    domain_admin_user: "HRMSMRFLRII\\Administrator"
+    domain_admin_password: "{{ vault_domain_admin_password | default('P@ssw0rd123!') }}"
+    safe_mode_password: "{{ vault_safe_mode_password | default('P@ssw0rd123!') }}"
+    site_name: "Azure"
+
+  tasks:
+    - name: Set DNS to on-prem DC
+      win_shell: |
+        $adapter = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Select-Object -First 1
+        Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses @("192.168.80.2", "192.168.80.3")
+
+    - name: Verify VPN connectivity to on-prem DC
+      win_shell: |
+        $result = Test-NetConnection -ComputerName "192.168.80.2" -Port 389
+        if ($result.TcpTestSucceeded) {
+          Write-Output "VPN connectivity: SUCCESS"
+        } else {
+          throw "Cannot reach on-prem DC. Check VPN tunnel."
+        }
+      retries: 3
+      delay: 30
+
+    - name: Install AD-Domain-Services feature
+      win_feature:
+        name: AD-Domain-Services
+        include_management_tools: yes
+        state: present
+
+    - name: Install DNS feature
+      win_feature:
+        name: DNS
+        include_management_tools: yes
+        state: present
+
+    - name: Check if already a domain controller
+      win_shell: |
+        try {
+          $domain = Get-ADDomain -ErrorAction Stop
+          Write-Output "ALREADY_DC"
+        } catch {
+          Write-Output "NOT_DC"
+        }
+      register: dc_check
+      changed_when: false
+      failed_when: false
+
+    - name: Promote as domain controller
+      win_shell: |
+        $secpasswd = ConvertTo-SecureString "{{ domain_admin_password }}" -AsPlainText -Force
+        $cred = New-Object System.Management.Automation.PSCredential("{{ domain_admin_user }}", $secpasswd)
+        $safepwd = ConvertTo-SecureString "{{ safe_mode_password }}" -AsPlainText -Force
+
+        Install-ADDSDomainController `
+          -DomainName "{{ domain_name }}" `
+          -Credential $cred `
+          -SafeModeAdministratorPassword $safepwd `
+          -InstallDns:$true `
+          -CreateDnsDelegation:$false `
+          -DatabasePath "F:\NTDS" `
+          -LogPath "F:\NTDS" `
+          -SysvolPath "F:\SYSVOL" `
+          -SiteName "{{ site_name }}" `
+          -ReplicationSourceDC "DC01.{{ domain_name }}" `
+          -NoRebootOnCompletion:$false `
+          -Force:$true
+      when: "'NOT_DC' in dc_check.stdout"
+      async: 1800
+      poll: 30
+
+    - name: Wait for reboot
+      wait_for_connection:
+        delay: 120
+        timeout: 600
+      when: "'NOT_DC' in dc_check.stdout"
+
+    - name: Verify DC promotion
+      win_shell: |
+        $domain = Get-ADDomain
+        Write-Output "Domain Controllers: $($domain.ReplicaDirectoryServers -join ', ')"
+      register: dc_verify
+
+    - name: Display DC status
+      debug:
+        var: dc_verify.stdout_lines
+
+# =========================================================================
+# Promote AZDC02 (Secondary Azure DC)
+# =========================================================================
+- name: Promote AZDC02 as Azure Domain Controller
+  hosts: AZDC02
+  gather_facts: no
+  vars:
+    domain_name: "hrmsmrflrii.xyz"
+    domain_admin_user: "HRMSMRFLRII\\Administrator"
+    domain_admin_password: "{{ vault_domain_admin_password | default('P@ssw0rd123!') }}"
+    safe_mode_password: "{{ vault_safe_mode_password | default('P@ssw0rd123!') }}"
+    site_name: "Azure"
+
+  tasks:
+    - name: Set DNS to AZDC01 and on-prem
+      win_shell: |
+        $adapter = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Select-Object -First 1
+        Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses @("10.0.2.4", "192.168.80.2")
+
+    - name: Install AD-Domain-Services and DNS
+      win_feature:
+        name:
+          - AD-Domain-Services
+          - DNS
+        include_management_tools: yes
+        state: present
+
+    - name: Check if already a domain controller
+      win_shell: |
+        try {
+          $domain = Get-ADDomain -ErrorAction Stop
+          Write-Output "ALREADY_DC"
+        } catch {
+          Write-Output "NOT_DC"
+        }
+      register: dc_check
+      changed_when: false
+      failed_when: false
+
+    - name: Promote as domain controller
+      win_shell: |
+        $secpasswd = ConvertTo-SecureString "{{ domain_admin_password }}" -AsPlainText -Force
+        $cred = New-Object System.Management.Automation.PSCredential("{{ domain_admin_user }}", $secpasswd)
+        $safepwd = ConvertTo-SecureString "{{ safe_mode_password }}" -AsPlainText -Force
+
+        Install-ADDSDomainController `
+          -DomainName "{{ domain_name }}" `
+          -Credential $cred `
+          -SafeModeAdministratorPassword $safepwd `
+          -InstallDns:$true `
+          -DatabasePath "F:\NTDS" `
+          -LogPath "F:\NTDS" `
+          -SysvolPath "F:\SYSVOL" `
+          -SiteName "{{ site_name }}" `
+          -ReplicationSourceDC "AZDC01.{{ domain_name }}" `
+          -NoRebootOnCompletion:$false `
+          -Force:$true
+      when: "'NOT_DC' in dc_check.stdout"
+      async: 1800
+      poll: 30
+
+    - name: Wait for reboot
+      wait_for_connection:
+        delay: 120
+        timeout: 600
+      when: "'NOT_DC' in dc_check.stdout"
+
+# =========================================================================
+# Promote RODCs (Read-Only Domain Controllers)
+# =========================================================================
+- name: Promote Azure RODCs
+  hosts: AZRODC01:AZRODC02
+  gather_facts: no
+  serial: 1
+  vars:
+    domain_name: "hrmsmrflrii.xyz"
+    domain_admin_user: "HRMSMRFLRII\\Administrator"
+    domain_admin_password: "{{ vault_domain_admin_password | default('P@ssw0rd123!') }}"
+    safe_mode_password: "{{ vault_safe_mode_password | default('P@ssw0rd123!') }}"
+    site_name: "Azure"
+
+  tasks:
+    - name: Set DNS to Azure DCs
+      win_shell: |
+        $adapter = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Select-Object -First 1
+        Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses @("10.0.2.4", "10.0.2.5")
+
+    - name: Install AD-Domain-Services and DNS
+      win_feature:
+        name:
+          - AD-Domain-Services
+          - DNS
+        include_management_tools: yes
+        state: present
+
+    - name: Check if already a domain controller
+      win_shell: |
+        try {
+          $domain = Get-ADDomain -ErrorAction Stop
+          Write-Output "ALREADY_DC"
+        } catch {
+          Write-Output "NOT_DC"
+        }
+      register: dc_check
+      changed_when: false
+      failed_when: false
+
+    - name: Promote as Read-Only Domain Controller
+      win_shell: |
+        $secpasswd = ConvertTo-SecureString "{{ domain_admin_password }}" -AsPlainText -Force
+        $cred = New-Object System.Management.Automation.PSCredential("{{ domain_admin_user }}", $secpasswd)
+        $safepwd = ConvertTo-SecureString "{{ safe_mode_password }}" -AsPlainText -Force
+
+        Install-ADDSDomainController `
+          -DomainName "{{ domain_name }}" `
+          -Credential $cred `
+          -SafeModeAdministratorPassword $safepwd `
+          -InstallDns:$true `
+          -ReadOnlyReplica:$true `
+          -DatabasePath "F:\NTDS" `
+          -LogPath "F:\NTDS" `
+          -SysvolPath "F:\SYSVOL" `
+          -SiteName "{{ site_name }}" `
+          -ReplicationSourceDC "AZDC01.{{ domain_name }}" `
+          -NoRebootOnCompletion:$false `
+          -Force:$true
+      when: "'NOT_DC' in dc_check.stdout"
+      async: 1800
+      poll: 30
+
+    - name: Wait for reboot
+      wait_for_connection:
+        delay: 120
+        timeout: 600
+      when: "'NOT_DC' in dc_check.stdout"
+
+# =========================================================================
+# Verify All DCs
+# =========================================================================
+- name: Verify All Domain Controllers
+  hosts: DC01
+  gather_facts: no
+
+  tasks:
+    - name: List all Domain Controllers
+      win_shell: |
+        Get-ADDomainController -Filter * | Select-Object Name, IPv4Address, Site, IsReadOnly | Format-Table -AutoSize
+      register: all_dcs
+
+    - name: Display all DCs
+      debug:
+        var: all_dcs.stdout_lines
+
+    - name: Test replication
+      win_shell: |
+        repadmin /replsummary
+      register: repl_summary
+
+    - name: Display replication summary
+      debug:
+        var: repl_summary.stdout_lines

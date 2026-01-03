@@ -1,0 +1,181 @@
+# =============================================================================
+# Ansible Inventory - Azure Hybrid Lab (Proxmox Deployment)
+# =============================================================================
+# All infrastructure deployed on Proxmox cluster (node01, node02)
+# VMs on VLAN 80 (192.168.80.0/24)
+# =============================================================================
+
+all:
+  children:
+    # =========================================================================
+    # On-Prem VMs (VLAN 80) - Domain Controllers
+    # =========================================================================
+    domain_controllers:
+      hosts:
+        DC01:
+          ansible_host: 192.168.80.2
+          hostname: DC01
+          ip: 192.168.80.2
+          role: "Primary Domain Controller"
+          proxmox_node: node01
+          vmid: 300
+        DC02:
+          ansible_host: 192.168.80.3
+          hostname: DC02
+          ip: 192.168.80.3
+          role: "Secondary Domain Controller"
+          proxmox_node: node02
+          vmid: 301
+      vars:
+        vm_role: domain_controller
+
+    # =========================================================================
+    # Member Servers
+    # =========================================================================
+    file_servers:
+      hosts:
+        FS01:
+          ansible_host: 192.168.80.4
+          hostname: FS01
+          ip: 192.168.80.4
+          role: "File Server"
+          proxmox_node: node01
+          vmid: 302
+        FS02:
+          ansible_host: 192.168.80.5
+          hostname: FS02
+          ip: 192.168.80.5
+          role: "File Server"
+          proxmox_node: node02
+          vmid: 303
+      vars:
+        vm_role: file_server
+
+    sql_servers:
+      hosts:
+        SQL01:
+          ansible_host: 192.168.80.6
+          hostname: SQL01
+          ip: 192.168.80.6
+          role: "SQL Server"
+          proxmox_node: node01
+          vmid: 304
+      vars:
+        vm_role: sql_server
+
+    identity_servers:
+      hosts:
+        AADCON01:
+          ansible_host: 192.168.80.7
+          hostname: AADCON01
+          ip: 192.168.80.7
+          role: "Entra ID Connect"
+          proxmox_node: node02
+          vmid: 305
+        AADPP01:
+          ansible_host: 192.168.80.8
+          hostname: AADPP01
+          ip: 192.168.80.8
+          role: "Password Protection Proxy"
+          proxmox_node: node01
+          vmid: 306
+        AADPP02:
+          ansible_host: 192.168.80.9
+          hostname: AADPP02
+          ip: 192.168.80.9
+          role: "Password Protection Proxy"
+          proxmox_node: node02
+          vmid: 307
+      vars:
+        vm_role: identity_server
+
+    web_servers:
+      hosts:
+        IIS01:
+          ansible_host: 192.168.80.10
+          hostname: IIS01
+          ip: 192.168.80.10
+          role: "IIS Web Server"
+          proxmox_node: node01
+          vmid: 310
+        IIS02:
+          ansible_host: 192.168.80.11
+          hostname: IIS02
+          ip: 192.168.80.11
+          role: "IIS Web Server"
+          proxmox_node: node02
+          vmid: 311
+      vars:
+        vm_role: web_server
+
+    # =========================================================================
+    # Workstations (Windows 11)
+    # =========================================================================
+    workstations:
+      hosts:
+        CLIENT01:
+          ansible_host: 192.168.80.12
+          hostname: CLIENT01
+          ip: 192.168.80.12
+          role: "Windows 11 Workstation"
+          proxmox_node: node01
+          vmid: 308
+        CLIENT02:
+          ansible_host: 192.168.80.13
+          hostname: CLIENT02
+          ip: 192.168.80.13
+          role: "Windows 11 Workstation"
+          proxmox_node: node02
+          vmid: 309
+      vars:
+        vm_role: workstation
+        os_type: windows11
+
+    # =========================================================================
+    # Logical Groups
+    # =========================================================================
+    member_servers:
+      children:
+        file_servers:
+        sql_servers:
+        identity_servers:
+        web_servers:
+
+    all_vms:
+      children:
+        domain_controllers:
+        member_servers:
+        workstations:
+
+    windows_servers:
+      children:
+        domain_controllers:
+        file_servers:
+        sql_servers:
+        identity_servers:
+        web_servers:
+      vars:
+        ansible_user: Administrator
+        ansible_password: "{{ vault_windows_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+        ansible_port: 5985
+        os_type: windows_server_2022
+
+    windows_clients:
+      children:
+        workstations:
+      vars:
+        ansible_user: Administrator
+        ansible_password: "{{ vault_windows_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+        ansible_port: 5985
+
+    # All infrastructure
+    all_windows:
+      children:
+        windows_servers:
+        windows_clients:

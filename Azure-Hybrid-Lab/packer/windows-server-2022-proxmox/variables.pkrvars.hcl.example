@@ -1,0 +1,47 @@
+# =============================================================================
+# Packer Variables - Windows Server 2022 on Proxmox
+# =============================================================================
+# Copy this file to variables.pkrvars.hcl and fill in your values
+# DO NOT commit the actual variables.pkrvars.hcl file!
+# =============================================================================
+
+# Proxmox API Connection
+proxmox_api_url          = "https://192.168.20.20:8006/api2/json"
+proxmox_api_token_id     = "terraform-deployment-user@pve!tf"
+proxmox_api_token_secret = "YOUR_API_TOKEN_SECRET_HERE"
+
+# Proxmox Node and Storage
+proxmox_node        = "node01"
+proxmox_storage     = "local-lvm"
+proxmox_iso_storage = "local"
+
+# Windows Server 2022 ISO (must be uploaded to Proxmox storage)
+# Download from: https://www.microsoft.com/en-us/evalcenter/evaluate-windows-server-2022
+ws2022_iso_file = "en-us_windows_server_2022_updated_feb_2025_x64_dvd.iso"
+
+# VirtIO Drivers ISO (required for VirtIO disk/network)
+# Download from: https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso
+virtio_iso_file = "virtio-win.iso"
+
+# Template VM Settings
+vm_id   = 9022
+vm_name = "WS2022-Template"
+
+# Admin Credentials (used during build, sysprep clears these)
+admin_username = "Administrator"
+admin_password = "c@llimachus14"
+
+# VM Hardware
+vm_cores     = 2
+vm_memory    = 4096
+vm_disk_size = "60G"
+
+# Network (VLAN 80 for Azure Hybrid Lab - 192.168.80.0/24)
+vlan_tag = 80
+bridge   = "vmbr0"
+
+# Windows Settings
+timezone = "Singapore Standard Time"
+
+# Build Options
+skip_windows_updates = true  # Set to false for production templates (slower build)

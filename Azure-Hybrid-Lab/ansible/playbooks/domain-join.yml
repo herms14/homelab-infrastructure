@@ -1,0 +1,208 @@
+---
+# =============================================================================
+# Domain Join - Azure Hybrid Lab
+# =============================================================================
+# Joins member servers and workstations to the domain
+# Run AFTER DC01 and DC02 are configured
+# Run from Ansible Controller: ansible-playbook playbooks/domain-join.yml
+# =============================================================================
+
+- name: Join Servers to Domain
+  hosts: member_servers:client_workstations
+  gather_facts: no
+  vars:
+    domain_name: "hrmsmrflrii.xyz"
+    domain_admin_user: "HRMSMRFLRII\\Administrator"
+    domain_admin_password: "{{ vault_domain_admin_password | default('P@ssw0rd123!') }}"
+    ou_path_servers: "OU=Servers,DC=hrmsmrflrii,DC=xyz"
+    ou_path_workstations: "OU=Workstations,DC=hrmsmrflrii,DC=xyz"
+
+  tasks:
+    # =========================================================================
+    # Pre-requisites
+    # =========================================================================
+    - name: Set DNS to Domain Controllers
+      win_shell: |
+        $adapter = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Select-Object -First 1
+        Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses @("192.168.80.2", "192.168.80.3")
+
+    - name: Verify DNS resolution to domain
+      win_shell: |
+        $result = Resolve-DnsName -Name "{{ domain_name }}" -Type A -ErrorAction Stop
+        Write-Output "Resolved {{ domain_name }} to: $($result.IPAddress -join ', ')"
+      register: dns_check
+      retries: 5
+      delay: 30
+      until: dns_check.rc == 0
+
+    - name: Verify LDAP connectivity to DC
+      win_shell: |
+        $result = Test-NetConnection -ComputerName "{{ domain_name }}" -Port 389
+        if ($result.TcpTestSucceeded) {
+          Write-Output "LDAP connectivity: SUCCESS"
+        } else {
+          throw "LDAP connectivity failed"
+        }
+      register: ldap_check
+      retries: 3
+      delay: 30
+      until: ldap_check.rc == 0
+
+    # =========================================================================
+    # Create OUs on DC01 (only need to run once)
+    # =========================================================================
+- name: Create Organizational Units
+  hosts: DC01
+  gather_facts: no
+  vars:
+    domain_dn: "DC=hrmsmrflrii,DC=xyz"
+
+  tasks:
+    - name: Create OUs for organization
+      win_shell: |
+        $ous = @(
+          @{Name="Servers"; Path="{{ domain_dn }}"; Description="Member Servers"},
+          @{Name="Workstations"; Path="{{ domain_dn }}"; Description="Client Workstations"},
+          @{Name="Service Accounts"; Path="{{ domain_dn }}"; Description="Service Accounts"},
+          @{Name="Groups"; Path="{{ domain_dn }}"; Description="Security Groups"},
+          @{Name="Users"; Path="{{ domain_dn }}"; Description="User Accounts"},
+          @{Name="File Servers"; Path="OU=Servers,{{ domain_dn }}"; Description="File Servers"},
+          @{Name="SQL Servers"; Path="OU=Servers,{{ domain_dn }}"; Description="SQL Servers"},
+          @{Name="Web Servers"; Path="OU=Servers,{{ domain_dn }}"; Description="Web Servers"},
+          @{Name="Identity Servers"; Path="OU=Servers,{{ domain_dn }}"; Description="Identity Servers"}
+        )
+
+        foreach ($ou in $ous) {
+          $existingOU = Get-ADOrganizationalUnit -Filter "Name -eq '$($ou.Name)'" -SearchBase $ou.Path -ErrorAction SilentlyContinue
+          if (-not $existingOU) {
+            New-ADOrganizationalUnit -Name $ou.Name -Path $ou.Path -Description $ou.Description
+            Write-Output "Created OU: $($ou.Name)"
+          } else {
+            Write-Output "OU already exists: $($ou.Name)"
+          }
+        }
+      register: ou_result
+
+    - name: Display OU creation results
+      debug:
+        var: ou_result.stdout_lines
+
+# =========================================================================
+# Join Member Servers
+# =========================================================================
+- name: Join Member Servers to Domain
+  hosts: member_servers
+  gather_facts: no
+  serial: 1
+  vars:
+    domain_name: "hrmsmrflrii.xyz"
+    domain_admin_user: "HRMSMRFLRII\\Administrator"
+    domain_admin_password: "{{ vault_domain_admin_password | default('P@ssw0rd123!') }}"
+
+  tasks:
+    - name: Check if already domain joined
+      win_shell: |
+        $cs = Get-WmiObject -Class Win32_ComputerSystem
+        if ($cs.PartOfDomain -and $cs.Domain -eq "{{ domain_name }}") {
+          Write-Output "DOMAIN_JOINED"
+        } else {
+          Write-Output "WORKGROUP"
+        }
+      register: domain_status
+      changed_when: false
+
+    - name: Determine target OU based on role
+      set_fact:
+        target_ou: >-
+          {% if 'File Server' in role %}OU=File Servers,OU=Servers,DC=hrmsmrflrii,DC=xyz
+          {% elif 'SQL Server' in role %}OU=SQL Servers,OU=Servers,DC=hrmsmrflrii,DC=xyz
+          {% elif 'IIS' in role %}OU=Web Servers,OU=Servers,DC=hrmsmrflrii,DC=xyz
+          {% elif 'Entra' in role or 'Password Protection' in role %}OU=Identity Servers,OU=Servers,DC=hrmsmrflrii,DC=xyz
+          {% else %}OU=Servers,DC=hrmsmrflrii,DC=xyz{% endif %}
+
+    - name: Join to domain
+      win_shell: |
+        $secpasswd = ConvertTo-SecureString "{{ domain_admin_password }}" -AsPlainText -Force
+        $cred = New-Object System.Management.Automation.PSCredential("{{ domain_admin_user }}", $secpasswd)
+
+        Add-Computer -DomainName "{{ domain_name }}" `
+          -Credential $cred `
+          -OUPath "{{ target_ou | trim }}" `
+          -Restart:$false `
+          -Force
+
+        Write-Output "Domain join completed"
+      when: "'WORKGROUP' in domain_status.stdout"
+      register: join_result
+
+    - name: Reboot after domain join
+      win_reboot:
+        reboot_timeout: 600
+      when: "'WORKGROUP' in domain_status.stdout"
+
+    - name: Verify domain membership
+      win_shell: |
+        $cs = Get-WmiObject -Class Win32_ComputerSystem
+        Write-Output "Computer: $($cs.Name)"
+        Write-Output "Domain: $($cs.Domain)"
+        Write-Output "Part of Domain: $($cs.PartOfDomain)"
+      register: verify_result
+
+    - name: Display domain membership
+      debug:
+        var: verify_result.stdout_lines
+
+# =========================================================================
+# Join Workstations
+# =========================================================================
+- name: Join Workstations to Domain
+  hosts: client_workstations
+  gather_facts: no
+  serial: 1
+  vars:
+    domain_name: "hrmsmrflrii.xyz"
+    domain_admin_user: "HRMSMRFLRII\\Administrator"
+    domain_admin_password: "{{ vault_domain_admin_password | default('P@ssw0rd123!') }}"
+    target_ou: "OU=Workstations,DC=hrmsmrflrii,DC=xyz"
+
+  tasks:
+    - name: Check if already domain joined
+      win_shell: |
+        $cs = Get-WmiObject -Class Win32_ComputerSystem
+        if ($cs.PartOfDomain -and $cs.Domain -eq "{{ domain_name }}") {
+          Write-Output "DOMAIN_JOINED"
+        } else {
+          Write-Output "WORKGROUP"
+        }
+      register: domain_status
+      changed_when: false
+
+    - name: Join to domain
+      win_shell: |
+        $secpasswd = ConvertTo-SecureString "{{ domain_admin_password }}" -AsPlainText -Force
+        $cred = New-Object System.Management.Automation.PSCredential("{{ domain_admin_user }}", $secpasswd)
+
+        Add-Computer -DomainName "{{ domain_name }}" `
+          -Credential $cred `
+          -OUPath "{{ target_ou }}" `
+          -Restart:$false `
+          -Force
+
+        Write-Output "Domain join completed"
+      when: "'WORKGROUP' in domain_status.stdout"
+
+    - name: Reboot after domain join
+      win_reboot:
+        reboot_timeout: 600
+      when: "'WORKGROUP' in domain_status.stdout"
+
+    - name: Verify domain membership
+      win_shell: |
+        $cs = Get-WmiObject -Class Win32_ComputerSystem
+        Write-Output "Computer: $($cs.Name)"
+        Write-Output "Domain: $($cs.Domain)"
+      register: verify_result
+
+    - name: Display domain membership
+      debug:
+        var: verify_result.stdout_lines

@@ -1,0 +1,197 @@
+---
+# =============================================================================
+# Create Hyper-V VMs - Azure Hybrid Lab
+# =============================================================================
+# This playbook creates all on-premises VMs on the Hyper-V host
+# Run from Ansible Controller: ansible-playbook playbooks/create-hyperv-vms.yml
+# =============================================================================
+
+- name: Create Hyper-V Virtual Machines
+  hosts: hyperv_hosts
+  gather_facts: no
+  vars_files:
+    - vars/vms.yml
+
+  tasks:
+    # =========================================================================
+    # Pre-flight Checks
+    # =========================================================================
+    - name: Verify Hyper-V is installed
+      win_shell: |
+        $hyperv = Get-WindowsOptionalFeature -FeatureName Microsoft-Hyper-V -Online
+        if ($hyperv.State -ne 'Enabled') {
+          throw "Hyper-V is not enabled"
+        }
+        Write-Output "Hyper-V is enabled"
+      register: hyperv_check
+      changed_when: false
+
+    - name: Verify virtual switch exists
+      win_shell: |
+        $switch = Get-VMSwitch -Name "{{ hyperv_switch_name }}" -ErrorAction SilentlyContinue
+        if (-not $switch) {
+          throw "Virtual switch '{{ hyperv_switch_name }}' not found"
+        }
+        Write-Output "Switch found: $($switch.Name) - Type: $($switch.SwitchType)"
+      register: switch_check
+      changed_when: false
+
+    - name: Verify ISO files exist
+      win_shell: |
+        $ws2025 = Test-Path "{{ iso_path }}\{{ ws2025_iso }}"
+        $win11 = Test-Path "{{ iso_path }}\{{ win11_iso }}"
+        if (-not $ws2025) { throw "Windows Server 2025 ISO not found" }
+        if (-not $win11) { throw "Windows 11 ISO not found" }
+        Write-Output "Both ISOs found"
+      register: iso_check
+      changed_when: false
+
+    - name: Create VM directories
+      win_file:
+        path: "{{ item }}"
+        state: directory
+      loop:
+        - "{{ vm_path }}"
+        - "{{ vhdx_path }}"
+
+    # =========================================================================
+    # Create Windows Server 2025 VMs (Gen 1)
+    # =========================================================================
+    - name: Create Windows Server VMs
+      win_shell: |
+        $vmName = "{{ item.name }}"
+        $existingVM = Get-VM -Name $vmName -ErrorAction SilentlyContinue
+
+        if ($existingVM) {
+          Write-Output "VM $vmName already exists - skipping creation"
+          exit 0
+        }
+
+        # Create VHDX
+        $vhdxPath = "{{ vhdx_path }}\$vmName.vhdx"
+        if (-not (Test-Path $vhdxPath)) {
+          New-VHD -Path $vhdxPath -SizeBytes {{ item.disk_gb }}GB -Dynamic
+          Write-Output "Created VHDX: $vhdxPath"
+        }
+
+        # Create VM (Gen 1)
+        New-VM -Name $vmName `
+          -MemoryStartupBytes {{ item.memory_mb }}MB `
+          -Generation {{ item.generation }} `
+          -VHDPath $vhdxPath `
+          -SwitchName "{{ hyperv_switch_name }}" `
+          -Path "{{ vm_path }}"
+
+        # Configure VM
+        Set-VM -Name $vmName `
+          -ProcessorCount {{ item.cpu }} `
+          -DynamicMemory `
+          -MemoryMinimumBytes 512MB `
+          -MemoryMaximumBytes {{ item.memory_mb }}MB `
+          -AutomaticStartAction Start `
+          -AutomaticStopAction ShutDown
+
+        # Configure VLAN
+        Set-VMNetworkAdapterVlan -VMName $vmName -Access -VlanId {{ hyperv_vlan_id }}
+
+        # Attach ISO
+        $dvd = Get-VMDvdDrive -VMName $vmName
+        if (-not $dvd) {
+          Add-VMDvdDrive -VMName $vmName
+          $dvd = Get-VMDvdDrive -VMName $vmName
+        }
+        Set-VMDvdDrive -VMName $vmName -Path "{{ iso_path }}\{{ ws2025_iso }}"
+
+        # Set boot order (DVD first for Gen 1)
+        $bootOrder = @(
+          (Get-VMDvdDrive -VMName $vmName),
+          (Get-VMHardDiskDrive -VMName $vmName),
+          (Get-VMNetworkAdapter -VMName $vmName)
+        )
+        Set-VMBios -VMName $vmName -StartupOrder @('CD', 'IDE', 'LegacyNetworkAdapter', 'Floppy')
+
+        Write-Output "Created VM: $vmName ({{ item.role }})"
+      loop: "{{ server_vms }}"
+      register: server_vm_results
+
+    # =========================================================================
+    # Create Windows 11 VMs (Gen 2)
+    # =========================================================================
+    - name: Create Windows 11 VMs
+      win_shell: |
+        $vmName = "{{ item.name }}"
+        $existingVM = Get-VM -Name $vmName -ErrorAction SilentlyContinue
+
+        if ($existingVM) {
+          Write-Output "VM $vmName already exists - skipping creation"
+          exit 0
+        }
+
+        # Create VHDX
+        $vhdxPath = "{{ vhdx_path }}\$vmName.vhdx"
+        if (-not (Test-Path $vhdxPath)) {
+          New-VHD -Path $vhdxPath -SizeBytes {{ item.disk_gb }}GB -Dynamic
+          Write-Output "Created VHDX: $vhdxPath"
+        }
+
+        # Create VM (Gen 2 for Windows 11)
+        New-VM -Name $vmName `
+          -MemoryStartupBytes {{ item.memory_mb }}MB `
+          -Generation {{ item.generation }} `
+          -VHDPath $vhdxPath `
+          -SwitchName "{{ hyperv_switch_name }}" `
+          -Path "{{ vm_path }}"
+
+        # Configure VM
+        Set-VM -Name $vmName `
+          -ProcessorCount {{ item.cpu }} `
+          -DynamicMemory `
+          -MemoryMinimumBytes 512MB `
+          -MemoryMaximumBytes {{ item.memory_mb }}MB `
+          -AutomaticStartAction Start `
+          -AutomaticStopAction ShutDown
+
+        # Enable TPM for Windows 11
+        $keyProtector = New-HgsKeyProtector -Owner (Get-HgsGuardian -Name 'UntrustedGuardian' -ErrorAction SilentlyContinue) -AllowUntrustedRoot -ErrorAction SilentlyContinue
+        if ($keyProtector) {
+          Set-VMKeyProtector -VMName $vmName -KeyProtector $keyProtector.RawData
+          Enable-VMTPM -VMName $vmName
+        }
+
+        # Configure Secure Boot
+        Set-VMFirmware -VMName $vmName -EnableSecureBoot On -SecureBootTemplate MicrosoftWindows
+
+        # Configure VLAN
+        Set-VMNetworkAdapterVlan -VMName $vmName -Access -VlanId {{ hyperv_vlan_id }}
+
+        # Attach ISO (Gen 2 uses SCSI DVD)
+        Add-VMDvdDrive -VMName $vmName -Path "{{ iso_path }}\{{ win11_iso }}"
+
+        # Set boot order (DVD first)
+        $dvd = Get-VMDvdDrive -VMName $vmName
+        $hdd = Get-VMHardDiskDrive -VMName $vmName
+        Set-VMFirmware -VMName $vmName -BootOrder $dvd, $hdd
+
+        Write-Output "Created VM: $vmName ({{ item.role }})"
+      loop: "{{ client_vms }}"
+      register: client_vm_results
+
+    # =========================================================================
+    # Summary
+    # =========================================================================
+    - name: Display VM creation summary
+      debug:
+        msg: |
+          ============================================
+          VM Creation Summary
+          ============================================
+          Windows Server 2025 VMs: {{ server_vms | length }}
+          Windows 11 VMs: {{ client_vms | length }}
+          Total VMs: {{ server_vms | length + client_vms | length }}
+
+          Next Steps:
+          1. Start VMs manually or run start-vms.yml
+          2. Complete Windows installation via console
+          3. Run configure-network.yml to set static IPs
+          4. Run configure-domain.yml to set up AD
+          ============================================

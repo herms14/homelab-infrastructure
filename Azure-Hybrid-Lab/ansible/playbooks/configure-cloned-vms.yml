@@ -1,0 +1,163 @@
+---
+# =============================================================================
+# Configure Cloned VMs - Azure Hybrid Lab (Proxmox)
+# =============================================================================
+# Configures VMs cloned from Packer template:
+# - Sets hostname
+# - Configures static IP
+# - Installs Windows updates (optional)
+# - Prepares for AD installation
+#
+# Prerequisites:
+#   - VMs cloned from template and started
+#   - VMs accessible via DHCP initially (or Proxmox console)
+#
+# Run from Ansible Controller:
+#   ansible-playbook -i inventory/proxmox-hosts.yml playbooks/configure-cloned-vms.yml
+# =============================================================================
+
+- name: Wait for VMs to be accessible
+  hosts: all_vms
+  gather_facts: no
+  vars:
+    wait_timeout: 600  # 10 minutes
+  tasks:
+    - name: Wait for WinRM to become available
+      wait_for_connection:
+        timeout: "{{ wait_timeout }}"
+      register: connection_result
+
+    - name: Display connection status
+      debug:
+        msg: "{{ inventory_hostname }} is accessible via WinRM"
+
+- name: Configure Cloned VMs
+  hosts: all_vms
+  gather_facts: yes
+  vars:
+    dns_servers:
+      - 192.168.80.1   # Gateway/Router DNS initially, then DC01/DC02
+    gateway: 192.168.80.1
+    subnet_prefix: 24
+
+  tasks:
+    - name: Display current hostname
+      debug:
+        msg: "Current hostname: {{ ansible_hostname }}, Target: {{ hostname }}"
+
+    - name: Configure static IP address
+      win_shell: |
+        $targetIP = "{{ ip }}"
+        $gateway = "{{ gateway }}"
+        $prefixLength = {{ subnet_prefix }}
+        $dnsServers = @("{{ dns_servers | join('","') }}")
+
+        # Find active network adapter
+        $adapter = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' -and $_.InterfaceDescription -like '*VirtIO*' } | Select-Object -First 1
+        if (-not $adapter) {
+            $adapter = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Select-Object -First 1
+        }
+
+        if (-not $adapter) {
+            throw "No active network adapter found"
+        }
+
+        Write-Host "Using adapter: $($adapter.Name) ($($adapter.InterfaceDescription))"
+
+        # Check if already configured correctly
+        $currentIP = Get-NetIPAddress -InterfaceIndex $adapter.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue
+        if ($currentIP.IPAddress -eq $targetIP) {
+            Write-Host "IP already configured: $targetIP"
+            exit 0
+        }
+
+        # Remove existing IP configuration
+        Remove-NetIPAddress -InterfaceIndex $adapter.ifIndex -Confirm:$false -ErrorAction SilentlyContinue
+        Remove-NetRoute -InterfaceIndex $adapter.ifIndex -Confirm:$false -ErrorAction SilentlyContinue
+
+        # Set static IP
+        New-NetIPAddress -InterfaceIndex $adapter.ifIndex `
+          -IPAddress $targetIP `
+          -PrefixLength $prefixLength `
+          -DefaultGateway $gateway
+
+        # Set DNS servers
+        Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses $dnsServers
+
+        Write-Host "Configured IP: $targetIP"
+      register: ip_result
+      changed_when: "'Configured IP' in ip_result.stdout"
+
+    - name: Set hostname
+      win_hostname:
+        name: "{{ hostname }}"
+      register: hostname_result
+
+    - name: Reboot if hostname changed
+      win_reboot:
+        reboot_timeout: 600
+        post_reboot_delay: 30
+      when: hostname_result.reboot_required
+
+    - name: Wait for VM to come back after reboot
+      wait_for_connection:
+        timeout: 300
+      when: hostname_result.reboot_required
+
+    - name: Disable Windows Firewall for Domain profile (lab environment)
+      win_shell: |
+        Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled False
+      changed_when: false
+
+    - name: Enable Remote Desktop
+      win_shell: |
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0
+        Enable-NetFirewallRule -DisplayGroup 'Remote Desktop' -ErrorAction SilentlyContinue
+
+    - name: Enable ICMP (ping)
+      win_shell: |
+        New-NetFirewallRule -DisplayName 'ICMPv4 Allow' -Protocol ICMPv4 -IcmpType 8 -Direction Inbound -Action Allow -ErrorAction SilentlyContinue
+      changed_when: false
+      failed_when: false
+
+    - name: Verify network configuration
+      win_shell: |
+        $adapter = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Select-Object -First 1
+        $ip = Get-NetIPAddress -InterfaceIndex $adapter.ifIndex -AddressFamily IPv4
+        $dns = Get-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -AddressFamily IPv4
+        $gateway = Get-NetRoute -InterfaceIndex $adapter.ifIndex -DestinationPrefix '0.0.0.0/0' | Select-Object -ExpandProperty NextHop
+
+        Write-Output "====================================="
+        Write-Output "Hostname: $env:COMPUTERNAME"
+        Write-Output "IP Address: $($ip.IPAddress)"
+        Write-Output "Prefix: $($ip.PrefixLength)"
+        Write-Output "Gateway: $gateway"
+        Write-Output "DNS Servers: $($dns.ServerAddresses -join ', ')"
+        Write-Output "====================================="
+      register: network_verify
+
+    - name: Display network configuration
+      debug:
+        var: network_verify.stdout_lines
+
+- name: Summary
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Display summary
+      debug:
+        msg: |
+          ╔═══════════════════════════════════════════════════════════════╗
+          ║           Azure Hybrid Lab - VMs Configured                    ║
+          ╠═══════════════════════════════════════════════════════════════╣
+          ║ All VMs have been configured with:                            ║
+          ║   - Static IP addresses                                       ║
+          ║   - Proper hostnames                                          ║
+          ║   - Remote Desktop enabled                                    ║
+          ║   - Windows Firewall disabled (lab environment)               ║
+          ║                                                               ║
+          ║ Next Steps:                                                   ║
+          ║   1. Run install-ad-forest.yml to install AD on DC01          ║
+          ║   2. Run promote-dc02.yml to add DC02 as replica              ║
+          ║   3. Run domain-join.yml to join member servers               ║
+          ╚═══════════════════════════════════════════════════════════════╝

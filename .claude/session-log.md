@@ -7,6 +7,49 @@
 
 ## 2026-01-02
 
+### 14:50 - Azure Hybrid Lab Packer Build - autounattend.xml Fixes
+**Status**: In Progress (Session Ended)
+**Request**: Continue Azure Hybrid Lab deployment - build Windows Server 2022 Packer template on Proxmox
+
+**Changes Made**:
+1. **Fixed IMAGE/NAME in autounattend.xml**:
+   - Issue: Windows installer kept showing OS selection screen
+   - Root Cause: Using Display Name instead of internal WIM image name
+   - Used `wimlib-imagex info` on Proxmox to discover correct image names
+   - Changed from: `Windows Server 2022 Datacenter (Desktop Experience)` (Display Name)
+   - Changed to: `Windows Server 2022 SERVERDATACENTER` (Internal WIM Name)
+
+2. **Updated Packer template (windows-server-2022.pkr.hcl)**:
+   - Changed autounattend CD device from `ide3` to `sata2`
+   - Changed cd_label from `cidata` to `OEMDRV` (Windows standard)
+
+3. **Verified ISO contents** (en-us_windows_server_2022_updated_oct_2025_x64_dvd):
+   | Index | Internal Name | Display Name |
+   |-------|---------------|--------------|
+   | 1 | Windows Server 2022 SERVERSTANDARDCORE | Standard |
+   | 2 | Windows Server 2022 SERVERSTANDARD | Standard (Desktop Experience) |
+   | 3 | Windows Server 2022 SERVERDATACENTERCORE | Datacenter |
+   | 4 | Windows Server 2022 SERVERDATACENTER | Datacenter (Desktop Experience) |
+
+**Files Modified**:
+- `Azure-Hybrid-Lab/packer/windows-server-2022-proxmox/autounattend.xml`
+- `Azure-Hybrid-Lab/packer/windows-server-2022-proxmox/windows-server-2022.pkr.hcl`
+
+**Current State**:
+- Files copied to `~/azure-hybrid-lab/packer/windows-server-2022-proxmox/` on Ansible controller
+- Packer build started but session ended before completion
+- Next step: Resume build and monitor for WinRM connectivity
+
+**Resume Instructions**:
+```bash
+ssh hermes-admin@192.168.20.30
+cd ~/azure-hybrid-lab/packer/windows-server-2022-proxmox
+packer build -var-file='variables.pkrvars.hcl' .
+# Monitor Proxmox console for VM 9022 to verify no OS selection prompt
+```
+
+---
+
 ### 11:20 - Sentinel Bot Onboarding Report Table Format & Fixes
 **Status**: Completed
 **Request**: Change onboarding report from list to table format with green/red circles, fix DNS check and SSH issues

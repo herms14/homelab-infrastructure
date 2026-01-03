@@ -1,0 +1,66 @@
+---
+# =============================================================================
+# Configure Static IPs - Azure Hybrid Lab
+# =============================================================================
+# Configures static IP addresses on all VMs after Windows installation
+# Run from Ansible Controller: ansible-playbook playbooks/configure-network.yml
+# =============================================================================
+
+- name: Configure Static IP Addresses
+  hosts: all_vms
+  gather_facts: no
+  vars:
+    dns_servers:
+      - 192.168.80.2   # DC01 (after AD install)
+      - 192.168.80.3   # DC02 (after AD install)
+    gateway: 192.168.80.1
+    subnet_prefix: 24
+
+  tasks:
+    - name: Configure static IP address
+      win_shell: |
+        $adapter = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Select-Object -First 1
+
+        # Remove existing IP configuration
+        Remove-NetIPAddress -InterfaceIndex $adapter.ifIndex -Confirm:$false -ErrorAction SilentlyContinue
+        Remove-NetRoute -InterfaceIndex $adapter.ifIndex -Confirm:$false -ErrorAction SilentlyContinue
+
+        # Set static IP
+        New-NetIPAddress -InterfaceIndex $adapter.ifIndex `
+          -IPAddress "{{ ip }}" `
+          -PrefixLength {{ subnet_prefix }} `
+          -DefaultGateway "{{ gateway }}"
+
+        # Set DNS servers
+        Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex `
+          -ServerAddresses @("{{ dns_servers | join('","') }}")
+
+        Write-Output "Configured IP: {{ ip }}"
+      register: ip_result
+      changed_when: "'Configured IP' in ip_result.stdout"
+
+    - name: Set hostname
+      win_hostname:
+        name: "{{ hostname }}"
+      register: hostname_result
+
+    - name: Reboot if hostname changed
+      win_reboot:
+        reboot_timeout: 600
+      when: hostname_result.reboot_required
+
+    - name: Verify network configuration
+      win_shell: |
+        $adapter = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Select-Object -First 1
+        $ip = Get-NetIPAddress -InterfaceIndex $adapter.ifIndex -AddressFamily IPv4
+        $dns = Get-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -AddressFamily IPv4
+
+        Write-Output "Hostname: $env:COMPUTERNAME"
+        Write-Output "IP Address: $($ip.IPAddress)"
+        Write-Output "Prefix: $($ip.PrefixLength)"
+        Write-Output "DNS Servers: $($dns.ServerAddresses -join ', ')"
+      register: network_verify
+
+    - name: Display network configuration
+      debug:
+        var: network_verify.stdout_lines

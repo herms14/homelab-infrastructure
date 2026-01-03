@@ -1,0 +1,35 @@
+# =============================================================================
+# Hyper-V Host Configuration
+# =============================================================================
+# Variables for the Windows Hyper-V host
+# =============================================================================
+
+# Hyper-V Settings
+hyperv_switch_name: "External Switch"
+hyperv_vlan_id: 80
+
+# Storage Paths
+vm_path: "D:\\Hyper-V\\VMs"
+vhdx_path: "D:\\Hyper-V\\Virtual Hard Disks"
+iso_path: "D:\\"
+
+# ISO Files (Using Server 2022 due to 2025 ISO errors)
+ws_iso: "en-us_windows_server_2022_updated_feb_2025_x64_dvd_0398a40c.iso"
+win11_iso: "en-us_windows_11_consumer_editions_version_24h2_updated_feb_2025_x64_dvd_3733c10e.iso"
+
+# Network Configuration
+network:
+  subnet: "192.168.80.0/24"
+  gateway: "192.168.80.1"
+  subnet_mask: "255.255.255.0"
+  dns_initial:
+    - "8.8.8.8"
+    - "1.1.1.1"
+  dns_final:
+    - "192.168.80.2"  # DC01
+    - "192.168.80.3"  # DC02
+
+# Domain Configuration
+domain:
+  name: "hrmsmrflrii.xyz"
+  netbios: "HRMSMRFLRII"

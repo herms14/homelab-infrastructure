@@ -1,0 +1,136 @@
+# =============================================================================
+# VM Definitions - Azure Hybrid Lab
+# =============================================================================
+# All on-premises VMs for the hybrid infrastructure
+# =============================================================================
+
+# Windows Server 2025 VMs (Gen 1)
+server_vms:
+  - name: DC01
+    hostname: DC01
+    ip: 192.168.80.2
+    cpu: 2
+    memory_mb: 4096
+    disk_gb: 60
+    generation: 1
+    role: "Primary Domain Controller"
+    deploy_order: 1
+
+  - name: DC02
+    hostname: DC02
+    ip: 192.168.80.3
+    cpu: 2
+    memory_mb: 4096
+    disk_gb: 60
+    generation: 1
+    role: "Secondary Domain Controller"
+    deploy_order: 2
+
+  - name: FS01
+    hostname: FS01
+    ip: 192.168.80.4
+    cpu: 2
+    memory_mb: 4096
+    disk_gb: 100
+    generation: 1
+    role: "File Server"
+    deploy_order: 3
+
+  - name: FS02
+    hostname: FS02
+    ip: 192.168.80.5
+    cpu: 2
+    memory_mb: 4096
+    disk_gb: 100
+    generation: 1
+    role: "File Server"
+    deploy_order: 3
+
+  - name: SQL01
+    hostname: SQL01
+    ip: 192.168.80.6
+    cpu: 4
+    memory_mb: 8192
+    disk_gb: 120
+    generation: 1
+    role: "SQL Server"
+    deploy_order: 3
+
+  - name: AADCON01
+    hostname: AADCON01
+    ip: 192.168.80.7
+    cpu: 2
+    memory_mb: 4096
+    disk_gb: 60
+    generation: 1
+    role: "Entra ID Connect"
+    deploy_order: 4
+
+  - name: AADPP01
+    hostname: AADPP01
+    ip: 192.168.80.8
+    cpu: 2
+    memory_mb: 4096
+    disk_gb: 60
+    generation: 1
+    role: "Password Protection Proxy"
+    deploy_order: 4
+
+  - name: AADPP02
+    hostname: AADPP02
+    ip: 192.168.80.9
+    cpu: 2
+    memory_mb: 4096
+    disk_gb: 60
+    generation: 1
+    role: "Password Protection Proxy"
+    deploy_order: 4
+
+  - name: IIS01
+    hostname: IIS01
+    ip: 192.168.80.10
+    cpu: 2
+    memory_mb: 4096
+    disk_gb: 60
+    generation: 1
+    role: "IIS Web Server"
+    deploy_order: 5
+
+  - name: IIS02
+    hostname: IIS02
+    ip: 192.168.80.11
+    cpu: 2
+    memory_mb: 4096
+    disk_gb: 60
+    generation: 1
+    role: "IIS Web Server"
+    deploy_order: 5
+
+# Windows 11 VMs (Gen 2)
+client_vms:
+  - name: CLIENT01
+    hostname: CLIENT01
+    ip: 192.168.80.12
+    cpu: 2
+    memory_mb: 4096
+    disk_gb: 60
+    generation: 2
+    role: "Windows 11 Workstation"
+    deploy_order: 6
+
+  - name: CLIENT02
+    hostname: CLIENT02
+    ip: 192.168.80.13
+    cpu: 2
+    memory_mb: 4096
+    disk_gb: 60
+    generation: 2
+    role: "Windows 11 Workstation"
+    deploy_order: 6
+
+# Resource Summary
+# ----------------
+# Total VMs: 12
+# Total vCPU: 26 cores
+# Total RAM: 52 GB
+# Total Disk: 860 GB

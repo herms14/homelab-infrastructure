@@ -1,0 +1,96 @@
+---
+# =============================================================================
+# Start Hyper-V VMs - Azure Hybrid Lab
+# =============================================================================
+# Starts all VMs in the correct order for domain dependencies
+# Run from Ansible Controller: ansible-playbook playbooks/start-vms.yml
+# =============================================================================
+
+- name: Start Hyper-V Virtual Machines
+  hosts: hyperv_hosts
+  gather_facts: no
+  vars_files:
+    - vars/vms.yml
+
+  tasks:
+    # =========================================================================
+    # Start Domain Controllers First
+    # =========================================================================
+    - name: Start Domain Controllers
+      win_shell: |
+        $vmName = "{{ item.name }}"
+        $vm = Get-VM -Name $vmName -ErrorAction SilentlyContinue
+
+        if (-not $vm) {
+          Write-Output "VM $vmName does not exist"
+          exit 1
+        }
+
+        if ($vm.State -eq 'Running') {
+          Write-Output "VM $vmName is already running"
+        } else {
+          Start-VM -Name $vmName
+          Write-Output "Started VM: $vmName"
+        }
+      loop: "{{ server_vms | selectattr('role', 'search', 'Domain Controller') | list }}"
+      register: dc_start
+
+    - name: Wait for Domain Controllers to boot
+      pause:
+        seconds: 60
+        prompt: "Waiting for Domain Controllers to boot..."
+      when: dc_start.changed
+
+    # =========================================================================
+    # Start Remaining Servers
+    # =========================================================================
+    - name: Start remaining server VMs
+      win_shell: |
+        $vmName = "{{ item.name }}"
+        $vm = Get-VM -Name $vmName -ErrorAction SilentlyContinue
+
+        if (-not $vm) {
+          Write-Output "VM $vmName does not exist"
+          exit 1
+        }
+
+        if ($vm.State -eq 'Running') {
+          Write-Output "VM $vmName is already running"
+        } else {
+          Start-VM -Name $vmName
+          Write-Output "Started VM: $vmName"
+        }
+      loop: "{{ server_vms | rejectattr('role', 'search', 'Domain Controller') | list }}"
+
+    # =========================================================================
+    # Start Client VMs
+    # =========================================================================
+    - name: Start Windows 11 client VMs
+      win_shell: |
+        $vmName = "{{ item.name }}"
+        $vm = Get-VM -Name $vmName -ErrorAction SilentlyContinue
+
+        if (-not $vm) {
+          Write-Output "VM $vmName does not exist"
+          exit 1
+        }
+
+        if ($vm.State -eq 'Running') {
+          Write-Output "VM $vmName is already running"
+        } else {
+          Start-VM -Name $vmName
+          Write-Output "Started VM: $vmName"
+        }
+      loop: "{{ client_vms }}"
+
+    # =========================================================================
+    # Status Check
+    # =========================================================================
+    - name: Get VM status
+      win_shell: |
+        Get-VM | Select-Object Name, State, CPUUsage, @{N='MemoryAssigned';E={[math]::Round($_.MemoryAssigned/1GB,2)}} | Format-Table -AutoSize
+      register: vm_status
+
+    - name: Display VM status
+      debug:
+        var: vm_status.stdout_lines
