@@ -11,8 +11,8 @@
 | Ansible | 1 | 2 | 8GB | 20GB |
 | Kubernetes | 9 | 18 | 72GB | 180GB |
 | Services | 5 | 26 | 38GB | 130GB |
-| LXC Containers | 6 | 14 | 21GB | 136GB |
-| **Total** | **21** | **60** | **139GB** | **466GB** |
+| LXC Containers | 7 | 16 | 25GB | 168GB |
+| **Total** | **22** | **62** | **143GB** | **498GB** |
 
 *Last updated: January 7, 2026*
 
@@ -99,6 +99,7 @@
 | traefik-lxc | node02 | 203 | 192.168.40.20 | 2 | 2GB | 20GB | Traefik reverse proxy (migrated from VM 102) |
 | authentik-lxc | node02 | 204 | 192.168.40.21 | 2 | 4GB | 30GB | Authentik SSO (migrated from VM 100) |
 | docker-lxc-media | node01 | 205 | 192.168.40.11 | 4 | 8GB | 50GB | Arr media stack (migrated from VM 111) |
+| homeassistant-lxc | node01 | 206 | 192.168.40.25 | 2 | 4GB | 32GB | Home Assistant smart home automation |
 
 **Reserved IP Range**: 192.168.20.100-199
 

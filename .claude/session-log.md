@@ -7,6 +7,49 @@
 
 ## 2026-01-07
 
+### 04:00 - Home Assistant Deployment
+**Status**: Completed
+**Request**: Deploy Home Assistant for smart home automation with Tapo device integration and energy monitoring
+
+**Changes Made**:
+1. **Created LXC 206 (homeassistant-lxc)** on node01
+   - 2 cores, 4GB RAM, 32GB disk
+   - IP: 192.168.40.25
+   - Docker with Home Assistant Container (stable)
+
+2. **Network Configuration**
+   - Added Traefik route for https://ha.hrmsmrflrii.xyz
+   - Added DNS entry in Pi-hole (pihole.toml hosts array)
+   - Configured trusted proxies for Traefik
+
+3. **Ansible Integration**
+   - Added homeassistant-lxc to Ansible inventory
+   - Created deploy-homeassistant.yml playbook
+   - Created configure-energy-dashboard.yml playbook
+
+4. **Documentation**
+   - Created docs/HOME_ASSISTANT.md
+   - Updated docs/INVENTORY.md with LXC 206
+   - Updated Obsidian 07 - Deployed Services.md
+
+**Key Technical Solutions**:
+- Used `security_opt: - apparmor=unconfined` for Docker in LXC
+- Added `privileged: true` and `network_mode: host` for Home Assistant
+- Configured http.trusted_proxies in configuration.yaml
+
+**Next Steps (for user)**:
+1. Access https://ha.hrmsmrflrii.xyz to complete onboarding
+2. Install HACS for community integrations
+3. Install Tapo integration for smart devices
+4. Configure energy dashboard with 14.32 PHP/kWh rate
+
+**Files Created**:
+- `ansible-playbooks/homeassistant/deploy-homeassistant.yml`
+- `ansible-playbooks/homeassistant/configure-energy-dashboard.yml`
+- `docs/HOME_ASSISTANT.md`
+
+---
+
 ### 02:10 - LXC Migration: VM to LXC Consolidation
 **Status**: Completed
 **Request**: Migrate Traefik, Authentik, and docker-media01 from VMs to LXC containers to save ~20GB RAM

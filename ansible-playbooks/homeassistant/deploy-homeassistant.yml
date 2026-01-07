@@ -1,0 +1,170 @@
+---
+# Home Assistant Deployment
+# Deploy Home Assistant Container to LXC 206
+#
+# Prerequisites:
+#   - LXC 206 created with Docker installed
+#   - hermes-admin user with SSH access
+#
+# Features:
+#   - Home Assistant Container (stable)
+#   - Trusted proxy configuration for Traefik
+#   - Energy monitoring support (Tapo P110)
+#   - Smart home device integrations
+#
+# Target Host: homeassistant-lxc (192.168.40.25)
+# URL: https://ha.hrmsmrflrii.xyz
+#
+# Usage:
+#   ansible-playbook homeassistant/deploy-homeassistant.yml
+
+- name: Deploy Home Assistant
+  hosts: homeassistant-lxc
+  become: yes
+  vars:
+    homeassistant_path: /opt/homeassistant
+    homeassistant_port: 8123
+    timezone: "Asia/Manila"
+    # Trusted proxies for reverse proxy setup
+    trusted_proxies:
+      - "192.168.40.20"  # Traefik LXC
+      - "192.168.40.0/24"  # Services VLAN
+      - "172.17.0.0/16"  # Docker network
+
+  tasks:
+    - name: Create Home Assistant directory
+      file:
+        path: "{{ homeassistant_path }}"
+        state: directory
+        owner: hermes-admin
+        group: hermes-admin
+        mode: '0755'
+
+    - name: Create config directory
+      file:
+        path: "{{ homeassistant_path }}/config"
+        state: directory
+        owner: hermes-admin
+        group: hermes-admin
+        mode: '0755'
+
+    - name: Create Docker Compose file
+      copy:
+        dest: "{{ homeassistant_path }}/docker-compose.yml"
+        owner: hermes-admin
+        group: hermes-admin
+        mode: '0644'
+        content: |
+          services:
+            homeassistant:
+              container_name: homeassistant
+              image: ghcr.io/home-assistant/home-assistant:stable
+              restart: unless-stopped
+              privileged: true
+              network_mode: host
+              security_opt:
+                - apparmor=unconfined
+              volumes:
+                - {{ homeassistant_path }}/config:/config
+                - /etc/localtime:/etc/localtime:ro
+                - /run/dbus:/run/dbus:ro
+              environment:
+                - TZ={{ timezone }}
+              healthcheck:
+                test: ["CMD", "curl", "-f", "http://localhost:8123"]
+                interval: 30s
+                timeout: 10s
+                retries: 3
+                start_period: 60s
+
+    - name: Create base configuration.yaml
+      copy:
+        dest: "{{ homeassistant_path }}/config/configuration.yaml"
+        owner: hermes-admin
+        group: hermes-admin
+        mode: '0644'
+        force: no  # Don't overwrite existing config
+        content: |
+          # Loads default set of integrations. Do not remove.
+          default_config:
+
+          # Load frontend themes from the themes folder
+          frontend:
+            themes: !include_dir_merge_named themes
+
+          automation: !include automations.yaml
+          script: !include scripts.yaml
+          scene: !include scenes.yaml
+
+          # Reverse Proxy Configuration
+          http:
+            use_x_forwarded_for: true
+            trusted_proxies:
+          {% for proxy in trusted_proxies %}
+              - {{ proxy }}
+          {% endfor %}
+
+    - name: Create empty automations.yaml
+      copy:
+        dest: "{{ homeassistant_path }}/config/automations.yaml"
+        owner: hermes-admin
+        group: hermes-admin
+        mode: '0644'
+        force: no
+        content: "[]"
+
+    - name: Create empty scripts.yaml
+      copy:
+        dest: "{{ homeassistant_path }}/config/scripts.yaml"
+        owner: hermes-admin
+        group: hermes-admin
+        mode: '0644'
+        force: no
+        content: ""
+
+    - name: Create empty scenes.yaml
+      copy:
+        dest: "{{ homeassistant_path }}/config/scenes.yaml"
+        owner: hermes-admin
+        group: hermes-admin
+        mode: '0644'
+        force: no
+        content: "[]"
+
+    - name: Create themes directory
+      file:
+        path: "{{ homeassistant_path }}/config/themes"
+        state: directory
+        owner: hermes-admin
+        group: hermes-admin
+        mode: '0755'
+
+    - name: Pull and start Home Assistant
+      community.docker.docker_compose_v2:
+        project_src: "{{ homeassistant_path }}"
+        state: present
+        pull: always
+
+    - name: Wait for Home Assistant to start
+      uri:
+        url: "http://localhost:{{ homeassistant_port }}"
+        status_code: [200, 302]
+      register: result
+      until: result.status in [200, 302]
+      retries: 30
+      delay: 5
+
+    - name: Display deployment info
+      debug:
+        msg: |
+          Home Assistant deployed successfully!
+          - Internal URL: http://192.168.40.25:{{ homeassistant_port }}
+          - External URL: https://ha.hrmsmrflrii.xyz
+          - Config directory: {{ homeassistant_path }}/config
+
+          Next Steps:
+          1. Access https://ha.hrmsmrflrii.xyz to complete onboarding
+          2. Create admin account
+          3. Install HACS for community integrations
+          4. Add Tapo integration for smart devices
+          5. Configure energy dashboard
