@@ -1,0 +1,155 @@
+---
+# Restore entire Glance stack from backup
+# Stops all services, restores files, rebuilds containers
+#
+# Usage:
+#   ansible-playbook -i inventory.ini glance/restore-glance-stack.yml -e backup_file=glance-stack-2025-12-26-1430.tar.gz
+#
+# Or to use the latest backup:
+#   ansible-playbook -i inventory.ini glance/restore-glance-stack.yml -e use_latest=true
+
+- name: Restore Glance Stack
+  hosts: docker_utilities
+  become: yes
+  vars:
+    backup_dir: /opt/backups/glance
+    services:
+      - name: glance
+        path: /opt/glance
+      - name: life-progress
+        path: /opt/life-progress
+      - name: media-stats-api
+        path: /opt/media-stats-api
+      - name: nba-stats-api
+        path: /opt/nba-stats-api
+      - name: reddit-manager
+        path: /opt/reddit-manager
+
+  tasks:
+    - name: Find latest backup if use_latest is set
+      find:
+        paths: "{{ backup_dir }}"
+        patterns: "*.tar.gz"
+      register: backup_files
+      when: use_latest is defined and use_latest | bool
+
+    - name: Set backup file to latest
+      set_fact:
+        backup_file: "{{ (backup_files.files | sort(attribute='mtime', reverse=true) | first).path | basename }}"
+      when: use_latest is defined and use_latest | bool
+
+    - name: Verify backup file exists
+      stat:
+        path: "{{ backup_dir }}/{{ backup_file }}"
+      register: backup_stat
+      failed_when: not backup_stat.stat.exists
+
+    - name: Display restore plan
+      debug:
+        msg: |
+          ============================================================
+          GLANCE STACK RESTORE PLAN
+          ============================================================
+
+          Backup File: {{ backup_dir }}/{{ backup_file }}
+
+          Services to Restore:
+            - glance
+            - life-progress
+            - media-stats-api
+            - nba-stats-api
+            - reddit-manager
+
+          This will:
+            1. Stop all running Glance containers
+            2. Backup current configs (just in case)
+            3. Extract backup archive
+            4. Rebuild and start all containers
+          ============================================================
+
+    - name: Stop all Glance-related containers
+      shell: |
+        cd {{ item.path }} && docker compose down 2>/dev/null || true
+      loop: "{{ services }}"
+      ignore_errors: yes
+
+    - name: Create pre-restore backup of current configs
+      archive:
+        path: "{{ item.path }}"
+        dest: "{{ backup_dir }}/pre-restore-{{ item.name }}-{{ ansible_date_time.epoch }}.tar.gz"
+        format: gz
+      loop: "{{ services }}"
+      ignore_errors: yes
+
+    - name: Create extraction directory
+      file:
+        path: /tmp/glance-restore
+        state: directory
+
+    - name: Extract backup archive
+      unarchive:
+        src: "{{ backup_dir }}/{{ backup_file }}"
+        dest: /tmp/glance-restore
+        remote_src: yes
+
+    - name: Restore service directories
+      copy:
+        src: "/tmp/glance-restore/{{ item.name }}/"
+        dest: "{{ item.path }}/"
+        remote_src: yes
+        mode: preserve
+      loop: "{{ services }}"
+      ignore_errors: yes
+
+    - name: Cleanup extraction directory
+      file:
+        path: /tmp/glance-restore
+        state: absent
+
+    - name: Rebuild and start Glance
+      shell: |
+        cd /opt/glance && docker compose up -d --build
+      register: glance_result
+
+    - name: Rebuild and start Life Progress API
+      shell: |
+        cd /opt/life-progress && docker compose up -d --build
+      register: life_result
+
+    - name: Rebuild and start Media Stats API
+      shell: |
+        cd /opt/media-stats-api && docker compose up -d --build
+      register: media_result
+
+    - name: Rebuild and start NBA Stats API
+      shell: |
+        cd /opt/nba-stats-api && docker compose up -d --build
+      register: nba_result
+
+    - name: Rebuild and start Reddit Manager
+      shell: |
+        cd /opt/reddit-manager && docker compose up -d --build
+      register: reddit_result
+
+    - name: Wait for services to start
+      pause:
+        seconds: 10
+
+    - name: Check running containers
+      shell: docker ps --format 'table {{ '{{' }}.Names{{ '}}' }}\t{{ '{{' }}.Status{{ '}}' }}'
+      register: running_containers
+
+    - name: Display restore summary
+      debug:
+        msg: |
+          ============================================================
+          GLANCE STACK RESTORE COMPLETE
+          ============================================================
+
+          Restored from: {{ backup_file }}
+
+          Running Containers:
+          {{ running_containers.stdout }}
+
+          Verify at: https://glance.hrmsmrflrii.xyz
+          ============================================================

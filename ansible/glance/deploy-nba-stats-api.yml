@@ -1,0 +1,419 @@
+---
+# NBA Stats API Deployment
+# ========================
+# Deploys a Python Flask API that aggregates NBA game scores, standings,
+# and Yahoo Fantasy league data for the Glance Sports dashboard.
+#
+# Features:
+# - Live NBA game scores (ESPN API)
+# - NBA standings (East/West conferences)
+# - Yahoo Fantasy NBA league standings (optional)
+# - Auto-updates fantasy standings at 2pm daily
+#
+# Usage:
+#   ansible-playbook glance/deploy-nba-stats-api.yml
+#
+# Yahoo Fantasy Setup (Optional):
+#   1. Create app at https://developer.yahoo.com/apps/create/
+#   2. Update YAHOO_CLIENT_ID, YAHOO_CLIENT_SECRET, YAHOO_LEAGUE_ID below
+#   3. On first container start, check logs for OAuth authentication URL
+
+- name: Deploy NBA Stats API
+  hosts: docker-vm-utilities01
+  become: yes
+  vars:
+    api_path: /opt/nba-stats-api
+    api_port: 5060
+    container_name: nba-stats-api
+
+    # Yahoo Fantasy Configuration (optional)
+    # Get credentials from: https://developer.yahoo.com/apps/
+    yahoo_client_id: "dj0yJmk9TVpPYkl1ODk1ZTZSJmQ9WVdrOU5WZGxTM04wUVdRbWNHbzlNQT09JnM9Y29uc3VtZXJzZWNyZXQmc3Y9MCZ4PTVm"
+    yahoo_client_secret: "4577ab705b5378f2f2e6a42e3dda6a0c1b84e90c"
+    yahoo_league_id: "418.l.12095"  # Hermes's Fantasy NBA League
+
+    # Update schedule
+    fantasy_update_hour: 14  # 2pm daily
+    timezone: "Asia/Manila"
+
+  tasks:
+    - name: Create NBA Stats API directory
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ api_path }}"
+        - "{{ api_path }}/data"
+
+    - name: Create NBA Stats API Python script
+      copy:
+        dest: "{{ api_path }}/nba-stats-api.py"
+        mode: '0755'
+        content: |
+          #!/usr/bin/env python3
+          """
+          NBA Stats API Aggregator
+          ========================
+          Provides NBA game scores, standings, and Yahoo Fantasy league data for Glance dashboard.
+          Uses the free ESPN API for live data and Yahoo Fantasy API for fantasy league.
+
+          Endpoints:
+          - /games - Today's games with scores
+          - /standings - NBA standings (East/West)
+          - /fantasy - Yahoo Fantasy NBA league standings
+          - /health - Health check
+          """
+
+          import os
+          import json
+          import requests
+          from flask import Flask, jsonify
+          from flask_cors import CORS
+          from datetime import datetime
+          from pathlib import Path
+          import pytz
+          import logging
+
+          # Configure logging
+          logging.basicConfig(level=logging.INFO)
+          logger = logging.getLogger(__name__)
+
+          app = Flask(__name__)
+          CORS(app)
+
+          # Yahoo Fantasy configuration
+          YAHOO_CLIENT_ID = os.getenv('YAHOO_CLIENT_ID', '')
+          YAHOO_CLIENT_SECRET = os.getenv('YAHOO_CLIENT_SECRET', '')
+          YAHOO_LEAGUE_ID = os.getenv('YAHOO_LEAGUE_ID', '')
+          YAHOO_TOKEN_PATH = os.getenv('YAHOO_TOKEN_PATH', '/data/yahoo_token.json')
+
+          # ESPN API endpoints (free, no auth required)
+          ESPN_SCOREBOARD = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard"
+          ESPN_STANDINGS = "https://site.api.espn.com/apis/v2/sports/basketball/nba/standings"
+
+          # Timezone
+          TIMEZONE = os.getenv('TIMEZONE', 'Asia/Manila')
+
+
+          @app.route('/health')
+          def health():
+              """Health check endpoint"""
+              return jsonify({"status": "healthy", "service": "nba-stats-api"})
+
+
+          @app.route('/games')
+          def get_games():
+              """Get today's NBA games with scores."""
+              try:
+                  response = requests.get(ESPN_SCOREBOARD, timeout=10)
+                  response.raise_for_status()
+                  data = response.json()
+
+                  games = []
+                  for event in data.get('events', []):
+                      competition = event.get('competitions', [{}])[0]
+                      competitors = competition.get('competitors', [])
+
+                      home_team = None
+                      away_team = None
+                      for comp in competitors:
+                          team_data = {
+                              'id': comp.get('team', {}).get('abbreviation', ''),
+                              'name': comp.get('team', {}).get('displayName', ''),
+                              'shortName': comp.get('team', {}).get('shortDisplayName', ''),
+                              'abbreviation': comp.get('team', {}).get('abbreviation', ''),
+                              'score': comp.get('score', '0'),
+                              'logo': comp.get('team', {}).get('logo', ''),
+                              'record': comp.get('records', [{}])[0].get('summary', '') if comp.get('records') else '',
+                              'winner': comp.get('winner', False)
+                          }
+                          if comp.get('homeAway') == 'home':
+                              home_team = team_data
+                          else:
+                              away_team = team_data
+
+                      status = event.get('status', {})
+                      status_type = status.get('type', {})
+                      broadcasts = competition.get('broadcasts', [])
+                      broadcast_name = broadcasts[0].get('names', [''])[0] if broadcasts else ''
+
+                      game = {
+                          'id': event.get('id', ''),
+                          'name': event.get('name', ''),
+                          'shortName': event.get('shortName', ''),
+                          'date': event.get('date', ''),
+                          'homeTeam': home_team,
+                          'awayTeam': away_team,
+                          'status': {
+                              'state': status_type.get('state', ''),
+                              'detail': status_type.get('shortDetail', ''),
+                              'description': status_type.get('description', ''),
+                              'period': status.get('period', 0),
+                              'clock': status.get('displayClock', ''),
+                              'completed': status_type.get('completed', False)
+                          },
+                          'broadcast': broadcast_name,
+                          'venue': competition.get('venue', {}).get('fullName', '')
+                      }
+                      games.append(game)
+
+                  tz = pytz.timezone(TIMEZONE)
+                  now = datetime.now(tz)
+
+                  return jsonify({
+                      'date': now.strftime('%Y-%m-%d'),
+                      'dateDisplay': now.strftime('%A, %B %d, %Y'),
+                      'gamesCount': len(games),
+                      'games': games
+                  })
+
+              except requests.RequestException as e:
+                  return jsonify({'error': str(e), 'games': []}), 500
+
+
+          @app.route('/standings')
+          def get_standings():
+              """Get NBA standings for Eastern and Western conferences."""
+              try:
+                  response = requests.get(ESPN_STANDINGS, timeout=10)
+                  response.raise_for_status()
+                  data = response.json()
+
+                  standings = {'eastern': [], 'western': []}
+
+                  for child in data.get('children', []):
+                      conf_name = child.get('name', '').lower()
+                      conf_key = 'eastern' if 'east' in conf_name else 'western'
+
+                      for entry in child.get('standings', {}).get('entries', []):
+                          team = entry.get('team', {})
+                          stats = {stat.get('name'): stat.get('value') for stat in entry.get('stats', [])}
+
+                          team_data = {
+                              'rank': int(stats.get('playoffSeed', 0)),
+                              'id': team.get('abbreviation', ''),
+                              'name': team.get('displayName', ''),
+                              'shortName': team.get('shortDisplayName', ''),
+                              'abbreviation': team.get('abbreviation', ''),
+                              'logo': team.get('logos', [{}])[0].get('href', '') if team.get('logos') else '',
+                              'wins': int(stats.get('wins', 0)),
+                              'losses': int(stats.get('losses', 0)),
+                              'winPercent': float(stats.get('winPercent', 0)),
+                              'gamesBehind': float(stats.get('gamesBehind', 0)),
+                              'streak': stats.get('streak', ''),
+                              'differential': float(stats.get('differential', 0))
+                          }
+                          standings[conf_key].append(team_data)
+
+                  standings['eastern'].sort(key=lambda x: x['rank'])
+                  standings['western'].sort(key=lambda x: x['rank'])
+
+                  return jsonify(standings)
+
+              except requests.RequestException as e:
+                  return jsonify({'error': str(e), 'eastern': [], 'western': []}), 500
+
+
+          # Yahoo Fantasy cache
+          _fantasy_cache = {'data': None, 'last_update': None}
+
+
+          def get_yahoo_fantasy_standings():
+              """Fetch Yahoo Fantasy NBA league standings."""
+              try:
+                  from yfpy.query import YahooFantasySportsQuery
+
+                  if not all([YAHOO_CLIENT_ID, YAHOO_CLIENT_SECRET, YAHOO_LEAGUE_ID]):
+                      return {'error': 'Yahoo Fantasy not configured', 'teams': []}
+
+                  yahoo_query = YahooFantasySportsQuery(
+                      league_id=YAHOO_LEAGUE_ID.split('.l.')[-1] if '.l.' in YAHOO_LEAGUE_ID else YAHOO_LEAGUE_ID,
+                      game_code="nba",
+                      game_id=418,
+                      yahoo_consumer_key=YAHOO_CLIENT_ID,
+                      yahoo_consumer_secret=YAHOO_CLIENT_SECRET,
+                      env_var_fallback=False
+                  )
+
+                  standings = yahoo_query.get_league_standings()
+
+                  teams = []
+                  for team in standings.teams:
+                      team_data = {
+                          'rank': team.team_standings.rank,
+                          'name': team.name,
+                          'manager': team.managers[0].nickname if team.managers else 'Unknown',
+                          'wins': team.team_standings.outcome_totals.wins,
+                          'losses': team.team_standings.outcome_totals.losses,
+                          'ties': team.team_standings.outcome_totals.ties,
+                          'winPct': float(team.team_standings.outcome_totals.percentage),
+                          'streak': getattr(team.team_standings, 'streak', {})
+                      }
+                      teams.append(team_data)
+
+                  teams.sort(key=lambda x: x['rank'])
+
+                  return {
+                      'leagueName': getattr(standings, 'name', 'Fantasy League'),
+                      'teams': teams,
+                      'lastUpdate': datetime.now().isoformat()
+                  }
+
+              except ImportError:
+                  return {'error': 'yfpy not installed', 'teams': []}
+              except Exception as e:
+                  logger.error(f"Yahoo Fantasy error: {e}")
+                  return {'error': str(e), 'teams': []}
+
+
+          @app.route('/fantasy')
+          def get_fantasy():
+              """Get Yahoo Fantasy NBA league standings (cached, updates at 2pm)."""
+              global _fantasy_cache
+
+              tz = pytz.timezone(TIMEZONE)
+              now = datetime.now(tz)
+              update_hour = int(os.getenv('FANTASY_UPDATE_HOUR', '14'))
+
+              should_update = False
+              if _fantasy_cache['data'] is None:
+                  should_update = True
+              elif _fantasy_cache['last_update']:
+                  last = _fantasy_cache['last_update']
+                  if now.date() > last.date() and now.hour >= update_hour:
+                      should_update = True
+                  elif now.date() == last.date() and last.hour < update_hour <= now.hour:
+                      should_update = True
+
+              if should_update:
+                  logger.info("Updating Yahoo Fantasy cache...")
+                  _fantasy_cache['data'] = get_yahoo_fantasy_standings()
+                  _fantasy_cache['last_update'] = now
+
+              return jsonify(_fantasy_cache['data'] or {'error': 'No data', 'teams': []})
+
+
+          @app.route('/fantasy/refresh')
+          def refresh_fantasy():
+              """Force refresh Yahoo Fantasy standings."""
+              global _fantasy_cache
+              tz = pytz.timezone(TIMEZONE)
+              _fantasy_cache['data'] = get_yahoo_fantasy_standings()
+              _fantasy_cache['last_update'] = datetime.now(tz)
+              return jsonify(_fantasy_cache['data'])
+
+
+          if __name__ == '__main__':
+              port = int(os.getenv('PORT', 5060))
+              debug = os.getenv('DEBUG', 'false').lower() == 'true'
+              app.run(host='0.0.0.0', port=port, debug=debug)
+
+    - name: Create requirements.txt
+      copy:
+        dest: "{{ api_path }}/requirements.txt"
+        content: |
+          flask>=2.0.0
+          flask-cors>=3.0.0
+          requests>=2.25.0
+          pytz>=2021.1
+          yfpy>=14.0.0
+
+    - name: Create Dockerfile
+      copy:
+        dest: "{{ api_path }}/Dockerfile"
+        content: |
+          FROM python:3.11-slim
+
+          WORKDIR /app
+
+          # Install dependencies
+          COPY requirements.txt .
+          RUN pip install --no-cache-dir -r requirements.txt
+
+          # Copy application
+          COPY nba-stats-api.py .
+
+          # Create data directory for Yahoo token storage
+          RUN mkdir -p /data
+
+          EXPOSE 5060
+
+          CMD ["python", "nba-stats-api.py"]
+
+    - name: Create docker-compose.yml
+      copy:
+        dest: "{{ api_path }}/docker-compose.yml"
+        content: |
+          services:
+            nba-stats-api:
+              build: .
+              container_name: {{ container_name }}
+              restart: unless-stopped
+              ports:
+                - "{{ api_port }}:5060"
+              environment:
+                - PORT=5060
+                - TIMEZONE={{ timezone }}
+                - FANTASY_UPDATE_HOUR={{ fantasy_update_hour }}
+                - YAHOO_CLIENT_ID={{ yahoo_client_id }}
+                - YAHOO_CLIENT_SECRET={{ yahoo_client_secret }}
+                - YAHOO_LEAGUE_ID={{ yahoo_league_id }}
+                - YAHOO_TOKEN_PATH=/data/yahoo_token.json
+              volumes:
+                - ./data:/data
+              labels:
+                - "com.centurylinklabs.watchtower.enable=false"
+              healthcheck:
+                test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5060/health')"]
+                interval: 30s
+                timeout: 10s
+                retries: 3
+
+    - name: Build and start NBA Stats API
+      community.docker.docker_compose_v2:
+        project_src: "{{ api_path }}"
+        build: always
+        state: present
+      register: docker_result
+
+    - name: Wait for API to be healthy
+      uri:
+        url: "http://localhost:{{ api_port }}/health"
+        method: GET
+        status_code: 200
+      register: health_check
+      retries: 10
+      delay: 3
+      until: health_check.status == 200
+
+    - name: Test games endpoint
+      uri:
+        url: "http://localhost:{{ api_port }}/games"
+        method: GET
+        status_code: 200
+      register: games_test
+
+    - name: Display deployment info
+      debug:
+        msg: |
+
+          ========================================
+          NBA Stats API Deployed Successfully!
+          ========================================
+
+          API Endpoints:
+          - Games:     http://192.168.40.10:{{ api_port }}/games
+          - Standings: http://192.168.40.10:{{ api_port }}/standings
+          - Fantasy:   http://192.168.40.10:{{ api_port }}/fantasy
+          - Health:    http://192.168.40.10:{{ api_port }}/health
+
+          Today's Games: {{ games_test.json.gamesCount | default(0) }}
+
+          Yahoo Fantasy Setup (if needed):
+          1. Create app at https://developer.yahoo.com/apps/create/
+          2. Edit {{ api_path }}/docker-compose.yml
+          3. Set YAHOO_CLIENT_ID, YAHOO_CLIENT_SECRET, YAHOO_LEAGUE_ID
+          4. Run: cd {{ api_path }} && docker compose up -d --build
+
+          ========================================

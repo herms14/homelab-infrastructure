@@ -2,6 +2,7 @@ server:
   port: 8080
   assets-path: /app/assets
 theme:
+  document-width: 100%
   background-color: 240 21 15
   contrast-multiplier: 1.2
   primary-color: 267 84 81
@@ -74,6 +75,14 @@ pages:
   columns:
   - size: small
     widgets:
+    - type: custom-api
+      title: Chess.com
+      cache: 30m
+      url: https://api.chess.com/pub/player/hrmsmrflrii/stats
+      headers:
+        User-Agent: Glance Dashboard/1.0
+      template: "<div style=\"padding: 8px;\">\n  <a href=\"https://www.chess.com/member/hrmsmrflrii\" target=\"_blank\" style=\"text-decoration: none; color: inherit;\">\n    <div style=\"display: flex; align-items: center; gap: 8px; margin-bottom: 12px;\">\n      <img src=\"https://images.chesscomfiles.com/uploads/v1/user/500559429.e3139af7.200x200o.989ed98f1384.jpg\" alt=\"Profile\" style=\"width: 32px; height: 32px; border-radius: 50%; object-fit: cover;\">\n      <div>\n        <span style=\"font-weight: 600; color: #fff;\">hrmsmrflrii</span>\n        <div style=\"font-size: 10px; color: #888;\">Chess.com</div>\n      </div>\n    </div>\n  </a>\n\n  <div style=\"display: grid; grid-template-columns: 1fr 1fr; gap: 8px;\">\n    <div style=\"background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); border-radius: 8px; padding: 10px; text-align: center;\">\n      <div style=\"font-size: 9px; color: rgba(255,255,255,0.8); text-transform: uppercase; margin-bottom: 4px;\">Blitz</div>\n\
+        \      <div style=\"font-size: 20px; font-weight: bold; color: #fff;\">{{ .JSON.Int \"chess_blitz.last.rating\" }}</div>\n      <div style=\"font-size: 9px; color: rgba(255,255,255,0.7); margin-top: 2px;\">\n        {{ .JSON.Int \"chess_blitz.record.win\" }}W / {{ .JSON.Int \"chess_blitz.record.loss\" }}L\n      </div>\n    </div>\n    <div style=\"background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); border-radius: 8px; padding: 10px; text-align: center;\">\n      <div style=\"font-size: 9px; color: rgba(255,255,255,0.8); text-transform: uppercase; margin-bottom: 4px;\">Rapid</div>\n      <div style=\"font-size: 20px; font-weight: bold; color: #fff;\">{{ .JSON.Int \"chess_rapid.last.rating\" }}</div>\n      <div style=\"font-size: 9px; color: rgba(255,255,255,0.7); margin-top: 2px;\">\n        {{ .JSON.Int \"chess_rapid.record.win\" }}W / {{ .JSON.Int \"chess_rapid.record.loss\" }}L\n      </div>\n    </div>\n  </div>\n</div>"
     - type: clock
       hour-format: 24h
       timezone: Asia/Manila
@@ -81,8 +90,21 @@ pages:
       location: Manila, Philippines
       units: metric
       hour-format: 24h
+    - type: custom-api
+      title: Sun Times
+      cache: 1h
+      url: https://api.sunrise-sunset.org/json?lat=14.5995&lng=120.9842&formatted=0&tzid=Asia/Manila
+      template: "<div style=\"display: flex; justify-content: space-around; padding: 10px 4px;\">\n  <div style=\"text-align: center;\">\n    <div style=\"font-size: 24px; margin-bottom: 4px;\">\U0001F305</div>\n    <div style=\"font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 2px;\">Sunrise</div>\n    <div style=\"font-size: 14px; font-weight: 600; color: #f59e0b;\">{{ .JSON.String \"results.sunrise\" | parseTime \"2006-01-02T15:04:05-07:00\" | formatTime \"3:04 PM\" }}</div>\n  </div>\n  <div style=\"text-align: center;\">\n    <div style=\"font-size: 24px; margin-bottom: 4px;\">\U0001F307</div>\n    <div style=\"font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 2px;\">Sunset</div>\n    <div style=\"font-size: 14px; font-weight: 600; color: #8b5cf6;\">{{ .JSON.String \"results.sunset\" | parseTime \"2006-01-02T15:04:05-07:00\" | formatTime \"3:04 PM\" }}</div>\n  </div>\n</div>"
     - type: calendar
       first-day-of-week: monday
+    - type: custom-api
+      title: Daily Note
+      cache: 5m
+      url: http://100.90.207.58:27123/vault/05%20Periodic%20Notes/00%20Daily/2025-12-30.md
+      headers:
+        Authorization: Bearer 65e224ccc175e90881634d318b0ea502038da1ed49c1bd805097486c63cf8f6e
+      template: "<div style=\"padding: 8px;\">\n  <div style=\"display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;\">\n    <span style=\"color: #8b5cf6; font-weight: 600; font-size: 12px;\">\U0001F4D3 2025-12-30</span>\n    <a href=\"obsidian://open?vault=Hermes%27s%20Life%20Knowledge%20Base&file=05%20Periodic%20Notes%2F00%20Daily%2F2025-12-30\" style=\"font-size: 10px; color: #8b5cf6; text-decoration: none;\">Open in Obsidian →</a>\n  </div>\n\n  <div style=\"display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px;\">\n    <div style=\"background: rgba(139, 92, 246, 0.15); padding: 8px; border-radius: 6px; text-align: center;\">\n      <div style=\"font-size: 18px;\">\U0001F4CB</div>\n      <div style=\"font-size: 9px; color: #8b5cf6; margin-top: 2px;\">Priorities</div>\n    </div>\n    <div style=\"background: rgba(34, 197, 94, 0.15); padding: 8px; border-radius: 6px; text-align: center;\">\n      <div style=\"font-size:\
+        \ 18px;\">\U0001F3CB️</div>\n      <div style=\"font-size: 9px; color: #22c55e; margin-top: 2px;\">Habits</div>\n    </div>\n    <div style=\"background: rgba(245, 158, 11, 0.15); padding: 8px; border-radius: 6px; text-align: center;\">\n      <div style=\"font-size: 18px;\">⚡</div>\n      <div style=\"font-size: 9px; color: #f59e0b; margin-top: 2px;\">Energy</div>\n    </div>\n  </div>\n\n  <div style=\"font-size: 10px; color: #888; text-align: center;\">\n    {{ if .Response.Body }}\n      ✅ Note found - click to open\n    {{ else }}\n      \U0001F4DD Create today's note in Obsidian\n    {{ end }}\n  </div>\n</div>"
     - type: bookmarks
       title: Infrastructure
       groups:
@@ -92,7 +114,7 @@ pages:
           url: https://auth.hrmsmrflrii.xyz
           icon: si:authentik
         - title: Omada Cloud
-          url: https://omada.tplinkcloud.com
+          url: https://omada.hrmsmrflrii.xyz
           icon: si:tplink
         - title: Proxmox
           url: https://proxmox.hrmsmrflrii.xyz
@@ -109,6 +131,9 @@ pages:
         - title: Synology NAS
           url: https://192.168.10.31:5001
           icon: si:synology
+        - title: Home Assistant
+          url: https://ha.hrmsmrflrii.xyz
+          icon: si:homeassistant
     - type: bookmarks
       title: Services
       groups:
@@ -138,6 +163,14 @@ pages:
         - title: Tdarr
           url: https://tdarr.hrmsmrflrii.xyz
           icon: https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/tdarr.png
+        - title: Wizarr
+          url: https://wizarr.hrmsmrflrii.xyz
+          icon: https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/wizarr.png
+          description: User Invitations
+        - title: Tracearr
+          url: https://tracearr.hrmsmrflrii.xyz
+          icon: https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/tautulli.png
+          description: Media Tracking
       - title: Downloads
         links:
         - title: Deluge
@@ -146,6 +179,9 @@ pages:
         - title: SABnzbd
           url: https://sabnzbd.hrmsmrflrii.xyz
           icon: si:sabnzbd
+        - title: MeTube
+          url: https://metube.hrmsmrflrii.xyz
+          icon: https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/metube.png
       - title: Productivity
         links:
         - title: GitLab
@@ -160,6 +196,10 @@ pages:
         - title: Paperless
           url: https://paperless.hrmsmrflrii.xyz
           icon: si:paperlessngx
+        - title: Karakeep
+          url: https://karakeep.hrmsmrflrii.xyz
+          icon: https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/linkwarden.png
+          description: Bookmark Manager
       - title: Monitoring
         links:
         - title: Uptime Kuma
@@ -177,12 +217,21 @@ pages:
         - title: Speedtest
           url: https://speedtest.hrmsmrflrii.xyz
           icon: si:speedtest
+        - title: Pi-hole
+          url: https://pihole.hrmsmrflrii.xyz/admin/
+          icon: si:pihole
+      - title: Photos
+        links:
+        - title: Lagident
+          url: https://lagident.hrmsmrflrii.xyz
+          icon: https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/photoprism.png
+          description: Photo Gallery
   - size: full
     widgets:
     - type: custom-api
       title: Hermes Miraflor II Life Progress
       cache: 1h
-      url: http://192.168.40.10:5051/progress
+      url: http://192.168.40.13:5051/progress
       template: "<div style=\"font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 10px;\">\n  <div style=\"text-align: center; margin-bottom: 15px;\">\n    <span style=\"color: #f87171; font-weight: 600; font-size: 18px;\">{{ .JSON.Int \"remaining_days\" | formatNumber }}</span>\n    <span style=\"color: #888; font-size: 14px;\"> days remaining until age {{ .JSON.Int \"target_age\" }}</span>\n  </div>\n  <div style=\"display: flex; align-items: center; margin-bottom: 12px;\">\n    <span style=\"width: 60px; font-weight: bold; color: #f87171;\">Year</span>\n    <div style=\"flex: 1; height: 24px; background: #333; border-radius: 4px; position: relative; margin: 0 15px; overflow: hidden;\">\n      <div style=\"width: {{ .JSON.Float \"year\" }}%; height: 100%; background: linear-gradient(90deg, #ef4444, #f87171); border-radius: 4px;\"></div>\n    </div>\n    <span style=\"width: 50px; text-align: right; font-weight: 500;\">{{ .JSON.Float \"year\" | printf \"%.0f\"\
         \ }}%</span>\n  </div>\n  <div style=\"display: flex; align-items: center; margin-bottom: 12px;\">\n    <span style=\"width: 60px; font-weight: bold; color: #facc15;\">Month</span>\n    <div style=\"flex: 1; height: 24px; background: #333; border-radius: 4px; position: relative; margin: 0 15px; overflow: hidden;\">\n      <div style=\"width: {{ .JSON.Float \"month\" }}%; height: 100%; background: linear-gradient(90deg, #eab308, #facc15); border-radius: 4px;\"></div>\n    </div>\n    <span style=\"width: 50px; text-align: right; font-weight: 500;\">{{ .JSON.Float \"month\" | printf \"%.0f\" }}%</span>\n  </div>\n  <div style=\"display: flex; align-items: center; margin-bottom: 12px;\">\n    <span style=\"width: 60px; font-weight: bold; color: #4ade80;\">Day</span>\n    <div style=\"flex: 1; height: 24px; background: #333; border-radius: 4px; position: relative; margin: 0 15px; overflow: hidden;\">\n      <div style=\"width: {{ .JSON.Float \"day\" }}%; height: 100%; background: linear-gradient(90deg,\
         \ #22c55e, #4ade80); border-radius: 4px;\"></div>\n    </div>\n    <span style=\"width: 50px; text-align: right; font-weight: 500;\">{{ .JSON.Float \"day\" | printf \"%.0f\" }}%</span>\n  </div>\n  <div style=\"display: flex; align-items: center; margin-bottom: 15px;\">\n    <span style=\"width: 60px; font-weight: bold; color: #4ade80;\">Life</span>\n    <div style=\"flex: 1; height: 24px; background: #333; border-radius: 4px; position: relative; margin: 0 15px; overflow: hidden;\">\n      <div style=\"width: {{ .JSON.Float \"life\" }}%; height: 100%; background: linear-gradient(90deg, #22c55e, #4ade80); border-radius: 4px;\"></div>\n    </div>\n    <span style=\"width: 50px; text-align: right; font-weight: 500;\">{{ .JSON.Float \"life\" | printf \"%.0f\" }}%</span>\n  </div>\n  <div style=\"text-align: center; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 8px;\">\n    <em style=\"color: #aaa; font-size: 13px; line-height: 1.5;\">\"{{ .JSON.String \"quote\" }}\"\
@@ -202,10 +251,6 @@ pages:
         allow-insecure: true
       - title: Node 02
         url: https://192.168.20.21:8006
-        icon: si:proxmox
-        allow-insecure: true
-      - title: Node 03
-        url: https://192.168.20.22:8006
         icon: si:proxmox
         allow-insecure: true
     - type: monitor
@@ -237,11 +282,23 @@ pages:
         url: http://192.168.40.22:2283/api/server/ping
         icon: si:immich
       - title: n8n
-        url: http://192.168.40.10:5678/healthz
+        url: http://192.168.40.13:5678/healthz
         icon: si:n8n
       - title: Paperless
-        url: http://192.168.40.10:8000
+        url: http://192.168.40.13:8000
         icon: si:paperlessngx
+      - title: Pi-hole
+        url: https://pihole.hrmsmrflrii.xyz/admin/
+        icon: si:pihole
+      - title: Karakeep
+        url: http://192.168.40.13:3005
+        icon: https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/linkwarden.png
+      - title: Lagident
+        url: http://192.168.40.13:9933
+        icon: https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/photoprism.png
+      - title: Home Assistant
+        url: http://192.168.40.25:8123
+        icon: si:homeassistant
     - type: monitor
       title: Media Services
       cache: 1m
@@ -276,66 +333,37 @@ pages:
       - title: SABnzbd
         url: http://192.168.40.11:8081
         icon: si:sabnzbd
+      - title: MeTube
+        url: http://192.168.40.11:8082
+        icon: https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/metube.png
+      - title: Wizarr
+        url: http://192.168.40.13:5690
+        icon: https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/wizarr.png
+      - title: Tracearr
+        url: http://192.168.40.13:3002
+        icon: https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/tautulli.png
     - type: monitor
       title: Monitoring Stack
       cache: 1m
       sites:
       - title: Uptime Kuma
-        url: http://192.168.40.10:3001
+        url: http://192.168.40.13:3001
         icon: si:uptimekuma
       - title: Prometheus
-        url: http://192.168.40.10:9090/-/healthy
+        url: http://192.168.40.13:9090/-/healthy
         icon: si:prometheus
       - title: Grafana
-        url: http://192.168.40.10:3030/api/health
+        url: https://grafana.hrmsmrflrii.xyz/api/health
         icon: si:grafana
       - title: Jaeger
-        url: http://192.168.40.10:16686
+        url: http://192.168.40.13:16686
         icon: si:jaeger
       - title: Glance
-        url: http://192.168.40.10:8080
+        url: http://localhost:8080
         icon: mdi:view-dashboard
       - title: Speedtest
-        url: http://192.168.40.10:3000
+        url: http://192.168.40.13:3000/api/healthcheck
         icon: si:speedtest
-    - type: monitor
-      title: Kubernetes Control Plane
-      cache: 1m
-      sites:
-      - title: Controller 01
-        url: https://192.168.20.32:6443/healthz
-        icon: si:kubernetes
-        allow-insecure: true
-      - title: Controller 02
-        url: https://192.168.20.33:6443/healthz
-        icon: si:kubernetes
-        allow-insecure: true
-      - title: Controller 03
-        url: https://192.168.20.34:6443/healthz
-        icon: si:kubernetes
-        allow-insecure: true
-    - type: monitor
-      title: Kubernetes Workers
-      cache: 1m
-      sites:
-      - title: Worker 01
-        url: http://192.168.20.40:10248/healthz
-        icon: si:kubernetes
-      - title: Worker 02
-        url: http://192.168.20.41:10248/healthz
-        icon: si:kubernetes
-      - title: Worker 03
-        url: http://192.168.20.42:10248/healthz
-        icon: si:kubernetes
-      - title: Worker 04
-        url: http://192.168.20.43:10248/healthz
-        icon: si:kubernetes
-      - title: Worker 05
-        url: http://192.168.20.44:10248/healthz
-        icon: si:kubernetes
-      - title: Worker 06
-        url: http://192.168.20.45:10248/healthz
-        icon: si:kubernetes
   - size: small
     widgets:
     - type: markets
@@ -384,13 +412,13 @@ pages:
   - size: full
     widgets:
     - type: iframe
-      title: Proxmox Cluster
+      title: Proxmox Cluster Dashboard
       source: https://grafana.hrmsmrflrii.xyz/d/proxmox-compute/proxmox-cluster-overview?orgId=1&kiosk&theme=transparent&refresh=30s
-      height: 1100
+      height: 2500
     - type: iframe
-      title: Container Overview
+      title: Container Monitoring
       source: https://grafana.hrmsmrflrii.xyz/d/containers-modern/container-monitoring?orgId=1&kiosk&theme=transparent&refresh=30s
-      height: 850
+      height: 1500
   - size: small
     widgets:
     - type: monitor
@@ -405,29 +433,28 @@ pages:
         url: https://192.168.20.21:8006
         icon: si:proxmox
         allow-insecure: true
-      - title: Node 03
-        url: https://192.168.20.22:8006
-        icon: si:proxmox
-        allow-insecure: true
     - type: bookmarks
       title: Quick Links
       groups:
-      - title: Proxmox
+      - title: Dashboards
         links:
         - title: Proxmox UI
           url: https://proxmox.hrmsmrflrii.xyz
           icon: si:proxmox
         - title: Grafana
-          url: https://grafana.hrmsmrflrii.xyz/d/proxmox-compute
+          url: https://grafana.hrmsmrflrii.xyz
           icon: si:grafana
+        - title: Portainer
+          url: https://portainer.hrmsmrflrii.xyz
+          icon: si:portainer
 - name: Storage
   columns:
   - size: full
     widgets:
     - type: iframe
       title: Synology NAS Dashboard
-      source: https://grafana.hrmsmrflrii.xyz/d/synology-storage/synology-nas?orgId=1&kiosk&theme=transparent&refresh=30s
-      height: 500
+      source: https://grafana.hrmsmrflrii.xyz/d/synology-nas-modern/synology-nas-storage?orgId=1&kiosk&theme=transparent&refresh=30s
+      height: 1350
   - size: small
     widgets:
     - type: monitor
@@ -458,51 +485,29 @@ pages:
   - size: full
     widgets:
     - type: iframe
-      title: Network Overview Dashboard
-      source: https://grafana.hrmsmrflrii.xyz/d/network-overview/network-overview?orgId=1&kiosk&theme=transparent&refresh=30s
-      height: 750
-    - type: custom-api
-      title: Speedtest Results
-      cache: 5m
-      url: http://192.168.40.10:3000/api/speedtest/latest
-      template: "<div style=\"display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; padding: 10px;\">\n  <div style=\"background: linear-gradient(135deg, #3b82f6, #1d4ed8); border-radius: 12px; padding: 20px; text-align: center;\">\n    <div style=\"font-size: 11px; color: rgba(255,255,255,0.8); text-transform: uppercase; margin-bottom: 8px;\">Download</div>\n    <div style=\"font-size: 36px; font-weight: bold; color: #fff;\">{{ .JSON.Float \"data.download\" | printf \"%.0f\" }}</div>\n    <div style=\"font-size: 12px; color: rgba(255,255,255,0.7);\">Mbps</div>\n  </div>\n  <div style=\"background: linear-gradient(135deg, #22c55e, #15803d); border-radius: 12px; padding: 20px; text-align: center;\">\n    <div style=\"font-size: 11px; color: rgba(255,255,255,0.8); text-transform: uppercase; margin-bottom: 8px;\">Upload</div>\n    <div style=\"font-size: 36px; font-weight: bold; color: #fff;\">{{ .JSON.Float \"data.upload\" | printf \"%.0f\" }}</div>\n    <div style=\"font-size:\
-        \ 12px; color: rgba(255,255,255,0.7);\">Mbps</div>\n  </div>\n  <div style=\"background: linear-gradient(135deg, #f59e0b, #d97706); border-radius: 12px; padding: 20px; text-align: center;\">\n    <div style=\"font-size: 11px; color: rgba(255,255,255,0.8); text-transform: uppercase; margin-bottom: 8px;\">Ping</div>\n    <div style=\"font-size: 36px; font-weight: bold; color: #fff;\">{{ .JSON.Float \"data.ping\" | printf \"%.1f\" }}</div>\n    <div style=\"font-size: 12px; color: rgba(255,255,255,0.7);\">ms</div>\n  </div>\n</div>\n<div style=\"text-align: center; color: #888; font-size: 11px; margin-top: 5px;\">\n  Server: {{ .JSON.String \"data.server_name\" }}\n</div>"
+      title: Omada Network Dashboard
+      source: https://grafana.hrmsmrflrii.xyz/d/omada-network/omada-network-overview?orgId=1&kiosk&theme=transparent&refresh=30s
+      height: 2200
   - size: small
     widgets:
-    - type: monitor
-      title: Network Devices
+    - type: custom-api
+      title: Network Device Status
       cache: 1m
-      sites:
-      - title: OPNsense
-        url: https://192.168.91.30
-        icon: si:opnsense
-        allow-insecure: true
-      - title: Core Router
-        url: http://192.168.0.1
-        icon: mdi:router-network
-      - title: Core Switch
-        url: http://192.168.90.2
-        icon: mdi:ethernet
-      - title: Synology NAS
-        url: http://192.168.20.31:5000
-        icon: si:synology
-    - type: bookmarks
-      title: Network Links
-      groups:
-      - title: Management
-        links:
-        - title: OPNsense
-          url: https://192.168.91.30
-          icon: si:opnsense
-        - title: Omada Cloud
-          url: https://omada.tplinkcloud.com
-          icon: si:tplink
-        - title: Speedtest
-          url: https://speedtest.hrmsmrflrii.xyz
-          icon: si:speedtest
-        - title: Grafana
-          url: https://grafana.hrmsmrflrii.xyz/d/network-overview
-          icon: si:grafana
+      url: http://192.168.40.13:9090/api/v1/query?query=omada_device_cpu_percentage
+      template: "<div style=\"padding: 8px;\">\n  <div style=\"font-size: 11px; color: #888; margin-bottom: 10px;\">Status via Omada Controller</div>\n  {{ range .JSON.Array \"data.result\" }}\n  <div style=\"display: flex; align-items: center; justify-content: space-between; padding: 8px; margin-bottom: 6px; background: rgba(255,255,255,0.05); border-radius: 6px;\">\n    <div style=\"display: flex; align-items: center; gap: 8px;\">\n      <span style=\"width: 8px; height: 8px; border-radius: 50%; background: #22c55e;\"></span>\n      <span style=\"color: #fff; font-size: 13px;\">{{ .String \"metric.device\" }}</span>\n    </div>\n    <div style=\"display: flex; gap: 12px; font-size: 11px;\">\n      <span style=\"color: #888;\">{{ .String \"metric.device_type\" }}</span>\n      <span style=\"color: #3b82f6;\">CPU: {{ .String \"value.1\" }}%</span>\n    </div>\n  </div>\n  {{ end }}\n</div>"
+    - type: custom-api
+      title: Pi-hole DNS Stats
+      cache: 1m
+      url: http://172.17.0.1:5055/api/pihole/stats
+      template: "<div style=\"padding: 8px;\">\n  <div style=\"display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 10px;\">\n    <div style=\"background: linear-gradient(135deg, #ef4444, #dc2626); border-radius: 8px; padding: 12px; text-align: center;\">\n      <div style=\"font-size: 9px; color: rgba(255,255,255,0.8); text-transform: uppercase;\">Queries Today</div>\n      <div style=\"font-size: 22px; font-weight: bold; color: #fff;\">{{ .JSON.Int \"queries.total\" | formatNumber }}</div>\n    </div>\n    <div style=\"background: linear-gradient(135deg, #22c55e, #16a34a); border-radius: 8px; padding: 12px; text-align: center;\">\n      <div style=\"font-size: 9px; color: rgba(255,255,255,0.8); text-transform: uppercase;\">Blocked</div>\n      <div style=\"font-size: 22px; font-weight: bold; color: #fff;\">{{ .JSON.Int \"queries.blocked\" | formatNumber }}</div>\n    </div>\n  </div>\n  <div style=\"display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;\
+        \ margin-bottom: 10px;\">\n    <div style=\"background: rgba(139, 92, 246, 0.2); border-radius: 8px; padding: 10px; text-align: center;\">\n      <div style=\"font-size: 9px; color: #a78bfa;\">Block Rate</div>\n      <div style=\"font-size: 18px; font-weight: 600; color: #8b5cf6;\">{{ .JSON.Float \"queries.percent_blocked\" | printf \"%.1f\" }}%</div>\n    </div>\n    <div style=\"background: rgba(59, 130, 246, 0.2); border-radius: 8px; padding: 10px; text-align: center;\">\n      <div style=\"font-size: 9px; color: #93c5fd;\">Active Clients</div>\n      <div style=\"font-size: 18px; font-weight: 600; color: #3b82f6;\">{{ .JSON.Int \"clients.active\" }}</div>\n    </div>\n  </div>\n  <div style=\"background: rgba(255,255,255,0.05); border-radius: 8px; padding: 10px;\">\n    <div style=\"display: flex; justify-content: space-between; align-items: center;\">\n      <div>\n        <div style=\"font-size: 9px; color: #888;\">Blocklist Domains</div>\n        <div style=\"font-size: 14px;\
+        \ color: #f59e0b; font-weight: 600;\">{{ .JSON.Int \"gravity.domains_being_blocked\" | formatNumber }}</div>\n      </div>\n      <div style=\"text-align: right;\">\n        <div style=\"font-size: 9px; color: #888;\">Cached</div>\n        <div style=\"font-size: 14px; color: #22c55e; font-weight: 600;\">{{ .JSON.Int \"queries.cached\" | formatNumber }}</div>\n      </div>\n    </div>\n  </div>\n</div>"
+    - type: custom-api
+      title: Latest Speedtest
+      cache: 5m
+      url: http://192.168.40.13:3000/api/speedtest/latest
+      template: "<div style=\"padding: 8px;\">\n  <div style=\"display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;\">\n    <div style=\"background: linear-gradient(135deg, #3b82f6, #1d4ed8); border-radius: 10px; padding: 15px; text-align: center;\">\n      <div style=\"font-size: 10px; color: rgba(255,255,255,0.8);\">Download</div>\n      <div style=\"font-size: 24px; font-weight: bold; color: #fff;\">{{ .JSON.Float \"data.download\" | printf \"%.0f\" }} Mbps</div>\n    </div>\n    <div style=\"background: linear-gradient(135deg, #22c55e, #15803d); border-radius: 10px; padding: 15px; text-align: center;\">\n      <div style=\"font-size: 10px; color: rgba(255,255,255,0.8);\">Upload</div>\n      <div style=\"font-size: 24px; font-weight: bold; color: #fff;\">{{ .JSON.Float \"data.upload\" | printf \"%.0f\" }} Mbps</div>\n    </div>\n  </div>\n  <div style=\"display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 10px;\">\n    <div style=\"background: rgba(255,255,255,0.08);\
+        \ border-radius: 8px; padding: 10px; text-align: center;\">\n      <div style=\"font-size: 10px; color: #888;\">Ping</div>\n      <div style=\"font-size: 18px; color: #f59e0b;\">{{ .JSON.Float \"data.ping\" | printf \"%.1f\" }} ms</div>\n    </div>\n    <div style=\"background: rgba(255,255,255,0.08); border-radius: 8px; padding: 10px; text-align: center;\">\n      <div style=\"font-size: 10px; color: #888;\">Jitter</div>\n      <div style=\"font-size: 18px; color: #8b5cf6;\">{{ .JSON.Float \"data.ping_jitter\" | printf \"%.1f\" }} ms</div>\n    </div>\n  </div>\n</div>"
 - name: Media
   columns:
   - size: full
@@ -510,18 +515,18 @@ pages:
     - type: custom-api
       title: Media Stats
       cache: 1m
-      url: http://192.168.40.10:5054/api/stats
+      url: http://172.17.0.1:5054/api/stats
       template: "\n<div style=\"display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 4px;\">\n  {{ range .JSON.Array \"stats\" }}\n  <div style=\"background: {{ .String \"color\" }}; border-radius: 8px; padding: 16px; min-height: 90px; display: flex; flex-direction: column; justify-content: center;\">\n    <div style=\"font-size: 11px; color: rgba(255,255,255,0.85); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; font-weight: 500;\">\n      {{ .String \"label\" }}\n    </div>\n    <div style=\"font-size: 32px; font-weight: bold; color: #fff;\">\n      {{ .Int \"value\" | formatNumber }}\n    </div>\n  </div>\n  {{ end }}\n</div>\n"
     - type: custom-api
       title: Now Showing - Recent Downloads
       cache: 2m
-      url: http://192.168.40.10:5054/api/recent
+      url: http://172.17.0.1:5054/api/recent
       template: "<div style=\"padding: 10px;\">\n  {{ if eq (.JSON.Int \"count\") 0 }}\n  <div style=\"text-align: center; color: #666; font-style: italic; padding: 40px;\">\n    No recent downloads yet\n  </div>\n  {{ else }}\n  <div style=\"display: flex; flex-wrap: wrap; gap: 15px; justify-content: center;\">\n    {{ range .JSON.Array \"items\" }}\n    <div style=\"text-align: center; width: 130px;\">\n      <div style=\"position: relative;\">\n        {{ if .String \"poster\" }}\n        <img src=\"{{ .String \"poster\" }}\" style=\"width: 130px; height: 195px; object-fit: cover; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);\" onerror=\"this.src='https://via.placeholder.com/130x195/333/666?text=No+Poster'\">\n        {{ else }}\n        <div style=\"width: 130px; height: 195px; background: #333; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #666;\">No Poster</div>\n        {{ end }}\n        <div style=\"position: absolute; top:\
         \ 8px; right: 8px; background: {{ if eq (.String \"type\") \"movie\" }}#f59e0b{{ else }}#8b5cf6{{ end }}; color: #fff; font-size: 9px; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; font-weight: 600;\">\n          {{ if eq (.String \"type\") \"movie\" }}Movie{{ else }}TV{{ end }}\n        </div>\n      </div>\n      <div style=\"font-size: 12px; color: #fff; margin-top: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500;\">\n        {{ .String \"title\" }}\n      </div>\n      {{ if .String \"episode\" }}\n      <div style=\"font-size: 10px; color: #8b5cf6; margin-top: 2px;\">{{ .String \"episode\" }}</div>\n      {{ else if .Int \"year\" }}\n      <div style=\"font-size: 10px; color: #888; margin-top: 2px;\">{{ .Int \"year\" }}</div>\n      {{ end }}\n      <div style=\"font-size: 9px; color: #666; margin-top: 4px;\">{{ .String \"quality\" }}</div>\n    </div>\n    {{ end }}\n  </div>\n  {{ end }}\n</div>"
     - type: custom-api
       title: Currently Downloading
       cache: 30s
-      url: http://192.168.40.10:5054/api/queue
+      url: http://172.17.0.1:5054/api/queue
       template: "<div style=\"padding: 10px;\">\n  {{ if eq (.JSON.Int \"count\") 0 }}\n  <div style=\"text-align: center; color: #666; font-style: italic; padding: 20px;\">\n    No active downloads\n  </div>\n  {{ else }}\n  <div style=\"display: flex; flex-direction: column; gap: 12px;\">\n    {{ range .JSON.Array \"items\" }}\n    <div style=\"display: flex; gap: 12px; background: rgba(255,255,255,0.03); border-radius: 8px; padding: 12px; align-items: center;\">\n      {{ if .String \"poster\" }}\n      <img src=\"{{ .String \"poster\" }}\" style=\"width: 50px; height: 75px; object-fit: cover; border-radius: 6px; flex-shrink: 0;\" onerror=\"this.style.display='none'\">\n      {{ end }}\n      <div style=\"flex: 1; min-width: 0;\">\n        <div style=\"display: flex; align-items: center; gap: 8px; margin-bottom: 4px;\">\n          <span style=\"background: {{ if eq (.String \"type\") \"movie\" }}#f59e0b{{ else }}#8b5cf6{{ end }}; color: #fff; font-size: 8px; padding: 2px 5px; border-radius:\
         \ 3px; text-transform: uppercase; font-weight: 600;\">\n            {{ if eq (.String \"type\") \"movie\" }}Movie{{ else }}TV{{ end }}\n          </span>\n          <span style=\"font-size: 13px; color: #fff; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;\">\n            {{ .String \"title\" }}{{ if .String \"episode\" }} - {{ .String \"episode\" }}{{ end }}\n          </span>\n        </div>\n        <div style=\"font-size: 10px; color: #888; margin-bottom: 6px;\">\n          {{ .String \"quality\" }} • {{ .String \"client\" }}{{ if ne (.String \"eta\") \"00:00:00\" }} • ETA: {{ .String \"eta\" }}{{ end }}\n        </div>\n        <div style=\"position: relative; height: 8px; background: #333; border-radius: 4px; overflow: hidden;\">\n          <div style=\"position: absolute; left: 0; top: 0; height: 100%; width: {{ .Float \"progress\" }}%; background: linear-gradient(90deg, {{ if eq (.String \"type\") \"movie\" }}#f59e0b, #fbbf24{{ else }}#8b5cf6,\
         \ #a78bfa{{ end }}); border-radius: 4px; transition: width 0.3s;\"></div>\n        </div>\n        <div style=\"font-size: 10px; color: #aaa; margin-top: 4px; text-align: right;\">\n          {{ .Float \"progress\" | printf \"%.1f\" }}%\n        </div>\n      </div>\n    </div>\n    {{ end }}\n  </div>\n  {{ end }}\n</div>"
@@ -577,6 +582,9 @@ pages:
         - title: SABnzbd
           url: https://sabnzbd.hrmsmrflrii.xyz
           icon: si:sabnzbd
+        - title: MeTube
+          url: https://metube.hrmsmrflrii.xyz
+          icon: https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/metube.png
     - type: monitor
       title: Services Status
       cache: 1m
@@ -612,48 +620,140 @@ pages:
   columns:
   - size: full
     widgets:
+    - type: videos
+      title: Tech YouTube
+      style: horizontal-cards
+      channels:
+      - UCBJycsmduvYEL83R_U4JriQ
+      - UCXuqSBlHAE6Xw-yeJA0Tunw
+      - UCMiJRAwDNSNzuYeN2uWa0pA
+      - UCVYamHliCI9rw1tHR1xbkfw
+      - UCXGgrKt94gR6lmN4aN3mYTg
+      - UCWFKCr40YwOZQx8FHU_ZqqQ
+      - UCsBjURrPoezykLs9EqgamOA
+      limit: 12
+      collapse-after: 6
     - type: rss
       title: Tech News
       style: horizontal-cards
+      thumbnail-height: 10
+      card-height: 27
       feeds:
       - url: https://www.theverge.com/rss/index.xml
         title: The Verge
-      - url: https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRGRqTVhZU0FtVnVHZ0pWVXlnQVAB?hl=en-US&gl=US&ceid=US:en
-        title: Google Tech
+      - url: https://www.xda-developers.com/feed/
+        title: XDA
+      - url: https://techcrunch.com/feed/
+        title: TechCrunch
+      - url: https://feeds.arstechnica.com/arstechnica/technology-lab
+        title: Ars Technica
+      limit: 12
+      collapse-after: 6
+    - type: rss
+      title: Android & Mobile
+      style: horizontal-cards
+      feeds:
+      - url: https://www.xda-developers.com/feed/
+        title: XDA Mobile
+      - url: https://news.google.com/rss/search?q=technology&hl=en-US&gl=US&ceid=US:en
+        title: Google Android
+      - url: https://www.reddit.com/r/Android/.rss
+        title: r/Android
       limit: 8
       collapse-after: 4
     - type: rss
       title: AI & Machine Learning
       style: horizontal-cards
       feeds:
+      - url: https://techcrunch.com/category/artificial-intelligence/feed/
+        title: TechCrunch AI
       - url: https://www.reddit.com/r/artificial/.rss
         title: r/artificial
       - url: https://www.reddit.com/r/MachineLearning/.rss
         title: r/MachineLearning
       - url: https://www.reddit.com/r/LocalLLaMA/.rss
         title: r/LocalLLaMA
-      limit: 6
-      collapse-after: 3
+      - url: https://www.reddit.com/r/ChatGPT/.rss
+        title: r/ChatGPT
+      limit: 10
+      collapse-after: 5
     - type: rss
-      title: Enterprise Tech
+      title: Cloud & Enterprise
+      style: horizontal-cards
+      feeds:
+      - url: https://aws.amazon.com/blogs/aws/feed/
+        title: AWS Blog
+      - url: https://www.reddit.com/r/aws/.rss
+        title: r/aws
+      - url: https://www.reddit.com/r/googlecloud/.rss
+        title: r/googlecloud
+      - url: https://www.reddit.com/r/AZURE/.rss
+        title: r/azure
+      - url: https://www.reddit.com/r/oracle/.rss
+        title: r/oracle
+      limit: 8
+      collapse-after: 4
+    - type: rss
+      title: Big Tech
+      style: horizontal-cards
       feeds:
       - url: https://www.reddit.com/r/microsoft/.rss
         title: r/microsoft
-      - url: https://www.reddit.com/r/github/.rss
-        title: r/github
       - url: https://www.reddit.com/r/NVIDIA/.rss
         title: r/NVIDIA
+      - url: https://www.reddit.com/r/google/.rss
+        title: r/google
+      - url: https://www.reddit.com/r/apple/.rss
+        title: r/apple
+      - url: https://www.reddit.com/r/Meta/.rss
+        title: r/Meta
+      limit: 8
+      collapse-after: 4
+    - type: rss
+      title: Gaming
+      style: horizontal-cards
+      feeds:
+      - url: https://www.reddit.com/r/gaming/.rss
+        title: r/gaming
+      - url: https://www.reddit.com/r/pcgaming/.rss
+        title: r/pcgaming
+      - url: https://www.reddit.com/r/Games/.rss
+        title: r/Games
+      - url: https://feeds.arstechnica.com/arstechnica/gaming
+        title: Ars Gaming
+      limit: 8
+      collapse-after: 4
+    - type: rss
+      title: PC Builds & Hardware
+      style: horizontal-cards
+      feeds:
+      - url: https://www.reddit.com/r/buildapc/.rss
+        title: r/buildapc
+      - url: https://www.reddit.com/r/pcmasterrace/.rss
+        title: r/pcmasterrace
+      - url: https://www.reddit.com/r/hardware/.rss
+        title: r/hardware
+      - url: https://www.xda-developers.com/feed/
+        title: XDA Computing
+      limit: 8
+      collapse-after: 4
+    - type: rss
+      title: Travel
+      style: horizontal-cards
+      feeds:
+      - url: https://www.reddit.com/r/travel/.rss
+        title: r/travel
+      - url: https://www.reddit.com/r/solotravel/.rss
+        title: r/solotravel
+      - url: https://www.reddit.com/r/TravelHacks/.rss
+        title: r/TravelHacks
       limit: 6
       collapse-after: 3
-    - type: custom-api
-      title: NBA Scores
-      cache: 5m
-      url: https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard
-      template: "<div style=\"padding: 10px;\">\n{{ if .JSON.Array \"events\" }}\n{{ range .JSON.Array \"events\" }}\n<div style=\"background: rgba(255,255,255,0.05); border-radius: 8px; padding: 12px; margin-bottom: 10px;\">\n  <div style=\"font-size: 12px; color: #888; margin-bottom: 8px;\">{{ .String \"status.type.shortDetail\" }}</div>\n  {{ range .Array \"competitions\" }}\n  {{ range .Array \"competitors\" }}\n  <div style=\"display: flex; justify-content: space-between; align-items: center; padding: 4px 0;\">\n    <span style=\"color: {{ if eq (.String \"homeAway\") \"home\" }}#fff{{ else }}#aaa{{ end }};\">{{ .String \"team.displayName\" }}</span>\n    <span style=\"font-weight: bold; color: #fff; font-size: 18px;\">{{ .String \"score\" }}</span>\n  </div>\n  {{ end }}\n  {{ end }}\n</div>\n{{ end }}\n{{ else }}\n<div style=\"text-align: center; color: #666; padding: 20px;\">No games scheduled</div>\n{{ end }}\n</div>"
   - size: small
     widgets:
     - type: markets
       title: Tech Stocks
+      sort-by: change
       markets:
       - symbol: MSFT
         name: Microsoft
@@ -662,13 +762,18 @@ pages:
       - symbol: ORCL
         name: Oracle
       - symbol: AMZN
-        name: Amazon
-      - symbol: CRM
-        name: Salesforce
+        name: Amazon (AWS)
       - symbol: GOOGL
-        name: Google
+        name: Alphabet
+      - symbol: META
+        name: Meta
+      - symbol: AAPL
+        name: Apple
+      - symbol: BABA
+        name: Alibaba
     - type: markets
       title: Crypto
+      sort-by: change
       markets:
       - symbol: BTC-USD
         name: Bitcoin
@@ -676,13 +781,53 @@ pages:
         name: Ethereum
       - symbol: XRP-USD
         name: XRP
+      - symbol: SOL-USD
+        name: Solana
+      - symbol: DOGE-USD
+        name: Dogecoin
     - type: rss
       title: Crypto News
       feeds:
       - url: https://www.reddit.com/r/cryptocurrency/.rss
         title: r/cryptocurrency
+      - url: https://www.reddit.com/r/Bitcoin/.rss
+        title: r/Bitcoin
+      limit: 6
+      collapse-after: 3
+    - type: rss
+      title: Stock Market
+      feeds:
+      - url: https://www.reddit.com/r/stocks/.rss
+        title: r/stocks
+      - url: https://www.reddit.com/r/wallstreetbets/.rss
+        title: r/wallstreetbets
       limit: 5
       collapse-after: 3
+    - type: bookmarks
+      title: Quick Links
+      groups:
+      - title: News Sites
+        links:
+        - title: The Verge
+          url: https://www.theverge.com
+          icon: si:theverge
+        - title: XDA
+          url: https://www.xda-developers.com
+          icon: si:xdadevelopers
+        - title: TechCrunch
+          url: https://techcrunch.com
+          icon: si:techcrunch
+        - title: Ars Technica
+          url: https://arstechnica.com
+          icon: si:arstechnica
+      - title: Finance
+        links:
+        - title: Yahoo Finance
+          url: https://finance.yahoo.com
+          icon: si:yahoo
+        - title: CoinMarketCap
+          url: https://coinmarketcap.com
+          icon: si:coinmarketcap
 - name: Reddit
   columns:
   - size: full
@@ -690,6 +835,113 @@ pages:
     - type: custom-api
       title: Reddit Feed
       cache: 5m
-      url: http://192.168.40.10:5053/api/feed
-      template: "<div style=\"margin-bottom: 15px; text-align: right;\">\n  <a href=\"http://192.168.40.10:5053\" target=\"_blank\" style=\"color: #ff4500; font-size: 12px; text-decoration: none; padding: 5px 10px; border: 1px solid #ff4500; border-radius: 6px;\">\n    ⚙ Settings\n  </a>\n</div>\n{{ range .JSON.Array \"groups\" }}\n<div style=\"margin-bottom: 20px;\">\n  <div style=\"color: #ff4500; font-size: 14px; font-weight: 600; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,69,0,0.3);\">\n    r/{{ .String \"name\" }}\n  </div>\n  {{ range .Array \"posts\" }}\n  <div style=\"display: flex; padding: 8px; margin-bottom: 6px; background: rgba(255,255,255,0.03); border-radius: 6px;\">\n    {{ if .String \"thumbnail\" }}\n    <img src=\"{{ .String \"thumbnail\" }}\" style=\"width: 60px; height: 60px; object-fit: cover; border-radius: 4px; margin-right: 10px; flex-shrink: 0;\" onerror=\"this.style.display='none'\">\n    {{ end }}\n    <div style=\"flex: 1; min-width:\
-        \ 0;\">\n      <a href=\"{{ .String \"url\" }}\" target=\"_blank\" style=\"color: #fff; text-decoration: none; font-size: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;\">\n        {{ .String \"title\" }}\n      </a>\n      <div style=\"color: #888; font-size: 10px; margin-top: 3px;\">\n        {{ .Int \"score\" }} pts · {{ .Int \"comments\" }} comments\n      </div>\n    </div>\n  </div>\n  {{ end }}\n</div>\n{{ end }}\n"
+      url: http://172.17.0.1:5053/api/feed
+      template: "<div style=\"padding: 10px;\">\n{{ if .JSON.Array \"groups\" }}\n{{ range .JSON.Array \"groups\" }}\n<div style=\"margin-bottom: 20px;\">\n  <div style=\"display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.1);\">\n    <svg viewBox=\"0 0 24 24\" fill=\"#ff4500\" style=\"width: 20px; height: 20px;\">\n      <path d=\"M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25\
+        \ 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.687-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 0 0-.231.094.33.33 0 0 0 0 .463c.842.842 2.484.913 2.961.913.477 0 2.105-.056 2.961-.913a.361.361 0 0 0 .029-.463.33.33 0 0 0-.464 0c-.547.533-1.684.73-2.512.73-.828 0-1.979-.196-2.512-.73a.326.326 0 0 0-.232-.095z\"/>\n    </svg>\n    <span style=\"font-size: 16px; font-weight: 600; color: #ff4500;\">r/{{ .String \"name\" }}</span>\n  </div>\n  {{ range .Array \"posts\" }}\n  <a href=\"{{ .String \"url\" }}\" target=\"_blank\" style=\"display: flex; gap: 12px; padding: 10px; margin-bottom: 8px; background: rgba(255,255,255,0.03); border-radius: 8px; text-decoration: none; transition: background 0.2s;\">\n    {{ if .String \"thumbnail\" }}\n    <img src=\"{{ .String \"thumbnail\" }}\" alt=\"\" style=\"width: 80px; height:\
+        \ 60px; object-fit: cover; border-radius: 6px; flex-shrink: 0;\" onerror=\"this.style.display='none'\">\n    {{ end }}\n    <div style=\"flex: 1; min-width: 0;\">\n      <div style=\"color: #eee; font-size: 14px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;\">{{ .String \"title\" }}</div>\n      <div style=\"display: flex; gap: 12px; margin-top: 6px; font-size: 12px; color: #888;\">\n        <span style=\"color: #ff4500;\">{{ .Int \"score\" }} pts</span>\n        <span>{{ .Int \"comments\" }} comments</span>\n      </div>\n    </div>\n  </a>\n  {{ end }}\n</div>\n{{ end }}\n{{ else }}\n<div style=\"text-align: center; color: #666; padding: 40px;\">Loading Reddit feed...</div>\n{{ end }}\n</div>\n<div style=\"text-align: center; padding: 10px;\">\n  <a href=\"http://172.17.0.1:5053\" target=\"_blank\" style=\"color: #ff4500; text-decoration: none; font-size: 13px;\">Manage Subreddits</a>\n</div>"
+  - size: small
+    widgets:
+    - type: reddit
+      title: r/technology
+      subreddit: technology
+      style: vertical-list
+      show-thumbnails: true
+      limit: 8
+      collapse-after: 4
+      sort-by: hot
+    - type: reddit
+      title: r/programming
+      subreddit: programming
+      style: vertical-list
+      show-thumbnails: true
+      limit: 6
+      collapse-after: 3
+      sort-by: hot
+    - type: reddit
+      title: r/sysadmin
+      subreddit: sysadmin
+      style: vertical-list
+      show-thumbnails: true
+      limit: 6
+      collapse-after: 3
+      sort-by: hot
+    - type: bookmarks
+      title: Subreddits
+      groups:
+      - title: Tech
+        links:
+        - title: r/homelab
+          url: https://reddit.com/r/homelab
+          icon: si:reddit
+        - title: r/selfhosted
+          url: https://reddit.com/r/selfhosted
+          icon: si:reddit
+        - title: r/datahoarder
+          url: https://reddit.com/r/datahoarder
+          icon: si:reddit
+        - title: r/netsec
+          url: https://reddit.com/r/netsec
+          icon: si:reddit
+      - title: Hobby
+        links:
+        - title: r/pcmasterrace
+          url: https://reddit.com/r/pcmasterrace
+          icon: si:reddit
+        - title: r/mechanicalkeyboards
+          url: https://reddit.com/r/mechanicalkeyboards
+          icon: si:reddit
+        - title: r/buildapc
+          url: https://reddit.com/r/buildapc
+          icon: si:reddit
+- name: Sports
+  columns:
+  - size: small
+    widgets:
+    - type: custom-api
+      title: Today's NBA Games
+      cache: 2m
+      url: http://172.17.0.1:5060/games
+      template: "<div style=\"font-family: -apple-system, BlinkMacSystemFont, sans-serif;\">\n  <div style=\"color: #888; font-size: 12px; margin-bottom: 10px;\">{{ .JSON.String \"dateDisplay\" }}</div>\n  {{ if eq (.JSON.Int \"gamesCount\") 0 }}\n  <div style=\"color: #666; text-align: center; padding: 20px;\">No games scheduled today</div>\n  {{ else }}\n  {{ range .JSON.Array \"games\" }}\n  <div style=\"background: rgba(255,255,255,0.05); border-radius: 8px; padding: 10px; margin-bottom: 8px;\">\n    <div style=\"display: flex; justify-content: space-between; align-items: center;\">\n      <div style=\"flex: 1;\">\n        <div style=\"display: flex; align-items: center; margin-bottom: 6px;\">\n          <img src=\"{{ .String \"awayTeam.logo\" }}\" style=\"width: 24px; height: 24px; margin-right: 8px;\">\n          <span style=\"font-weight: 600; {{ if .Bool \"awayTeam.winner\" }}color: #22c55e;{{ end }}\">{{ .String \"awayTeam.abbreviation\" }}</span>\n          <span style=\"color:\
+        \ #888; font-size: 10px; margin-left: 6px;\">{{ .String \"awayTeam.record\" }}</span>\n        </div>\n        <div style=\"display: flex; align-items: center;\">\n          <img src=\"{{ .String \"homeTeam.logo\" }}\" style=\"width: 24px; height: 24px; margin-right: 8px;\">\n          <span style=\"font-weight: 600; {{ if .Bool \"homeTeam.winner\" }}color: #22c55e;{{ end }}\">{{ .String \"homeTeam.abbreviation\" }}</span>\n          <span style=\"color: #888; font-size: 10px; margin-left: 6px;\">{{ .String \"homeTeam.record\" }}</span>\n        </div>\n      </div>\n      <div style=\"text-align: right;\">\n        <div style=\"font-size: 18px; font-weight: bold; {{ if .Bool \"awayTeam.winner\" }}color: #22c55e;{{ end }}\">{{ .String \"awayTeam.score\" }}</div>\n        <div style=\"font-size: 18px; font-weight: bold; {{ if .Bool \"homeTeam.winner\" }}color: #22c55e;{{ end }}\">{{ .String \"homeTeam.score\" }}</div>\n      </div>\n    </div>\n    <div style=\"color: #f59e0b; font-size:\
+        \ 11px; margin-top: 6px; text-align: center;\">{{ .String \"status.detail\" }}{{ if .String \"broadcast\" }} | {{ .String \"broadcast\" }}{{ end }}</div>\n  </div>\n  {{ end }}\n  {{ end }}\n</div>\n"
+    - type: custom-api
+      title: Injury Report
+      cache: 15m
+      url: http://172.17.0.1:5060/injuries
+      template: "<div style=\"font-family: -apple-system, sans-serif; font-size: 11px;\">\n  {{ if .JSON.String \"error\" }}\n  <div style=\"color: #888; text-align: center;\">Error loading injuries</div>\n  {{ else }}\n  <div style=\"color: #888; margin-bottom: 6px;\">{{ .JSON.Int \"total\" }} players injured</div>\n  {{ range .JSON.Array \"injuries\" }}\n  <div style=\"background: rgba(255,255,255,0.05); border-radius: 4px; padding: 6px; margin-bottom: 4px; display: flex; align-items: center;\">\n    <img src=\"{{ .String \"headshot\" }}\" style=\"width: 32px; height: 32px; border-radius: 50%; margin-right: 8px; object-fit: cover;\">\n    <div style=\"flex: 1;\">\n      <div style=\"font-weight: 600;\">{{ .String \"name\" }}</div>\n      <div style=\"color: #888; font-size: 10px;\">{{ .String \"team\" }} | {{ .String \"position\" }}</div>\n    </div>\n    <div style=\"text-align: right;\">\n      <div style=\"{{ if eq (.String \"status\") \"Out\" }}color: #ef4444;{{ else if eq (.String\
+        \ \"status\") \"Day-To-Day\" }}color: #f59e0b;{{ else }}color: #888;{{ end }} font-weight: bold;\">{{ .String \"status\" }}</div>\n      <div style=\"color: #888; font-size: 9px;\">{{ .String \"type\" }}</div>\n    </div>\n  </div>\n  {{ end }}\n  {{ end }}\n</div>\n"
+  - size: full
+    widgets:
+    - type: custom-api
+      title: NBA Standings
+      cache: 15m
+      url: http://172.17.0.1:5060/standings
+      template: "<div style=\"font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: grid; grid-template-columns: 1fr 1fr; gap: 20px;\">\n  <div>\n    <h3 style=\"color: #3b82f6; font-size: 14px; margin-bottom: 10px; border-bottom: 2px solid #3b82f6; padding-bottom: 5px;\">Eastern Conference</h3>\n    <table style=\"width: 100%; font-size: 11px;\">\n      <thead>\n        <tr style=\"color: #666;\">\n          <th style=\"text-align: left; padding: 3px;\">#</th>\n          <th style=\"text-align: left; padding: 3px;\">Team</th>\n          <th style=\"text-align: center; padding: 3px;\">W</th>\n          <th style=\"text-align: center; padding: 3px;\">L</th>\n          <th style=\"text-align: center; padding: 3px;\">GB</th>\n        </tr>\n      </thead>\n      <tbody>\n        {{ range .JSON.Array \"eastern\" }}\n        <tr style=\"border-top: 1px solid rgba(255,255,255,0.05); {{ if le (.Int \"rank\") 6 }}background: rgba(34,197,94,0.1);{{ else if le (.Int \"rank\") 10 }}background:\
+        \ rgba(245,158,11,0.1);{{ end }}\">\n          <td style=\"padding: 3px; font-weight: bold;\">{{ .Int \"rank\" }}</td>\n          <td style=\"padding: 3px;\"><img src=\"{{ .String \"logo\" }}\" style=\"width: 16px; height: 16px; margin-right: 4px; vertical-align: middle;\"><span style=\"font-weight: 500;\">{{ .String \"abbreviation\" }}</span></td>\n          <td style=\"padding: 3px; text-align: center; color: #22c55e;\">{{ .Int \"wins\" }}</td>\n          <td style=\"padding: 3px; text-align: center; color: #ef4444;\">{{ .Int \"losses\" }}</td>\n          <td style=\"padding: 3px; text-align: center; color: #888;\">{{ .Float \"gamesBehind\" }}</td>\n        </tr>\n        {{ end }}\n      </tbody>\n    </table>\n  </div>\n  <div>\n    <h3 style=\"color: #ef4444; font-size: 14px; margin-bottom: 10px; border-bottom: 2px solid #ef4444; padding-bottom: 5px;\">Western Conference</h3>\n    <table style=\"width: 100%; font-size: 11px;\">\n      <thead>\n        <tr style=\"color: #666;\"\
+        >\n          <th style=\"text-align: left; padding: 3px;\">#</th>\n          <th style=\"text-align: left; padding: 3px;\">Team</th>\n          <th style=\"text-align: center; padding: 3px;\">W</th>\n          <th style=\"text-align: center; padding: 3px;\">L</th>\n          <th style=\"text-align: center; padding: 3px;\">GB</th>\n        </tr>\n      </thead>\n      <tbody>\n        {{ range .JSON.Array \"western\" }}\n        <tr style=\"border-top: 1px solid rgba(255,255,255,0.05); {{ if le (.Int \"rank\") 6 }}background: rgba(34,197,94,0.1);{{ else if le (.Int \"rank\") 10 }}background: rgba(245,158,11,0.1);{{ end }}\">\n          <td style=\"padding: 3px; font-weight: bold;\">{{ .Int \"rank\" }}</td>\n          <td style=\"padding: 3px;\"><img src=\"{{ .String \"logo\" }}\" style=\"width: 16px; height: 16px; margin-right: 4px; vertical-align: middle;\"><span style=\"font-weight: 500;\">{{ .String \"abbreviation\" }}</span></td>\n          <td style=\"padding: 3px; text-align:\
+        \ center; color: #22c55e;\">{{ .Int \"wins\" }}</td>\n          <td style=\"padding: 3px; text-align: center; color: #ef4444;\">{{ .Int \"losses\" }}</td>\n          <td style=\"padding: 3px; text-align: center; color: #888;\">{{ .Float \"gamesBehind\" }}</td>\n        </tr>\n        {{ end }}\n      </tbody>\n    </table>\n  </div>\n</div>\n<div style=\"color: #666; font-size: 10px; margin-top: 10px; text-align: center;\">\n  Green = Playoff spot (1-6) | Yellow = Play-in (7-10)\n</div>\n"
+    - type: custom-api
+      title: NBA News
+      cache: 15m
+      url: http://172.17.0.1:5060/news
+      template: "<div style=\"font-family: -apple-system, sans-serif; font-size: 12px;\">\n  {{ if .JSON.String \"error\" }}\n  <div style=\"color: #888; text-align: center;\">Error loading news</div>\n  {{ else }}\n  {{ range .JSON.Array \"articles\" }}\n  <div style=\"background: rgba(255,255,255,0.05); border-radius: 6px; padding: 10px; margin-bottom: 8px; display: flex; gap: 12px;\">\n    {{ if .String \"image\" }}\n    <img src=\"{{ .String \"image\" }}\" style=\"width: 80px; height: 60px; border-radius: 4px; object-fit: cover;\">\n    {{ end }}\n    <div style=\"flex: 1;\">\n      <div style=\"font-weight: 600; color: #fff; margin-bottom: 4px;\">{{ .String \"headline\" }}</div>\n      <div style=\"color: #888; font-size: 10px; line-height: 1.4;\">{{ .String \"description\" }}</div>\n    </div>\n  </div>\n  {{ end }}\n  {{ end }}\n</div>\n"
+  - size: small
+    widgets:
+    - type: custom-api
+      title: Fantasy League
+      cache: 15m
+      url: http://172.17.0.1:5060/fantasy
+      template: "<div style=\"font-family: -apple-system, BlinkMacSystemFont, sans-serif;\">\n  {{ if .JSON.String \"error\" }}\n  <div style=\"color: #888; text-align: center; padding: 20px; font-size: 12px;\">\n    Fantasy not configured\n  </div>\n  {{ else }}\n  <div style=\"color: #888; font-size: 11px; margin-bottom: 8px;\">{{ .JSON.String \"leagueName\" }}</div>\n  <table style=\"width: 100%; font-size: 12px;\">\n    <thead>\n      <tr style=\"color: #666;\">\n        <th style=\"text-align: left; padding: 4px;\">#</th>\n        <th style=\"text-align: left; padding: 4px;\">Team</th>\n        <th style=\"text-align: center; padding: 4px;\">W</th>\n        <th style=\"text-align: center; padding: 4px;\">L</th>\n      </tr>\n    </thead>\n    <tbody>\n      {{ range .JSON.Array \"teams\" }}\n      <tr style=\"border-top: 1px solid rgba(255,255,255,0.1);\">\n        <td style=\"padding: 4px; color: {{ if le (.Int \"rank\") 4 }}#22c55e{{ else if le (.Int \"rank\") 8 }}#f59e0b{{ else }}#888{{\
+        \ end }};\">{{ .Int \"rank\" }}</td>\n        <td style=\"padding: 4px;\">{{ .String \"name\" }}</td>\n        <td style=\"padding: 4px; text-align: center;\">{{ .Int \"wins\" }}</td>\n        <td style=\"padding: 4px; text-align: center;\">{{ .Int \"losses\" }}</td>\n      </tr>\n      {{ end }}\n    </tbody>\n  </table>\n  {{ end }}\n</div>\n"
+    - type: custom-api
+      title: Week Matchups
+      cache: 5m
+      url: http://172.17.0.1:5060/fantasy/matchups
+      template: "<div style=\"font-family: -apple-system, sans-serif; font-size: 11px;\">\n  {{ if .JSON.String \"error\" }}\n  <div style=\"color: #888; text-align: center;\">Error</div>\n  {{ else }}\n  <div style=\"color: #888; margin-bottom: 6px;\">Week {{ .JSON.Int \"week\" }}</div>\n  {{ range .JSON.Array \"matchups\" }}\n  <div style=\"background: rgba(255,255,255,0.05); border-radius: 4px; padding: 6px; margin-bottom: 4px;\">\n    <div style=\"display: flex; justify-content: space-between;\">\n      <span style=\"{{ if gt (.Float \"team1.points\") (.Float \"team2.points\") }}color: #22c55e;{{ end }}\">{{ .String \"team1.name\" }}</span>\n      <span style=\"font-weight: bold; {{ if gt (.Float \"team1.points\") (.Float \"team2.points\") }}color: #22c55e;{{ end }}\">{{ .Float \"team1.points\" }}</span>\n    </div>\n    <div style=\"display: flex; justify-content: space-between;\">\n      <span style=\"{{ if gt (.Float \"team2.points\") (.Float \"team1.points\") }}color: #22c55e;{{\
+        \ end }}\">{{ .String \"team2.name\" }}</span>\n      <span style=\"font-weight: bold; {{ if gt (.Float \"team2.points\") (.Float \"team1.points\") }}color: #22c55e;{{ end }}\">{{ .Float \"team2.points\" }}</span>\n    </div>\n  </div>\n  {{ end }}\n  {{ end }}\n</div>\n"
+    - type: custom-api
+      title: Hot Pickups
+      cache: 30m
+      url: http://172.17.0.1:5060/fantasy/recommendations
+      template: "<div style=\"font-family: -apple-system, sans-serif; font-size: 11px;\">\n  {{ if .JSON.String \"error\" }}\n  <div style=\"color: #888; text-align: center;\">{{ .JSON.String \"error\" }}</div>\n  {{ else }}\n  <div style=\"color: #888; margin-bottom: 6px;\">Top Available Players</div>\n  {{ range .JSON.Array \"hotPickups\" }}\n  <div style=\"background: rgba(255,255,255,0.05); border-radius: 4px; padding: 6px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center;\">\n    <div>\n      <div style=\"font-weight: 600;\">{{ .String \"name\" }}</div>\n      <div style=\"color: #888; font-size: 10px;\">{{ .String \"team\" }} | {{ .String \"position\" }}</div>\n    </div>\n    <div style=\"text-align: right;\">\n      <div style=\"color: #22c55e; font-weight: bold;\">{{ printf \"%.1f\" (.Float \"pts\") }} PTS</div>\n      <div style=\"color: #888; font-size: 10px;\">{{ printf \"%.1f\" (.Float \"ast\") }}A {{ printf \"%.1f\" (.Float \"reb\") }}R</div>\n\
+        \    </div>\n  </div>\n  {{ end }}\n  {{ end }}\n</div>\n"

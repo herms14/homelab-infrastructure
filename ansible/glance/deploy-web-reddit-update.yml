@@ -1,0 +1,136 @@
+---
+# Deploy Enhanced Web and Reddit Pages for Glance Dashboard
+#
+# This playbook:
+# 1. Updates Glance configuration with new Web and Reddit pages
+# 2. Updates Reddit Manager subreddits
+# 3. Restarts Glance to apply changes
+#
+# Usage:
+#   ansible-playbook -i ../inventory.ini glance/deploy-web-reddit-update.yml
+#
+
+- name: Deploy Enhanced Web and Reddit Pages
+  hosts: docker-vm-utilities01
+  become: yes
+  vars:
+    glance_config_dir: /opt/glance/config
+    reddit_manager_data_dir: /opt/reddit-manager/data
+    # New default subreddits for Reddit Manager
+    reddit_subreddits:
+      - homelab
+      - selfhosted
+      - datahoarder
+      - linux
+      - devops
+      - kubernetes
+      - docker
+      - technology
+      - programming
+      - webdev
+      - sysadmin
+      - netsec
+      - gaming
+      - pcmasterrace
+      - buildapc
+      - mechanicalkeyboards
+
+  tasks:
+    - name: Ensure Python dependencies are installed
+      pip:
+        name:
+          - pyyaml
+        executable: pip3
+        state: present
+
+    - name: Copy Glance update script
+      copy:
+        src: "{{ playbook_dir }}/../../temp-glance-web-reddit-update.py"
+        dest: /tmp/glance-web-reddit-update.py
+        mode: '0755'
+
+    - name: Run Glance configuration update
+      command: python3 /tmp/glance-web-reddit-update.py
+      args:
+        chdir: /opt/glance
+      register: glance_update_result
+
+    - name: Display Glance update output
+      debug:
+        var: glance_update_result.stdout_lines
+
+    - name: Update Reddit Manager subreddits
+      copy:
+        content: |
+          {
+            "subreddits": {{ reddit_subreddits | to_json }}
+          }
+        dest: "{{ reddit_manager_data_dir }}/subreddits.json"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Update Reddit Manager settings (hot, grouped)
+      copy:
+        content: |
+          {
+            "sort": "hot",
+            "view": "grouped"
+          }
+        dest: "{{ reddit_manager_data_dir }}/settings.json"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Restart Reddit Manager to apply subreddit changes
+      community.docker.docker_compose_v2:
+        project_src: /opt/reddit-manager
+        state: restarted
+      ignore_errors: yes
+
+    - name: Restart Glance to apply configuration
+      community.docker.docker_compose_v2:
+        project_src: /opt/glance
+        state: restarted
+
+    - name: Wait for Glance to be ready
+      uri:
+        url: http://localhost:8080
+        status_code: 200
+      register: result
+      until: result.status == 200
+      retries: 10
+      delay: 3
+      ignore_errors: yes
+
+    - name: Cleanup temporary files
+      file:
+        path: /tmp/glance-web-reddit-update.py
+        state: absent
+
+    - name: Display completion message
+      debug:
+        msg: |
+          ============================================================
+          Glance Web and Reddit Pages Updated Successfully!
+          ============================================================
+
+          Web Page (https://glance.hrmsmrflrii.xyz/web):
+          - Tech YouTube videos from MKBHD, LTT, Mrwhosetheboss, etc.
+          - General Tech News (The Verge, XDA, TechCrunch, Ars Technica)
+          - Android & Mobile news
+          - AI & Machine Learning
+          - Cloud & Enterprise (AWS, Azure, GCP, Oracle)
+          - Big Tech (Microsoft, NVIDIA, Google, Apple, Meta)
+          - Gaming
+          - PC Builds & Hardware
+          - Travel
+          - Tech Stocks & Crypto markets
+
+          Reddit Page (https://glance.hrmsmrflrii.xyz/reddit):
+          - Dynamic feed with {{ reddit_subreddits | length }} subreddits
+          - Thumbnails on posts
+          - Native widgets for r/technology, r/programming, r/sysadmin
+
+          Manage subreddits: http://192.168.40.10:5053
+          ============================================================

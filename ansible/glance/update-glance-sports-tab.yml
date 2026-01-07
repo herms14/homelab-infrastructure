@@ -1,0 +1,231 @@
+---
+# Update Glance Sports Tab
+# ========================
+# Adds a dedicated Sports tab to the Glance dashboard with:
+# - NBA live game scores
+# - NBA standings (East/West)
+# - Yahoo Fantasy league standings (optional)
+#
+# Prerequisites:
+#   - NBA Stats API deployed (run deploy-nba-stats-api.yml first)
+#
+# Usage:
+#   ansible-playbook glance/update-glance-sports-tab.yml
+
+- name: Add Sports Tab to Glance Dashboard
+  hosts: docker-vm-utilities01
+  become: yes
+  vars:
+    glance_path: /opt/glance
+    nba_api_url: "http://192.168.40.10:5060"
+
+  tasks:
+    - name: Read current Glance config
+      slurp:
+        src: "{{ glance_path }}/config/glance.yml"
+      register: current_config
+
+    - name: Parse current config
+      set_fact:
+        glance_config: "{{ current_config.content | b64decode | from_yaml }}"
+
+    - name: Check if Sports page already exists
+      set_fact:
+        sports_exists: "{{ glance_config.pages | selectattr('name', 'equalto', 'Sports') | list | length > 0 }}"
+
+    - name: Define Sports page configuration
+      set_fact:
+        sports_page:
+          name: Sports
+          columns:
+            - size: small
+              widgets:
+                - type: custom-api
+                  title: "Today's NBA Games"
+                  cache: 2m
+                  url: "{{ nba_api_url }}/games"
+                  template: |
+                    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+                      <div style="color: #888; font-size: 12px; margin-bottom: 10px;">{{ "{{" }} .JSON.String "dateDisplay" {{ "}}" }}</div>
+                      {{ "{{" }} if eq (.JSON.Int "gamesCount") 0 {{ "}}" }}
+                      <div style="color: #666; text-align: center; padding: 20px;">No games scheduled today</div>
+                      {{ "{{" }} else {{ "}}" }}
+                      {{ "{{" }} range .JSON.Array "games" {{ "}}" }}
+                      <div style="background: rgba(255,255,255,0.05); border-radius: 8px; padding: 12px; margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                          <div style="flex: 1;">
+                            <div style="display: flex; align-items: center; margin-bottom: 6px;">
+                              <span style="font-weight: 600; {{ "{{" }} if .Bool "awayTeam.winner" {{ "}}" }}color: #22c55e;{{ "{{" }} end {{ "}}" }}">
+                                {{ "{{" }} .String "awayTeam.abbreviation" {{ "}}" }}
+                              </span>
+                              <span style="color: #888; font-size: 11px; margin-left: 8px;">{{ "{{" }} .String "awayTeam.record" {{ "}}" }}</span>
+                            </div>
+                            <div style="display: flex; align-items: center;">
+                              <span style="font-weight: 600; {{ "{{" }} if .Bool "homeTeam.winner" {{ "}}" }}color: #22c55e;{{ "{{" }} end {{ "}}" }}">
+                                {{ "{{" }} .String "homeTeam.abbreviation" {{ "}}" }}
+                              </span>
+                              <span style="color: #888; font-size: 11px; margin-left: 8px;">{{ "{{" }} .String "homeTeam.record" {{ "}}" }}</span>
+                            </div>
+                          </div>
+                          <div style="text-align: right;">
+                            <div style="font-size: 18px; font-weight: bold; {{ "{{" }} if .Bool "awayTeam.winner" {{ "}}" }}color: #22c55e;{{ "{{" }} end {{ "}}" }}">
+                              {{ "{{" }} .String "awayTeam.score" {{ "}}" }}
+                            </div>
+                            <div style="font-size: 18px; font-weight: bold; {{ "{{" }} if .Bool "homeTeam.winner" {{ "}}" }}color: #22c55e;{{ "{{" }} end {{ "}}" }}">
+                              {{ "{{" }} .String "homeTeam.score" {{ "}}" }}
+                            </div>
+                          </div>
+                        </div>
+                        <div style="color: #f59e0b; font-size: 11px; margin-top: 6px; text-align: center;">
+                          {{ "{{" }} .String "status.detail" {{ "}}" }}
+                          {{ "{{" }} if .String "broadcast" {{ "}}" }} | {{ "{{" }} .String "broadcast" {{ "}}" }}{{ "{{" }} end {{ "}}" }}
+                        </div>
+                      </div>
+                      {{ "{{" }} end {{ "}}" }}
+                      {{ "{{" }} end {{ "}}" }}
+                    </div>
+
+                - type: custom-api
+                  title: "Fantasy League"
+                  cache: 30m
+                  url: "{{ nba_api_url }}/fantasy"
+                  template: |
+                    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+                      {{ "{{" }} if .JSON.String "error" {{ "}}" }}
+                      <div style="color: #888; text-align: center; padding: 20px; font-size: 12px;">
+                        Fantasy not configured
+                      </div>
+                      {{ "{{" }} else {{ "}}" }}
+                      <div style="color: #888; font-size: 11px; margin-bottom: 8px;">{{ "{{" }} .JSON.String "leagueName" {{ "}}" }}</div>
+                      <table style="width: 100%; font-size: 12px;">
+                        <thead>
+                          <tr style="color: #666;">
+                            <th style="text-align: left; padding: 4px;">#</th>
+                            <th style="text-align: left; padding: 4px;">Team</th>
+                            <th style="text-align: center; padding: 4px;">W</th>
+                            <th style="text-align: center; padding: 4px;">L</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {{ "{{" }} range .JSON.Array "teams" {{ "}}" }}
+                          <tr style="border-top: 1px solid rgba(255,255,255,0.1);">
+                            <td style="padding: 4px; color: {{ "{{" }} if le (.Int "rank") 4 {{ "}}" }}#22c55e{{ "{{" }} else if le (.Int "rank") 8 {{ "}}" }}#f59e0b{{ "{{" }} else {{ "}}" }}#888{{ "{{" }} end {{ "}}" }};">{{ "{{" }} .Int "rank" {{ "}}" }}</td>
+                            <td style="padding: 4px;">{{ "{{" }} .String "name" {{ "}}" }}</td>
+                            <td style="padding: 4px; text-align: center;">{{ "{{" }} .Int "wins" {{ "}}" }}</td>
+                            <td style="padding: 4px; text-align: center;">{{ "{{" }} .Int "losses" {{ "}}" }}</td>
+                          </tr>
+                          {{ "{{" }} end {{ "}}" }}
+                        </tbody>
+                      </table>
+                      {{ "{{" }} end {{ "}}" }}
+                    </div>
+
+            - size: full
+              widgets:
+                - type: custom-api
+                  title: "NBA Standings"
+                  cache: 15m
+                  url: "{{ nba_api_url }}/standings"
+                  template: |
+                    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                      <!-- Eastern Conference -->
+                      <div>
+                        <h3 style="color: #3b82f6; font-size: 14px; margin-bottom: 10px; border-bottom: 2px solid #3b82f6; padding-bottom: 5px;">Eastern Conference</h3>
+                        <table style="width: 100%; font-size: 11px;">
+                          <thead>
+                            <tr style="color: #666;">
+                              <th style="text-align: left; padding: 3px;">#</th>
+                              <th style="text-align: left; padding: 3px;">Team</th>
+                              <th style="text-align: center; padding: 3px;">W</th>
+                              <th style="text-align: center; padding: 3px;">L</th>
+                              <th style="text-align: center; padding: 3px;">GB</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {{ "{{" }} range .JSON.Array "eastern" {{ "}}" }}
+                            <tr style="border-top: 1px solid rgba(255,255,255,0.05); {{ "{{" }} if le (.Int "rank") 6 {{ "}}" }}background: rgba(34,197,94,0.1);{{ "{{" }} else if le (.Int "rank") 10 {{ "}}" }}background: rgba(245,158,11,0.1);{{ "{{" }} end {{ "}}" }}">
+                              <td style="padding: 3px; font-weight: bold;">{{ "{{" }} .Int "rank" {{ "}}" }}</td>
+                              <td style="padding: 3px;">
+                                <span style="font-weight: 500;">{{ "{{" }} .String "abbreviation" {{ "}}" }}</span>
+                              </td>
+                              <td style="padding: 3px; text-align: center; color: #22c55e;">{{ "{{" }} .Int "wins" {{ "}}" }}</td>
+                              <td style="padding: 3px; text-align: center; color: #ef4444;">{{ "{{" }} .Int "losses" {{ "}}" }}</td>
+                              <td style="padding: 3px; text-align: center; color: #888;">{{ "{{" }} .Float "gamesBehind" {{ "}}" }}</td>
+                            </tr>
+                            {{ "{{" }} end {{ "}}" }}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <!-- Western Conference -->
+                      <div>
+                        <h3 style="color: #ef4444; font-size: 14px; margin-bottom: 10px; border-bottom: 2px solid #ef4444; padding-bottom: 5px;">Western Conference</h3>
+                        <table style="width: 100%; font-size: 11px;">
+                          <thead>
+                            <tr style="color: #666;">
+                              <th style="text-align: left; padding: 3px;">#</th>
+                              <th style="text-align: left; padding: 3px;">Team</th>
+                              <th style="text-align: center; padding: 3px;">W</th>
+                              <th style="text-align: center; padding: 3px;">L</th>
+                              <th style="text-align: center; padding: 3px;">GB</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {{ "{{" }} range .JSON.Array "western" {{ "}}" }}
+                            <tr style="border-top: 1px solid rgba(255,255,255,0.05); {{ "{{" }} if le (.Int "rank") 6 {{ "}}" }}background: rgba(34,197,94,0.1);{{ "{{" }} else if le (.Int "rank") 10 {{ "}}" }}background: rgba(245,158,11,0.1);{{ "{{" }} end {{ "}}" }}">
+                              <td style="padding: 3px; font-weight: bold;">{{ "{{" }} .Int "rank" {{ "}}" }}</td>
+                              <td style="padding: 3px;">
+                                <span style="font-weight: 500;">{{ "{{" }} .String "abbreviation" {{ "}}" }}</span>
+                              </td>
+                              <td style="padding: 3px; text-align: center; color: #22c55e;">{{ "{{" }} .Int "wins" {{ "}}" }}</td>
+                              <td style="padding: 3px; text-align: center; color: #ef4444;">{{ "{{" }} .Int "losses" {{ "}}" }}</td>
+                              <td style="padding: 3px; text-align: center; color: #888;">{{ "{{" }} .Float "gamesBehind" {{ "}}" }}</td>
+                            </tr>
+                            {{ "{{" }} end {{ "}}" }}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                    <div style="color: #666; font-size: 10px; margin-top: 10px; text-align: center;">
+                      Green = Playoff spot (1-6) | Yellow = Play-in (7-10)
+                    </div>
+
+    - name: Add Sports page if not exists
+      when: not sports_exists
+      block:
+        - name: Add Sports page to config
+          set_fact:
+            updated_config: "{{ glance_config | combine({'pages': glance_config.pages + [sports_page]}) }}"
+
+        - name: Write updated Glance config
+          copy:
+            content: "{{ updated_config | to_nice_yaml(indent=2) }}"
+            dest: "{{ glance_path }}/config/glance.yml"
+            mode: '0644'
+
+        - name: Restart Glance container
+          community.docker.docker_compose_v2:
+            project_src: "{{ glance_path }}"
+            state: restarted
+
+    - name: Display result
+      debug:
+        msg: |
+
+          ========================================
+          Glance Sports Tab {{ 'Added' if not sports_exists else 'Already Exists' }}!
+          ========================================
+
+          Dashboard URL: https://glance.hrmsmrflrii.xyz
+
+          Sports Tab Features:
+          - Today's NBA Games (live scores)
+          - NBA Standings (East/West conferences)
+          - Yahoo Fantasy League (if configured)
+
+          API Endpoints:
+          - {{ nba_api_url }}/games
+          - {{ nba_api_url }}/standings
+          - {{ nba_api_url }}/fantasy
+
+          ========================================

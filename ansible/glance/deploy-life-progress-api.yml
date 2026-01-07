@@ -12,7 +12,7 @@
 #   ansible-playbook glance/deploy-life-progress-api.yml
 
 - name: Deploy Life Progress API
-  hosts: docker-vm-utilities01
+  hosts: docker-vm-core-utilities01
   become: yes
   vars:
     life_progress_path: /opt/life-progress

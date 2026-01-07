@@ -1,0 +1,126 @@
+---
+# Backup entire Glance stack including all APIs and configurations
+# Creates a timestamped backup archive in /opt/backups/glance/
+#
+# Usage:
+#   ansible-playbook -i inventory.ini glance/backup-glance-stack.yml
+#
+# What gets backed up:
+#   - /opt/glance/ (main dashboard, config, assets)
+#   - /opt/life-progress/ (Life Progress API)
+#   - /opt/media-stats-api/ (Media Stats API)
+#   - /opt/nba-stats-api/ (NBA Stats API)
+#   - /opt/reddit-manager/ (Reddit Manager)
+
+- name: Backup Glance Stack
+  hosts: docker_utilities
+  become: yes
+  vars:
+    backup_dir: /opt/backups/glance
+    backup_name: "glance-stack-{{ ansible_date_time.date }}-{{ ansible_date_time.hour }}{{ ansible_date_time.minute }}"
+    services_to_backup:
+      - glance
+      - life-progress
+      - media-stats-api
+      - nba-stats-api
+      - reddit-manager
+
+  tasks:
+    - name: Create backup directory
+      file:
+        path: "{{ backup_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Get list of running containers before backup
+      shell: docker ps --format '{{ '{{' }}.Names{{ '}}' }}'
+      register: running_containers
+      changed_when: false
+
+    - name: Create temporary backup staging directory
+      file:
+        path: "/tmp/glance-backup-staging"
+        state: directory
+        mode: '0755'
+
+    - name: Copy service directories to staging
+      copy:
+        src: "/opt/{{ item }}/"
+        dest: "/tmp/glance-backup-staging/{{ item }}/"
+        remote_src: yes
+        mode: preserve
+      loop: "{{ services_to_backup }}"
+      ignore_errors: yes
+
+    - name: Create manifest file
+      copy:
+        content: |
+          # Glance Stack Backup Manifest
+          # Created: {{ ansible_date_time.iso8601 }}
+          # Host: {{ inventory_hostname }}
+
+          ## Services Included:
+          {% for svc in services_to_backup %}
+          - {{ svc }}
+          {% endfor %}
+
+          ## Running Containers at Backup Time:
+          {% for container in running_containers.stdout_lines %}
+          - {{ container }}
+          {% endfor %}
+
+          ## Restore Instructions:
+          1. Extract archive: tar -xzf {{ backup_name }}.tar.gz -C /opt/
+          2. Run restore playbook: ansible-playbook glance/restore-glance-stack.yml
+          3. Or manually start each service:
+             cd /opt/glance && docker compose up -d
+             cd /opt/life-progress && docker compose up -d
+             cd /opt/media-stats-api && docker compose up -d
+             cd /opt/nba-stats-api && docker compose up -d
+             cd /opt/reddit-manager && docker compose up -d
+        dest: "/tmp/glance-backup-staging/MANIFEST.md"
+
+    - name: Create backup archive
+      archive:
+        path: "/tmp/glance-backup-staging/"
+        dest: "{{ backup_dir }}/{{ backup_name }}.tar.gz"
+        format: gz
+
+    - name: Get backup size
+      stat:
+        path: "{{ backup_dir }}/{{ backup_name }}.tar.gz"
+      register: backup_stat
+
+    - name: Cleanup staging directory
+      file:
+        path: "/tmp/glance-backup-staging"
+        state: absent
+
+    - name: List all backups
+      find:
+        paths: "{{ backup_dir }}"
+        patterns: "*.tar.gz"
+      register: all_backups
+
+    - name: Display backup summary
+      debug:
+        msg: |
+          ============================================================
+          GLANCE STACK BACKUP COMPLETE
+          ============================================================
+
+          Backup File: {{ backup_dir }}/{{ backup_name }}.tar.gz
+          Size: {{ (backup_stat.stat.size / 1024 / 1024) | round(2) }} MB
+
+          Services Backed Up:
+            - glance (main dashboard + config + assets)
+            - life-progress (Life Progress API)
+            - media-stats-api (Media Stats API)
+            - nba-stats-api (NBA Stats API)
+            - reddit-manager (Reddit Manager)
+
+          Total Backups Available: {{ all_backups.files | length }}
+
+          To restore:
+            ansible-playbook -i inventory.ini glance/restore-glance-stack.yml -e backup_file={{ backup_name }}.tar.gz
+          ============================================================
