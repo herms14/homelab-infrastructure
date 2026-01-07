@@ -1,6 +1,6 @@
 ---
 # Home Assistant Deployment
-# Deploy Home Assistant Container to LXC 206
+# Deploy Home Assistant Container with YAML-based dashboards
 #
 # Prerequisites:
 #   - LXC 206 created with Docker installed
@@ -8,9 +8,10 @@
 #
 # Features:
 #   - Home Assistant Container (stable)
-#   - Trusted proxy configuration for Traefik
-#   - Energy monitoring support (Tapo P110)
-#   - Smart home device integrations
+#   - YAML-mode Lovelace dashboards
+#   - Energy monitoring templates
+#   - Scene and automation configs
+#   - Trusted proxy for Traefik
 #
 # Target Host: homeassistant-lxc (192.168.40.25)
 # URL: https://ha.hrmsmrflrii.xyz
@@ -25,28 +26,22 @@
     homeassistant_path: /opt/homeassistant
     homeassistant_port: 8123
     timezone: "Asia/Manila"
-    # Trusted proxies for reverse proxy setup
-    trusted_proxies:
-      - "192.168.40.20"  # Traefik LXC
-      - "192.168.40.0/24"  # Services VLAN
-      - "172.17.0.0/16"  # Docker network
+    electricity_rate: 14.32
 
   tasks:
-    - name: Create Home Assistant directory
+    - name: Create Home Assistant directories
       file:
-        path: "{{ homeassistant_path }}"
+        path: "{{ item }}"
         state: directory
         owner: hermes-admin
         group: hermes-admin
         mode: '0755'
-
-    - name: Create config directory
-      file:
-        path: "{{ homeassistant_path }}/config"
-        state: directory
-        owner: hermes-admin
-        group: hermes-admin
-        mode: '0755'
+      loop:
+        - "{{ homeassistant_path }}"
+        - "{{ homeassistant_path }}/config"
+        - "{{ homeassistant_path }}/config/dashboards"
+        - "{{ homeassistant_path }}/config/sensors"
+        - "{{ homeassistant_path }}/config/themes"
 
     - name: Create Docker Compose file
       copy:
@@ -77,43 +72,319 @@
                 retries: 3
                 start_period: 60s
 
-    - name: Create base configuration.yaml
+    - name: Create configuration.yaml
       copy:
         dest: "{{ homeassistant_path }}/config/configuration.yaml"
         owner: hermes-admin
         group: hermes-admin
         mode: '0644'
-        force: no  # Don't overwrite existing config
         content: |
-          # Loads default set of integrations. Do not remove.
+          # Home Assistant Configuration
           default_config:
 
-          # Load frontend themes from the themes folder
           frontend:
             themes: !include_dir_merge_named themes
+
+          lovelace:
+            mode: yaml
+            resources: []
+            dashboards:
+              energy-dashboard:
+                mode: yaml
+                title: Energy
+                icon: mdi:lightning-bolt
+                show_in_sidebar: true
+                filename: dashboards/energy.yaml
+
+          http:
+            use_x_forwarded_for: true
+            trusted_proxies:
+              - 192.168.40.20
+              - 192.168.40.0/24
+              - 172.17.0.0/16
 
           automation: !include automations.yaml
           script: !include scripts.yaml
           scene: !include scenes.yaml
+          template: !include templates.yaml
 
-          # Reverse Proxy Configuration
-          http:
-            use_x_forwarded_for: true
-            trusted_proxies:
-          {% for proxy in trusted_proxies %}
-              - {{ proxy }}
-          {% endfor %}
+          input_number:
+            electricity_rate:
+              name: "Electricity Rate"
+              min: 5
+              max: 30
+              step: 0.01
+              unit_of_measurement: "PHP/kWh"
+              icon: mdi:currency-php
+              initial: {{ electricity_rate }}
 
-    - name: Create empty automations.yaml
+          input_boolean:
+            away_mode:
+              name: "Away Mode"
+              icon: mdi:home-export-outline
+            movie_mode:
+              name: "Movie Mode"
+              icon: mdi:movie-open
+            sleep_mode:
+              name: "Sleep Mode"
+              icon: mdi:sleep
+            work_mode:
+              name: "Work Mode"
+              icon: mdi:desk
+
+          logger:
+            default: info
+
+    - name: Create templates.yaml
+      copy:
+        dest: "{{ homeassistant_path }}/config/templates.yaml"
+        owner: hermes-admin
+        group: hermes-admin
+        mode: '0644'
+        content: |
+          - sensor:
+              - name: Total Power Consumption
+                unique_id: total_power_consumption
+                unit_of_measurement: W
+                device_class: power
+                state_class: measurement
+                icon: mdi:flash
+                state: >-
+                  {% raw %}{{ states('sensor.tapo_pc_setup_power') | float(0) +
+                     states('sensor.tapo_aircon_power') | float(0) +
+                     states('sensor.tapo_living_room_tv_power') | float(0) +
+                     states('sensor.tapo_router_nas_power') | float(0) }}{% endraw %}
+
+              - name: Total Daily Energy Cost
+                unique_id: total_daily_cost
+                unit_of_measurement: PHP
+                icon: mdi:currency-php
+                state: >-
+                  {% raw %}{{ (states('sensor.total_energy_daily') | float(0) *
+                      states('input_number.electricity_rate') | float(14.32)) | round(2) }}{% endraw %}
+
+              - name: Total Monthly Energy Cost
+                unique_id: total_monthly_cost
+                unit_of_measurement: PHP
+                icon: mdi:currency-php
+                state: >-
+                  {% raw %}{{ (states('sensor.total_energy_monthly') | float(0) *
+                      states('input_number.electricity_rate') | float(14.32)) | round(2) }}{% endraw %}
+
+              - name: PC Setup Monthly Cost
+                unique_id: pc_setup_monthly_cost
+                unit_of_measurement: PHP
+                icon: mdi:currency-php
+                state: >-
+                  {% raw %}{{ (states('sensor.energy_pc_setup_monthly') | float(0) *
+                      states('input_number.electricity_rate') | float(14.32)) | round(2) }}{% endraw %}
+
+              - name: Aircon Monthly Cost
+                unique_id: aircon_monthly_cost
+                unit_of_measurement: PHP
+                icon: mdi:currency-php
+                state: >-
+                  {% raw %}{{ (states('sensor.energy_aircon_monthly') | float(0) *
+                      states('input_number.electricity_rate') | float(14.32)) | round(2) }}{% endraw %}
+
+              - name: Living Room TV Monthly Cost
+                unique_id: living_room_tv_monthly_cost
+                unit_of_measurement: PHP
+                icon: mdi:currency-php
+                state: >-
+                  {% raw %}{{ (states('sensor.energy_living_room_tv_monthly') | float(0) *
+                      states('input_number.electricity_rate') | float(14.32)) | round(2) }}{% endraw %}
+
+              - name: Router NAS Monthly Cost
+                unique_id: router_nas_monthly_cost
+                unit_of_measurement: PHP
+                icon: mdi:currency-php
+                state: >-
+                  {% raw %}{{ (states('sensor.energy_router_nas_monthly') | float(0) *
+                      states('input_number.electricity_rate') | float(14.32)) | round(2) }}{% endraw %}
+
+              - name: Active Devices Count
+                unique_id: active_devices_count
+                icon: mdi:power-plug
+                state: >-
+                  {% raw %}{{ expand(states.switch) | selectattr('state', 'eq', 'on') | list | count }}{% endraw %}
+
+              - name: Lights On Count
+                unique_id: lights_on_count
+                icon: mdi:lightbulb-on
+                state: >-
+                  {% raw %}{{ states.light | selectattr('state', 'eq', 'on') | list | count }}{% endraw %}
+
+    - name: Create ui-lovelace.yaml
+      copy:
+        dest: "{{ homeassistant_path }}/config/ui-lovelace.yaml"
+        owner: hermes-admin
+        group: hermes-admin
+        mode: '0644'
+        content: |
+          title: Home
+          views:
+            - title: Overview
+              path: overview
+              icon: mdi:home
+              cards:
+                - type: horizontal-stack
+                  cards:
+                    - type: button
+                      name: Movie Mode
+                      icon: mdi:movie-open
+                      tap_action:
+                        action: toggle
+                      entity: input_boolean.movie_mode
+                    - type: button
+                      name: Sleep Mode
+                      icon: mdi:sleep
+                      tap_action:
+                        action: toggle
+                      entity: input_boolean.sleep_mode
+                    - type: button
+                      name: Work Mode
+                      icon: mdi:desk
+                      tap_action:
+                        action: toggle
+                      entity: input_boolean.work_mode
+                    - type: button
+                      name: Away Mode
+                      icon: mdi:home-export-outline
+                      tap_action:
+                        action: toggle
+                      entity: input_boolean.away_mode
+                - type: horizontal-stack
+                  cards:
+                    - type: entity
+                      entity: sensor.total_power_consumption
+                      name: Current Power
+                    - type: entity
+                      entity: sensor.total_daily_cost
+                      name: Today Cost
+                    - type: entity
+                      entity: sensor.total_monthly_cost
+                      name: Monthly Cost
+
+            - title: Energy
+              path: energy
+              icon: mdi:lightning-bolt
+              cards:
+                - type: entities
+                  title: Settings
+                  entities:
+                    - entity: input_number.electricity_rate
+                      name: Rate (PHP/kWh)
+                - type: entities
+                  title: Monthly Costs (PHP)
+                  entities:
+                    - entity: sensor.pc_setup_monthly_cost
+                      name: PC Setup
+                    - entity: sensor.aircon_monthly_cost
+                      name: Aircon
+                    - entity: sensor.living_room_tv_monthly_cost
+                      name: Living Room TV
+                    - entity: sensor.router_nas_monthly_cost
+                      name: Router/NAS
+
+            - title: Controls
+              path: controls
+              icon: mdi:lightbulb-group
+              cards:
+                - type: markdown
+                  content: Add Tapo devices to see controls here
+
+            - title: Automations
+              path: automations
+              icon: mdi:robot
+              cards:
+                - type: entities
+                  title: Scenes
+                  entities:
+                    - entity: input_boolean.movie_mode
+                    - entity: input_boolean.sleep_mode
+                    - entity: input_boolean.work_mode
+                    - entity: input_boolean.away_mode
+
+    - name: Create automations.yaml
       copy:
         dest: "{{ homeassistant_path }}/config/automations.yaml"
         owner: hermes-admin
         group: hermes-admin
         mode: '0644'
-        force: no
-        content: "[]"
+        content: |
+          - id: automation_movie_mode_on
+            alias: Movie Mode - Activate
+            trigger:
+              - platform: state
+                entity_id: input_boolean.movie_mode
+                to: 'on'
+            action:
+              - service: scene.turn_on
+                target:
+                  entity_id: scene.movie_mode
 
-    - name: Create empty scripts.yaml
+          - id: automation_sleep_mode_on
+            alias: Sleep Mode - Activate
+            trigger:
+              - platform: state
+                entity_id: input_boolean.sleep_mode
+                to: 'on'
+            action:
+              - service: scene.turn_on
+                target:
+                  entity_id: scene.sleep_mode
+
+          - id: automation_high_power_alert
+            alias: Energy - High Power Alert
+            trigger:
+              - platform: numeric_state
+                entity_id: sensor.total_power_consumption
+                above: 2000
+                for:
+                  minutes: 5
+            action:
+              - service: persistent_notification.create
+                data:
+                  title: High Power Usage Alert
+                  message: Power consumption exceeded 2000W
+
+    - name: Create scenes.yaml
+      copy:
+        dest: "{{ homeassistant_path }}/config/scenes.yaml"
+        owner: hermes-admin
+        group: hermes-admin
+        mode: '0644'
+        content: |
+          - id: scene_movie_mode
+            name: Movie Mode
+            icon: mdi:movie-open
+            entities:
+              input_boolean.movie_mode:
+                state: 'on'
+
+          - id: scene_sleep_mode
+            name: Sleep Mode
+            icon: mdi:sleep
+            entities:
+              input_boolean.sleep_mode:
+                state: 'on'
+
+          - id: scene_work_mode
+            name: Work Mode
+            icon: mdi:desk
+            entities:
+              input_boolean.work_mode:
+                state: 'on'
+
+          - id: scene_away_mode
+            name: Away Mode
+            icon: mdi:home-export-outline
+            entities:
+              input_boolean.away_mode:
+                state: 'on'
+
+    - name: Create scripts.yaml
       copy:
         dest: "{{ homeassistant_path }}/config/scripts.yaml"
         owner: hermes-admin
@@ -122,22 +393,38 @@
         force: no
         content: ""
 
-    - name: Create empty scenes.yaml
+    - name: Create energy dashboard
       copy:
-        dest: "{{ homeassistant_path }}/config/scenes.yaml"
+        dest: "{{ homeassistant_path }}/config/dashboards/energy.yaml"
         owner: hermes-admin
         group: hermes-admin
         mode: '0644'
-        force: no
-        content: "[]"
-
-    - name: Create themes directory
-      file:
-        path: "{{ homeassistant_path }}/config/themes"
-        state: directory
-        owner: hermes-admin
-        group: hermes-admin
-        mode: '0755'
+        content: |
+          title: Energy Dashboard
+          views:
+            - title: Energy Overview
+              path: overview
+              icon: mdi:lightning-bolt
+              cards:
+                - type: horizontal-stack
+                  cards:
+                    - type: entity
+                      entity: sensor.total_power_consumption
+                      name: Current Power
+                    - type: entity
+                      entity: sensor.total_monthly_cost
+                      name: Monthly Cost
+                - type: entities
+                  title: Configuration
+                  entities:
+                    - entity: input_number.electricity_rate
+                - type: entities
+                  title: Monthly Costs (PHP)
+                  entities:
+                    - entity: sensor.pc_setup_monthly_cost
+                    - entity: sensor.aircon_monthly_cost
+                    - entity: sensor.living_room_tv_monthly_cost
+                    - entity: sensor.router_nas_monthly_cost
 
     - name: Pull and start Home Assistant
       community.docker.docker_compose_v2:
@@ -158,13 +445,12 @@
       debug:
         msg: |
           Home Assistant deployed successfully!
-          - Internal URL: http://192.168.40.25:{{ homeassistant_port }}
-          - External URL: https://ha.hrmsmrflrii.xyz
-          - Config directory: {{ homeassistant_path }}/config
+          - URL: https://ha.hrmsmrflrii.xyz
+          - Config: {{ homeassistant_path }}/config
+          - Electricity Rate: {{ electricity_rate }} PHP/kWh
 
           Next Steps:
-          1. Access https://ha.hrmsmrflrii.xyz to complete onboarding
-          2. Create admin account
-          3. Install HACS for community integrations
-          4. Add Tapo integration for smart devices
-          5. Configure energy dashboard
+          1. Complete onboarding at the URL above
+          2. Install HACS for community integrations
+          3. Add Tapo integration for your devices
+          4. Update entity IDs in templates.yaml to match your devices
