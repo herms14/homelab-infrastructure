@@ -90,54 +90,24 @@ locals {
       nameserver    = "192.168.91.30"  # OPNsense DNS
     }
 
-    # Media VM moved to node01
-    docker-vm-media = {
-      count         = 1
-      starting_ip   = "192.168.40.11"
-      target_node   = "node01"
-      template      = "tpl-ubuntu-shared-v1"
-      cores         = 2
-      sockets       = 1
-      memory        = 12288  # 12GB
-      disk_size     = "100G"
-      storage       = "VMDisks"
-      vlan_tag      = 40     # VLAN 40
-      gateway       = "192.168.40.1"
-      nameserver    = "192.168.91.30"  # OPNsense DNS
-    }
-
-    # NOTE: Glance dashboard runs as LXC container (ID 200) on node01
-    # Created manually: docker-lxc-glance at 192.168.40.12
-
-    traefik-vm = {
-      count         = 1
-      starting_ip   = "192.168.40.20"
-      target_node   = "node02"
-      template      = "tpl-ubuntu-shared-v1"
-      cores         = 2
-      sockets       = 1
-      memory        = 8192   # 8GB
-      disk_size     = "20G"
-      storage       = "VMDisks"
-      vlan_tag      = 40     # VLAN 40
-      gateway       = "192.168.40.1"
-      nameserver    = "192.168.20.1"
-    }
-
-    authentik-vm = {
-      count         = 1
-      starting_ip   = "192.168.40.21"
-      target_node   = "node02"
-      template      = "tpl-ubuntu-shared-v1"
-      cores         = 2
-      sockets       = 1
-      memory        = 8192   # 8GB
-      disk_size     = "20G"
-      storage       = "VMDisks"
-      vlan_tag      = 40     # VLAN 40
-      gateway       = "192.168.40.1"
-      nameserver    = "192.168.20.1"
-    }
+    # ============================================
+    # MIGRATED TO LXC CONTAINERS (January 7, 2026)
+    # ============================================
+    # The following VMs have been migrated to LXC containers for RAM savings:
+    #
+    # - docker-vm-media (VM 111) → docker-lxc-media (LXC 205) at 192.168.40.11
+    # - traefik-vm (VM 102) → traefik-lxc (LXC 203) at 192.168.40.20
+    # - authentik-vm (VM 100) → authentik-lxc (LXC 204) at 192.168.40.21
+    #
+    # LXC containers are managed via lxc.tf, not here.
+    # See docs/LXC_MIGRATION_PLAN.md for details.
+    #
+    # Also running as LXC (not in Terraform):
+    # - docker-lxc-glance (LXC 200) at 192.168.40.12
+    # - docker-lxc-bots (LXC 201) at 192.168.40.14
+    # - pihole (LXC 202) at 192.168.90.53
+    # - homeassistant-lxc (LXC 206) at 192.168.40.25
+    # ============================================
 
     immich-vm = {
       count         = 1
@@ -146,7 +116,7 @@ locals {
       template      = "tpl-ubuntu-shared-v1"
       cores         = 2
       sockets       = 1
-      memory        = 8192   # 8GB
+      memory        = 16384   # 16GB
       disk_size     = "20G"
       storage       = "VMDisks"
       vlan_tag      = 40     # VLAN 40
