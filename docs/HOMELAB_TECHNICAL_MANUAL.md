@@ -535,6 +535,7 @@ ansible/
 
 | Dashboard | UID | Purpose |
 |-----------|-----|---------|
+| Network Utilization | `network-utilization` | Bandwidth monitoring (cluster + NAS) |
 | Container Status History | `container-status` | Container up/down timeline |
 | Synology NAS | `synology-nas-modern` | NAS storage and health |
 | Omada Network | `omada-network` | Network device metrics |
@@ -560,6 +561,471 @@ ansible/
 | **Media** | Media Stats, Recent Downloads |
 | **Backup** | PBS Dashboard, Drive Health |
 
+## 8.5 Network Utilization Monitoring (Deep Dive)
+
+Added January 13, 2026 - comprehensive network bandwidth monitoring to determine if upgrading to 2.5GbE switches would be beneficial.
+
+### Purpose
+
+Before investing in a 2.5GbE network upgrade, I needed data to answer:
+- What's my actual network utilization?
+- When do bandwidth spikes occur (backups, migrations, streaming)?
+- Is my Synology NAS or Proxmox cluster the bottleneck?
+
+This dashboard provides that visibility.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                     NETWORK UTILIZATION MONITORING                               │
+│                                                                                  │
+│   ┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐  │
+│   │   node01     │    │   node02     │    │   node03     │    │ Synology NAS │  │
+│   │ 192.168.20.20│    │ 192.168.20.21│    │ 192.168.20.22│    │192.168.20.31 │  │
+│   │              │    │              │    │              │    │              │  │
+│   │node_exporter │    │node_exporter │    │node_exporter │    │  SNMP Agent  │  │
+│   │    :9100     │    │    :9100     │    │    :9100     │    │    :161      │  │
+│   └──────┬───────┘    └──────┬───────┘    └──────┬───────┘    └──────┬───────┘  │
+│          │                   │                   │                   │           │
+│          │                   │                   │                   │           │
+│          │     ┌─────────────┴───────────────────┘                   │           │
+│          │     │                                                     │           │
+│          │     │                                             ┌───────▼────────┐  │
+│          │     │                                             │  SNMP Exporter │  │
+│          │     │                                             │ 192.168.40.13  │  │
+│          │     │                                             │     :9116      │  │
+│          │     │                                             └───────┬────────┘  │
+│          │     │                                                     │           │
+│          └─────┼─────────────────────────────────────────────────────┘           │
+│                │                                                                  │
+│         ┌──────▼────────────────────────────────────────────────────────────┐    │
+│         │                     PROMETHEUS (192.168.40.13:9090)                │    │
+│         │  • Job: proxmox-nodes (scrapes node_exporter every 30s)           │    │
+│         │  • Job: synology (scrapes SNMP exporter every 60s)                │    │
+│         └──────────────────────────────┬─────────────────────────────────────┘    │
+│                                        │                                          │
+│                                 ┌──────▼──────┐                                  │
+│                                 │   GRAFANA   │                                  │
+│                                 │    :3030    │                                  │
+│                                 │             │                                  │
+│                                 │ Dashboard:  │                                  │
+│                                 │ network-    │                                  │
+│                                 │ utilization │                                  │
+│                                 └──────┬──────┘                                  │
+│                                        │                                          │
+│                                 ┌──────▼──────┐                                  │
+│                                 │   GLANCE    │                                  │
+│                                 │   :8080     │                                  │
+│                                 │             │                                  │
+│                                 │ Network Tab │                                  │
+│                                 │  (iframe)   │                                  │
+│                                 └─────────────┘                                  │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Part 1: Data Collection
+
+#### Proxmox Nodes - node_exporter
+
+Each Proxmox node runs **node_exporter v1.7.0** which exposes network interface metrics.
+
+**Installation** (already done on all nodes):
+```bash
+apt install prometheus-node-exporter
+systemctl enable --now prometheus-node-exporter
+```
+
+**Key Metrics Exposed:**
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `node_network_receive_bytes_total` | Counter | Total bytes received on interface |
+| `node_network_transmit_bytes_total` | Counter | Total bytes transmitted on interface |
+| `node_network_up` | Gauge | Interface link status (1=up) |
+| `node_network_speed_bytes` | Gauge | Link speed in bytes/sec |
+
+**Interface of Interest:** `vmbr0` - the main bridge interface that handles all VM/container traffic.
+
+**Verify metrics are available:**
+```bash
+curl -s http://192.168.20.20:9100/metrics | grep node_network_receive_bytes_total
+# Output: node_network_receive_bytes_total{device="vmbr0"} 1.234567890123e+12
+```
+
+#### Synology NAS - SNMP Exporter
+
+The Synology NAS doesn't run node_exporter, but it has a built-in SNMP agent. I use the **SNMP Exporter** to translate SNMP OIDs to Prometheus metrics.
+
+**SNMP Agent Configuration on Synology:**
+1. DSM → Control Panel → Terminal & SNMP → SNMP Tab
+2. Enable SNMPv2c service
+3. Community string: `public` (or your custom string)
+
+**SNMP Exporter Container** (on docker-vm-core-utilities01):
+```yaml
+# /opt/monitoring/snmp-exporter/docker-compose.yml
+version: '3.8'
+services:
+  snmp-exporter:
+    image: prom/snmp-exporter:latest
+    container_name: snmp-exporter
+    ports:
+      - "9116:9116"
+    volumes:
+      - ./snmp.yml:/etc/snmp_exporter/snmp.yml:ro
+    restart: unless-stopped
+```
+
+**IF-MIB OIDs for Network Interfaces:**
+
+The key to monitoring NAS network traffic is adding the IF-MIB (Interface Management Information Base) OIDs to the SNMP exporter configuration.
+
+```yaml
+# /opt/monitoring/snmp-exporter/snmp.yml (excerpt)
+synology:
+  walk:
+    - 1.3.6.1.2.1.31.1.1.1     # ifXTable (64-bit counters)
+  metrics:
+    # 64-bit inbound byte counter (handles high traffic without wraparound)
+    - name: ifHCInOctets
+      oid: 1.3.6.1.2.1.31.1.1.1.6
+      type: counter
+      help: Total number of octets received on the interface (64-bit)
+      indexes:
+        - labelname: ifIndex
+          type: gauge
+      lookups:
+        - labels: [ifIndex]
+          labelname: ifName
+          oid: 1.3.6.1.2.1.31.1.1.1.1
+
+    # 64-bit outbound byte counter
+    - name: ifHCOutOctets
+      oid: 1.3.6.1.2.1.31.1.1.1.10
+      type: counter
+      help: Total number of octets transmitted on the interface (64-bit)
+      indexes:
+        - labelname: ifIndex
+          type: gauge
+
+    # Interface speed in Mbps
+    - name: ifHighSpeed
+      oid: 1.3.6.1.2.1.31.1.1.1.15
+      type: gauge
+      help: Interface speed in Mbps
+      indexes:
+        - labelname: ifIndex
+          type: gauge
+```
+
+**Why 64-bit counters (HC = High Capacity)?**
+
+32-bit counters (`ifInOctets`/`ifOutOctets`) can only count up to ~4.3GB before wrapping around. On a 1Gbps link, that happens in about 34 seconds at full speed! The 64-bit HC counters handle exabytes before wrapping.
+
+**Synology Interface Mapping:**
+
+After enabling SNMP, I discovered the interface indexes by querying:
+```bash
+snmpwalk -v2c -c public 192.168.20.31 1.3.6.1.2.1.31.1.1.1.1
+# Output shows:
+# IF-MIB::ifName.3 = STRING: eth0
+# IF-MIB::ifName.4 = STRING: eth1
+```
+
+| Interface | ifIndex | Description | Speed |
+|-----------|---------|-------------|-------|
+| eth0 | 3 | Primary NIC | 1 Gbps |
+| eth1 | 4 | Secondary NIC | 1 Gbps |
+
+The NAS has 2x 1Gbps NICs in Link Aggregation, giving 2Gbps total capacity.
+
+**Restart SNMP exporter after config change:**
+```bash
+docker restart snmp-exporter
+```
+
+**Verify NAS metrics are available:**
+```bash
+curl -s "http://192.168.40.13:9116/snmp?target=192.168.20.31&module=synology" | grep ifHCInOctets
+# Output: ifHCInOctets{ifIndex="3"} 1.23456789e+13
+```
+
+### Part 2: Prometheus Configuration
+
+**Add scrape jobs** to `/opt/monitoring/prometheus/prometheus.yml`:
+
+```yaml
+scrape_configs:
+  # Proxmox node_exporter (already exists)
+  - job_name: 'proxmox-nodes'
+    scrape_interval: 30s
+    static_configs:
+      - targets:
+          - '192.168.20.20:9100'
+          - '192.168.20.21:9100'
+          - '192.168.20.22:9100'
+        labels:
+          job: 'proxmox-nodes'
+
+  # Synology NAS via SNMP exporter (already exists)
+  - job_name: 'synology'
+    scrape_interval: 60s
+    static_configs:
+      - targets:
+          - '192.168.20.31'  # NAS IP
+    metrics_path: /snmp
+    params:
+      module: [synology]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: 192.168.40.13:9116  # SNMP exporter address
+```
+
+**Reload Prometheus:**
+```bash
+curl -X POST http://192.168.40.13:9090/-/reload
+```
+
+**Verify scrape targets are healthy:**
+```bash
+curl -s "http://192.168.40.13:9090/api/v1/targets" | jq '.data.activeTargets[] | {job: .labels.job, health: .health}'
+```
+
+### Part 3: Grafana Dashboard Queries (PromQL)
+
+The real magic is in the PromQL queries that transform raw byte counters into meaningful bandwidth metrics.
+
+#### Understanding `rate()` for Network Metrics
+
+Counters like `node_network_receive_bytes_total` only go up. To get bandwidth (bytes/second), we use `rate()`:
+
+```promql
+rate(node_network_receive_bytes_total[5m])
+```
+
+This calculates: (current_value - value_5_minutes_ago) / 300 seconds
+
+**Multiply by 8 to convert bytes/s to bits/s** (standard for network bandwidth):
+
+```promql
+rate(node_network_receive_bytes_total[5m]) * 8
+```
+
+#### Dashboard Queries
+
+**1. Total Cluster Bandwidth (all nodes combined):**
+```promql
+sum(
+  rate(node_network_receive_bytes_total{device="vmbr0"}[5m]) +
+  rate(node_network_transmit_bytes_total{device="vmbr0"}[5m])
+) * 8
+```
+- `{device="vmbr0"}` - only the main bridge interface
+- `sum()` - adds all nodes together
+- `* 8` - converts bytes to bits
+
+**2. Cluster Utilization Gauge (% of 1Gbps):**
+```promql
+sum(
+  rate(node_network_receive_bytes_total{device="vmbr0"}[5m]) +
+  rate(node_network_transmit_bytes_total{device="vmbr0"}[5m])
+) * 8 / 1000000000 * 100
+```
+- Divides by 1e9 (1 Gbps in bits)
+- Multiplies by 100 for percentage
+
+**3. Per-Node Bandwidth (example: node01):**
+```promql
+(
+  rate(node_network_receive_bytes_total{instance="192.168.20.20:9100",device="vmbr0"}[5m]) +
+  rate(node_network_transmit_bytes_total{instance="192.168.20.20:9100",device="vmbr0"}[5m])
+) * 8
+```
+
+**4. 24-Hour Peak Bandwidth:**
+```promql
+max_over_time(
+  sum(
+    rate(node_network_receive_bytes_total{device="vmbr0"}[5m]) +
+    rate(node_network_transmit_bytes_total{device="vmbr0"}[5m])
+  ) * 8
+[24h])
+```
+- `max_over_time(...[24h])` - finds the maximum value in the last 24 hours
+
+**5. 24-Hour Average Bandwidth:**
+```promql
+avg_over_time(
+  sum(
+    rate(node_network_receive_bytes_total{device="vmbr0"}[5m]) +
+    rate(node_network_transmit_bytes_total{device="vmbr0"}[5m])
+  ) * 8
+[24h])
+```
+
+**6. Synology NAS Total Bandwidth (eth0 + eth1):**
+```promql
+sum(
+  rate(ifHCInOctets{ifIndex=~"3|4"}[5m]) +
+  rate(ifHCOutOctets{ifIndex=~"3|4"}[5m])
+) * 8
+```
+- `{ifIndex=~"3|4"}` - matches eth0 (index 3) OR eth1 (index 4) using regex
+
+**7. NAS Utilization (% of 2Gbps bonded):**
+```promql
+sum(
+  rate(ifHCInOctets{ifIndex=~"3|4"}[5m]) +
+  rate(ifHCOutOctets{ifIndex=~"3|4"}[5m])
+) * 8 / 2000000000 * 100
+```
+- Divides by 2e9 (2 Gbps for bonded NICs)
+
+**8. Timeline with Per-Node RX/TX Breakdown:**
+```promql
+# node01 RX
+rate(node_network_receive_bytes_total{instance="192.168.20.20:9100",device="vmbr0"}[5m]) * 8
+
+# node01 TX
+rate(node_network_transmit_bytes_total{instance="192.168.20.20:9100",device="vmbr0"}[5m]) * 8
+```
+
+**9. 1Gbps Reference Line (for timeline charts):**
+```promql
+vector(1000000000)
+```
+- Creates a constant 1e9 (1 Gbps) horizontal line for visual reference
+
+### Part 4: Dashboard Panel Configuration
+
+The Grafana dashboard uses these panel types:
+
+| Panel Type | Use Case | Key Settings |
+|------------|----------|--------------|
+| **stat** | Single current value | Unit: `bps` (bits per second) |
+| **gauge** | Percentage with thresholds | Min: 0, Max: 100, Unit: `percent` |
+| **timeseries** | Bandwidth over time | Unit: `bps`, Line interpolation: smooth |
+
+**Color Thresholds for Gauges:**
+
+| Range | Color | Meaning |
+|-------|-------|---------|
+| 0-50% | Green | Normal utilization |
+| 50-80% | Yellow | Elevated, monitor |
+| 80-100% | Red | High utilization, potential bottleneck |
+
+**Dashboard JSON Location:** `dashboards/network-utilization.json`
+
+**Ansible Deployment Playbook:** `ansible/playbooks/monitoring/deploy-network-utilization-dashboard.yml`
+
+### Part 5: Glance Integration
+
+The dashboard is embedded in the Glance Network tab using an iframe widget.
+
+**Glance Configuration** (`/opt/glance/config/glance.yml`):
+
+```yaml
+pages:
+  - name: Network
+    columns:
+      - size: full
+        widgets:
+          - type: iframe
+            url: https://grafana.hrmsmrflrii.xyz/d/network-utilization/network-utilization?orgId=1&kiosk&theme=transparent&refresh=30s
+            height: 1100
+```
+
+**URL Parameters Explained:**
+
+| Parameter | Value | Purpose |
+|-----------|-------|---------|
+| `kiosk` | (no value) | Hides Grafana navbar/sidebar |
+| `theme=transparent` | transparent | Blends with Glance dark theme |
+| `refresh=30s` | 30s | Auto-refresh interval |
+| `orgId=1` | 1 | Grafana organization ID |
+
+### Part 6: Using the Dashboard
+
+**What to Watch For:**
+
+| Metric | Threshold | Action |
+|--------|-----------|--------|
+| Cluster Utilization > 70% sustained | High | Consider 2.5GbE upgrade |
+| NAS Utilization > 80% during backups | Very High | NAS is bottleneck |
+| Peak 24h > 800 Mbps | Frequent peaks | 2.5GbE recommended |
+| Per-node consistently higher | Imbalanced | Migrate VMs for balance |
+
+**Common Bandwidth Patterns:**
+
+| Time | Expected Activity | Normal Bandwidth |
+|------|-------------------|------------------|
+| 2:00-4:00 AM | PBS daily backups | 400-800 Mbps |
+| Evenings | Plex/Jellyfin streaming | 50-200 Mbps |
+| Live migration | VM movement between nodes | 500-900 Mbps |
+| Idle | Background traffic | < 50 Mbps |
+
+### Part 7: Deployment Commands
+
+**Deploy the complete monitoring stack:**
+
+```bash
+# From Ansible controller (192.168.20.30)
+cd ~/ansible
+
+# 1. Deploy the Grafana dashboard
+ansible-playbook ansible/playbooks/monitoring/deploy-network-utilization-dashboard.yml
+
+# 2. Restart Glance to pick up iframe (if config was updated)
+ssh root@192.168.40.12 "cd /opt/glance && docker compose restart glance"
+```
+
+**Manual dashboard update (if JSON changes):**
+
+```bash
+# Copy dashboard JSON to Grafana host
+scp dashboards/network-utilization.json hermes-admin@192.168.40.13:/tmp/
+
+# Deploy via Grafana API
+ssh hermes-admin@192.168.40.13 'curl -X POST \
+  -H "Content-Type: application/json" \
+  -u admin:admin \
+  -d "{\"dashboard\": $(cat /tmp/network-utilization.json), \"overwrite\": true}" \
+  http://localhost:3030/api/dashboards/db'
+```
+
+### Part 8: Troubleshooting
+
+**No data for Proxmox nodes:**
+```bash
+# Check node_exporter is running
+ssh root@192.168.20.20 "systemctl status prometheus-node-exporter"
+
+# Check Prometheus can scrape
+curl -s "http://192.168.40.13:9090/api/v1/query?query=node_network_receive_bytes_total{device='vmbr0'}" | jq '.data.result'
+```
+
+**No data for Synology NAS:**
+```bash
+# Test SNMP from docker host
+docker exec snmp-exporter snmpwalk -v2c -c public 192.168.20.31 1.3.6.1.2.1.31.1.1.1.6
+
+# Check SNMP exporter logs
+docker logs snmp-exporter
+
+# Verify Prometheus scrape
+curl -s "http://192.168.40.13:9090/api/v1/query?query=ifHCInOctets" | jq '.data.result'
+```
+
+**Dashboard shows 0 or N/A:**
+- Check time range (last 1h may have no data if just deployed)
+- Verify device label matches (`vmbr0` for Proxmox, `ifIndex` for NAS)
+- Check units (bytes vs bits - should use `bps` unit in Grafana)
+
 ---
 
 # Part 9: Discord Bot Ecosystem
@@ -579,7 +1045,7 @@ Unified Discord bot consolidating all homelab automation.
 | Cog | Channel | Purpose |
 |-----|---------|---------|
 | **homelab.py** | #homelab-infrastructure | Proxmox cluster status |
-| **updates.py** | #container-updates | Container update approvals |
+| **updates.py** | #container-updates | Container update approvals, infrastructure updates |
 | **media.py** | #media-downloads | Download notifications |
 | **gitlab.py** | #project-management | GitLab issues |
 | **tasks.py** | #claude-tasks | Claude task queue |
@@ -590,9 +1056,100 @@ Unified Discord bot consolidating all homelab automation.
 |---------|-------------|
 | `/homelab status` | Cluster overview |
 | `/check` | Scan for container updates |
+| `/updateall` | **Check and update ALL VMs, containers, LXCs** |
+| `/checknow` | Manually trigger scheduled update check |
+| `/updateschedule` | Show automatic update check schedule |
 | `/downloads` | Show download queue |
 | `/todo <description>` | Create GitLab issue |
 | `/task <description>` | Submit Claude task |
+
+## 9.2 Automated Infrastructure Update System
+
+Added January 2026 - comprehensive update management via Discord.
+
+### Architecture
+
+```
+Discord User
+     │
+     │ /updateall (or scheduled check at 6 AM/6 PM UTC)
+     ▼
+Sentinel Bot (192.168.40.13)
+     │
+     ├─► Phase 1: VMs (apt upgrade)
+     │   ├── docker-utilities (192.168.40.13)
+     │   ├── docker-media (192.168.40.11)
+     │   ├── traefik (192.168.40.20)
+     │   ├── authentik (192.168.40.21)
+     │   ├── immich (192.168.40.22)
+     │   ├── gitlab (192.168.40.23)
+     │   ├── gitlab-runner (192.168.40.24)
+     │   └── ansible (192.168.20.30)
+     │
+     ├─► Phase 2: Docker Containers (pull + restart)
+     │   ├── 192.168.40.13 (15 containers)
+     │   ├── 192.168.40.11 (12 containers)
+     │   ├── 192.168.40.12 (5 containers)
+     │   └── Service VMs (traefik, authentik, etc.)
+     │
+     └─► Phase 3: LXC Containers (pct exec apt upgrade)
+         ├── pbs (CTID 100) on node03
+         ├── docker-lxc-glance (CTID 200) on node03
+         ├── pi-hole (CTID 202) on node01
+         └── homeassistant (CTID 206) on node03
+              │
+              ▼
+        Completion Report in Discord
+```
+
+### Workflow
+
+1. **Check Phase**: Bot scans all VMs and LXCs for available apt updates
+2. **Summary**: Posts embed with update counts per resource type
+3. **Approval**: Waits for thumbs up reaction before proceeding
+4. **Update Phase**: Applies updates in order (VMs → Containers → LXCs)
+5. **Report**: Sends comprehensive report with success/failure counts
+
+### Scheduled Checks
+
+| Schedule | Time (UTC) | Action |
+|----------|------------|--------|
+| Morning | 6:00 AM | Check all resources, notify if updates |
+| Evening | 6:00 PM | Check all resources, notify if updates |
+
+Notifications only sent if updates are found. Updates only applied after user approval.
+
+### Configuration
+
+```python
+# config.py - Host mappings
+
+VM_HOSTS = {
+    'docker-utilities': '192.168.40.13',
+    'docker-media': '192.168.40.11',
+    'traefik': '192.168.40.20',
+    'authentik': '192.168.40.21',
+    'immich': '192.168.40.22',
+    'gitlab': '192.168.40.23',
+    'gitlab-runner': '192.168.40.24',
+    'ansible': '192.168.20.30',
+}
+
+LXC_CONTAINERS = {
+    'pbs': ('192.168.20.22', 100),
+    'docker-lxc-glance': ('192.168.20.22', 200),
+    'pi-hole': ('192.168.20.20', 202),
+    'homeassistant': ('192.168.20.22', 206),
+}
+```
+
+### Safety Features
+
+- **Skip self-update**: sentinel-bot container never updates itself
+- **Timeout handling**: 10-minute timeout for apt operations
+- **Error isolation**: Continues if one resource fails
+- **Progress updates**: Real-time Discord embed updates
+- **Approval required**: No updates without user confirmation
 
 ---
 
@@ -791,8 +1348,8 @@ Host docker-utils
 
 **Document Information:**
 - **Total Sections:** 12 Parts + 3 Appendices
-- **Version:** 3.0
-- **Last Updated:** January 12, 2026
+- **Version:** 3.1
+- **Last Updated:** January 13, 2026
 - **Author:** Hermes Miraflor II with Claude Code
 
 > **Note:** This is the public GitHub version. Credentials are stored separately in a private Obsidian vault.

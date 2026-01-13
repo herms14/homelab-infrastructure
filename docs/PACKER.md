@@ -201,9 +201,149 @@ lvs
 5. **Naming** - Use descriptive template names with version/date
 6. **Testing** - Test templates before using in production
 
+## Windows Server Templates
+
+### Windows Server 2025 Template (Hybrid Lab)
+
+| Setting | Value |
+|---------|-------|
+| **VM ID** | 9025 |
+| **Name** | WS2025-Template |
+| **CPU** | 2 cores (host type) |
+| **Memory** | 4096 MB |
+| **Disk** | 60 GB (VirtIO SCSI) |
+| **BIOS** | SeaBIOS (not UEFI) |
+| **Network** | VLAN 80 (Hybrid Lab) |
+| **Build Node** | node03 |
+
+**Location**: `/home/hermes-admin/hybrid-lab/packer/windows-server-2025-proxmox/`
+
+### Windows Autounattend.xml Requirements
+
+When creating Windows unattended installation files, these requirements are **critical**:
+
+#### 1. XML Namespace Declaration
+
+The `wcm` namespace **MUST** be declared in the root element:
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend"
+          xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+```
+
+Without this declaration, any `wcm:action="add"` attributes will cause the XML to be invalid.
+
+#### 2. ISO Format - Joliet Extensions Required
+
+When creating the autounattend ISO, you **MUST** use Joliet extensions for long filename support:
+
+```bash
+# CORRECT - with Joliet extensions
+xorriso -as mkisofs -J -joliet-long -V "OEMDRV" -o autounattend.iso ./autounattend_dir/
+
+# WRONG - will truncate filename to 8.3 format (AUTOUNAT.XML)
+xorriso -as mkisofs -V "OEMDRV" -o autounattend.iso ./autounattend_dir/
+```
+
+Windows Setup looks for `autounattend.xml` exactly - truncated 8.3 names like `AUTOUNAT.XML` won't be recognized.
+
+#### 3. CD-ROM Device Type
+
+The autounattend ISO must be mounted on an **IDE CD-ROM** device for Windows PE to detect it:
+
+```hcl
+# In Packer HCL - use ide device, NOT sata
+additional_iso_files {
+  device           = "ide3"        # Use ide3, not sata
+  cd_files         = ["${path.root}/autounattend.xml"]
+  cd_label         = "OEMDRV"
+  iso_storage_pool = var.proxmox_iso_storage
+  unmount          = true
+}
+```
+
+Windows PE may not enumerate SATA CD-ROM drives in some configurations.
+
+#### 4. Product Key Required
+
+Include the product key in the autounattend.xml to skip the licensing screen:
+
+```xml
+<UserData>
+    <AcceptEula>true</AcceptEula>
+    <ProductKey>
+        <Key>XXXXX-XXXXX-XXXXX-XXXXX-XXXXX</Key>
+        <WillShowUI>OnError</WillShowUI>
+    </ProductKey>
+</UserData>
+```
+
+#### 5. BIOS vs UEFI Partitioning
+
+For **BIOS (SeaBIOS)** boot, use MBR partitioning:
+
+```xml
+<DiskConfiguration>
+    <Disk wcm:action="add">
+        <DiskID>0</DiskID>
+        <WillWipeDisk>true</WillWipeDisk>
+        <CreatePartitions>
+            <CreatePartition wcm:action="add">
+                <Order>1</Order>
+                <Extend>true</Extend>
+                <Type>Primary</Type>
+            </CreatePartition>
+        </CreatePartitions>
+        <ModifyPartitions>
+            <ModifyPartition wcm:action="add">
+                <Order>1</Order>
+                <PartitionID>1</PartitionID>
+                <Label>Windows</Label>
+                <Letter>C</Letter>
+                <Format>NTFS</Format>
+                <Active>true</Active>
+            </ModifyPartition>
+        </ModifyPartitions>
+    </Disk>
+</DiskConfiguration>
+```
+
+For **UEFI (OVMF)** boot, use GPT partitioning with EFI partition (not recommended for Packer due to DVD boot issues).
+
+### Windows Packer Troubleshooting
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| UEFI DVD boot timeout | OVMF can't read DVD | Use `bios = "seabios"` instead |
+| Boot loop after "Loading files" | Invalid autounattend.xml | Check `wcm` namespace, use Joliet ISO |
+| Language screen appears | Autounattend not detected | Use IDE CD-ROM (ide3), check filename isn't truncated |
+| Product key screen appears | Missing ProductKey element | Add ProductKey to UserData section |
+| Disk not found | VirtIO drivers not loaded | Add driver paths to PnpCustomizationsWinPE |
+
+### VirtIO Driver Paths
+
+For VirtIO disk/network support, add driver paths to autounattend.xml:
+
+```xml
+<component name="Microsoft-Windows-PnpCustomizationsWinPE" ...>
+    <DriverPaths>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="1">
+            <Path>E:\vioscsi\2k25\amd64</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="2">
+            <Path>E:\NetKVM\2k25\amd64</Path>
+        </PathAndCredentials>
+    </DriverPaths>
+</component>
+```
+
+---
+
 ## Related Documentation
 
 - [Terraform](./TERRAFORM.md) - Infrastructure provisioning
 - [Ansible](./ANSIBLE.md) - Configuration management
 - [Proxmox](./PROXMOX.md) - Hypervisor documentation
 - [Cloud-Init Templates](./scripts/cloud-init/) - Cloud-init examples
+- [Hybrid Lab Deployment](./HYBRID_LAB_DEPLOYMENT.md) - Windows AD Lab setup

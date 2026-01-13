@@ -86,11 +86,12 @@ Infrastructure:
 | Cog | File | Channel | Commands |
 |-----|------|---------|----------|
 | **Homelab** | `cogs/homelab.py` | #homelab-infrastructure | `/homelab`, `/node`, `/vm`, `/lxc` |
-| **Updates** | `cogs/updates.py` | #container-updates | `/check`, `/update`, `/restart`, `/logs`, `/vmcheck` |
+| **Updates** | `cogs/updates.py` | #container-updates | `/check`, `/update`, `/restart`, `/logs`, `/vmcheck`, `/updateall`, `/checknow`, `/updateschedule` |
 | **Media** | `cogs/media.py` | #media-downloads | `/downloads`, `/download`, `/search`, `/library`, `/recent` |
 | **GitLab** | `cogs/gitlab.py` | #project-management | `/todo`, `/issues`, `/close`, `/quick`, `/project` |
 | **Tasks** | `cogs/tasks.py` | #claude-tasks | `/task`, `/queue`, `/status`, `/done`, `/cancel`, `/taskstats` |
 | **Onboarding** | `cogs/onboarding.py` | #new-service-onboarding | `/onboard`, `/onboard-all`, `/onboard-services` |
+| **Power** | `cogs/power.py` | #homelab-infrastructure | `/shutdownall`, `/shutdown-nodns`, `/startall` |
 | **Scheduler** | `cogs/scheduler.py` | Various | Background tasks (7pm updates, download monitoring) |
 
 ---
@@ -114,6 +115,58 @@ Infrastructure:
 | `/lxc <id> status` | Get LXC container status |
 | `/lxc <id> start/stop/restart` | Control an LXC container |
 
+### Power Management Commands (#homelab-infrastructure)
+
+| Command | Description |
+|---------|-------------|
+| `/shutdownall` | Gracefully shutdown ALL VMs, LXCs, and Proxmox nodes |
+| `/shutdown-nodns` | Shutdown all except Pi-hole (LXC 202) and node01 (DNS stays online) |
+| `/startall` | Wake all nodes via Wake-on-LAN and start all VMs/LXCs |
+
+**Power Management System** (Added January 2026):
+
+Safe cluster-wide power management with confirmation prompts and progress tracking.
+
+**Shutdown Order (Safety-Critical)**:
+1. Stop all VMs (gracefully, per node)
+2. Stop all LXC containers
+3. Shutdown Proxmox nodes (node03 → node02 → node01)
+
+**Startup Order**:
+1. Send Wake-on-LAN to all nodes
+2. Wait for nodes to come online (5-min timeout each)
+3. Start LXCs (Pi-hole first for DNS)
+4. Start all VMs
+
+**Wake-on-LAN Configuration**:
+| Node | MAC Address |
+|------|-------------|
+| node01 | `38:05:25:32:82:76` |
+| node02 | `84:47:09:4d:7a:ca` |
+| node03 | `d8:43:ae:a8:4c:a7` |
+
+**Confirmation Flow**:
+```
+/shutdownall
+    │
+    ▼
+Show summary (VMs, LXCs, nodes to shutdown)
+    │
+    ▼
+Wait for ⚠️ reaction to confirm (or ❌ to cancel)
+    │
+    ▼
+Execute shutdown phases with progress updates
+    │
+    ▼
+Send completion report
+```
+
+**Important Notes**:
+- `/shutdown-nodns` keeps Pi-hole (LXC 202) and node01 running for DNS availability
+- Sentinel Bot runs on node02, so `/shutdownall` will shut down the bot itself (final report sent before node02 shutdown)
+- All commands require reaction-based confirmation within 60 seconds
+
 ### Container Updates (#container-updates)
 
 | Command | Description |
@@ -124,6 +177,41 @@ Infrastructure:
 | `/containers` | List all monitored containers |
 | `/logs <container> [lines]` | View container logs (default 50 lines) |
 | `/vmcheck` | Check all VMs for apt package updates |
+| `/updateall` | **Check and update ALL VMs, containers, and LXCs** (with approval) |
+| `/checknow` | Manually trigger scheduled update check |
+| `/updateschedule` | Show automatic update check schedule |
+
+**Automated Infrastructure Update System** (Added January 2026):
+
+The `/updateall` command provides comprehensive infrastructure updates:
+1. **VMs**: apt upgrade on all service VMs (8 hosts)
+2. **Docker Containers**: Pull latest images and restart (35+ containers)
+3. **LXC Containers**: apt upgrade inside LXC containers (4 LXCs)
+
+**Workflow**:
+```
+/updateall
+    │
+    ▼
+Phase 1: Check all resources
+    │
+    ▼
+Show summary with update counts
+    │
+    ▼
+Wait for 👍 approval
+    │
+    ▼
+Apply updates (VMs → Containers → LXCs)
+    │
+    ▼
+Send completion report
+```
+
+**Scheduled Automatic Checks**:
+- Bot automatically checks for updates at **6:00 AM** and **6:00 PM UTC** daily
+- If updates found, sends notification to #container-updates with thumbs up reaction
+- Updates only applied after user approval
 
 **Reaction-Based Approval Flow**:
 1. Bot posts update notification with container list
@@ -135,7 +223,7 @@ Infrastructure:
 
 | Command | Description |
 |---------|-------------|
-| `/downloads` | Show current Radarr/Sonarr download queues |
+| `/downloads` | Show current download queues with visual progress bars |
 | `/download <title> [type]` | Request a movie or TV show via Jellyseerr |
 | `/search <query> [type]` | Search media without downloading |
 | `/library movies [limit]` | List movies in Radarr library |
@@ -143,11 +231,25 @@ Infrastructure:
 | `/library stats` | Library statistics (counts, sizes) |
 | `/recent [type]` | Recently added media |
 
+**`/downloads` Output Format** (Updated January 2026):
+```
+📥 Download Queue
+
+🎬 Movies (2)
+`[████████░░]`  80.5% | Interstellar.2014.2160p.UHD
+`[██░░░░░░░░]`  20.0% | The.Matrix.1999.4K
+
+📺 TV Shows (54)
+`[██████████]` 100.0% | House.of.the.Dragon.S02E05
+`[█████░░░░░]`  50.0% | The.Sandman.S02E01
+...
+```
+
 **Automatic Notifications**:
 - Download completion notifications (100% only to reduce spam)
 - Completion notifications with Jellyfin links
 - Poster images embedded
-- **Failed download alerts** with reaction-based removal (react with :wastebasket: to remove)
+- **Failed download alerts** with reaction-based removal (react with 🗑️ to remove)
 
 ### GitLab Commands (#project-management)
 
@@ -234,11 +336,19 @@ Base URL: `http://192.168.40.13:5050`
 
 | Task | Schedule | Channel |
 |------|----------|---------|
+| **Infrastructure Update Check** | 6:00 AM & 6:00 PM UTC daily | #container-updates |
 | Container Update Report | 7:00 PM daily | #container-updates |
 | Download Progress Check | Every 60 seconds | #media-downloads |
 | Failed Download Check | Every 5 minutes | #media-downloads |
 | Onboarding Status Report | 9:00 AM daily | #new-service-onboarding |
 | Stale Task Cleanup | Every 30 minutes | (internal) |
+
+**Infrastructure Update Check Details**:
+- Checks all VMs for apt package updates
+- Checks all LXC containers for apt package updates
+- If updates found, sends notification with approval reaction
+- User approves with thumbs up to apply updates
+- Comprehensive report sent after completion
 
 ---
 
@@ -387,14 +497,27 @@ CONTAINER_HOSTS = {
     'jellyfin': '192.168.40.11',
     'radarr': '192.168.40.11',
     'sonarr': '192.168.40.11',
-    # ... all monitored containers
+    # ... 35+ monitored containers
 }
 
 VM_HOSTS = {
+    'docker-utilities': '192.168.40.13',
+    'docker-media': '192.168.40.11',
     'traefik': '192.168.40.20',
     'authentik': '192.168.40.21',
     'immich': '192.168.40.22',
     'gitlab': '192.168.40.23',
+    'gitlab-runner': '192.168.40.24',
+    'ansible': '192.168.20.30',
+}
+
+# LXC containers for apt updates (added January 2026)
+# Format: name -> (proxmox_node_ip, ctid)
+LXC_CONTAINERS = {
+    'pbs': ('192.168.20.22', 100),              # node03 - Proxmox Backup Server
+    'docker-lxc-glance': ('192.168.20.22', 200), # node03 - Glance dashboard
+    'pi-hole': ('192.168.20.20', 202),          # node01 - DNS server
+    'homeassistant': ('192.168.20.22', 206),    # node03 - Home Assistant
 }
 ```
 

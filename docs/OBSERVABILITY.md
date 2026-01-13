@@ -646,6 +646,209 @@ curl -s http://192.168.40.13:9090/api/v1/targets | jq '.data.activeTargets[] | s
 curl -s "http://192.168.40.13:9090/api/v1/query?query=node_hwmon_temp_celsius" | jq '.data.result'
 ```
 
+## Network Utilization Monitoring (Added January 13, 2026)
+
+Comprehensive network bandwidth monitoring for the Proxmox cluster and Synology NAS to track utilization and determine upgrade needs.
+
+### Architecture
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   node01    │     │   node02    │     │   node03    │     │ Synology NAS│
+│   :9100     │     │   :9100     │     │   :9100     │     │   (SNMP)    │
+│ node_exporter│    │ node_exporter│    │ node_exporter│    │  :161       │
+└──────┬──────┘     └──────┬──────┘     └──────┬──────┘     └──────┬──────┘
+       │                   │                   │                   │
+       └───────────────────┼───────────────────┼───────────────────┘
+                           │                   │
+                    ┌──────▼──────┐     ┌──────▼──────┐
+                    │ Prometheus  │     │SNMP Exporter│
+                    │ 192.168.40.13│    │   :9116     │
+                    └──────┬──────┘     └─────────────┘
+                           │
+                    ┌──────▼──────┐
+                    │   Grafana   │
+                    │   :3030     │
+                    └──────┬──────┘
+                           │
+                    ┌──────▼──────┐
+                    │   Glance    │
+                    │  (iframe)   │
+                    └─────────────┘
+```
+
+### Components
+
+| Component | Host | Port | Purpose |
+|-----------|------|------|---------|
+| node_exporter | All Proxmox nodes | 9100 | Network interface metrics |
+| SNMP Exporter | 192.168.40.13 | 9116 | Synology NAS network metrics |
+| Prometheus | 192.168.40.13 | 9090 | Metrics aggregation |
+| Grafana | 192.168.40.13 | 3030 | Visualization |
+
+### Metrics Collected
+
+| Source | Metrics | Description |
+|--------|---------|-------------|
+| **node_exporter** | `node_network_receive_bytes_total` | Bytes received per interface |
+| **node_exporter** | `node_network_transmit_bytes_total` | Bytes transmitted per interface |
+| **SNMP (NAS)** | `ifHCInOctets` | 64-bit inbound bytes counter |
+| **SNMP (NAS)** | `ifHCOutOctets` | 64-bit outbound bytes counter |
+| **SNMP (NAS)** | `ifHighSpeed` | Interface speed in Mbps |
+
+### SNMP Exporter IF-MIB Configuration
+
+The SNMP exporter was updated to collect network interface metrics from the Synology NAS:
+
+```yaml
+# /opt/monitoring/snmp-exporter/snmp.yml (on docker-vm-core-utilities01)
+metrics:
+  - name: ifHCInOctets
+    oid: 1.3.6.1.2.1.31.1.1.1.6
+    type: counter
+    indexes:
+      - labelname: ifIndex
+        type: gauge
+
+  - name: ifHCOutOctets
+    oid: 1.3.6.1.2.1.31.1.1.1.10
+    type: counter
+    indexes:
+      - labelname: ifIndex
+        type: gauge
+
+  - name: ifHighSpeed
+    oid: 1.3.6.1.2.1.31.1.1.1.15
+    type: gauge
+    indexes:
+      - labelname: ifIndex
+        type: gauge
+```
+
+**Synology NAS Interface Mapping:**
+| Interface | ifIndex | Description |
+|-----------|---------|-------------|
+| eth0 | 3 | Primary 1GbE NIC |
+| eth1 | 4 | Secondary 1GbE NIC |
+
+### Grafana Dashboard
+
+**Dashboard**: `network-utilization` (UID)
+**Location**: `dashboards/network-utilization.json`
+**Ansible Playbook**: `ansible/playbooks/monitoring/deploy-network-utilization-dashboard.yml`
+
+**Layout:**
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ [Total Cluster]  [Cluster %]  [Peak 24h]  [Avg 24h]  [NAS BW]  [NAS %]      │  Row 1
+├──────────────────────────────────┬──────────────────────────────────────────┤
+│        Per-Node Stats            │         NAS Peak (24h)                   │  Row 2
+│ [node01] [node02] [node03]       │                                          │
+├──────────────────────────────────┴──────────────────────────────────────────┤
+│                  Cluster Bandwidth Over Time                                 │  Row 3
+│   (node01 RX/TX, node02 RX/TX, node03 RX/TX, 1Gbps reference line)          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                 Synology NAS Bandwidth Over Time                             │  Row 4
+│   (eth0 RX/TX, eth1 RX/TX)                                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                    Combined Bandwidth                                        │  Row 5
+│   (Cluster Total, NAS Total, 1Gbps reference line)                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Key Panels:**
+
+| Panel | Type | Query | Description |
+|-------|------|-------|-------------|
+| Total Cluster Bandwidth | stat | `sum(rate(node_network_receive_bytes_total{device="vmbr0"}[5m]) + rate(node_network_transmit_bytes_total{device="vmbr0"}[5m])) * 8` | Combined RX+TX for all nodes |
+| Cluster Utilization | gauge | Same / 1e9 * 100 | % of 1Gbps |
+| Peak (24h) | stat | `max_over_time(...)` | Maximum bandwidth in 24h |
+| Avg (24h) | stat | `avg_over_time(...)` | Average bandwidth in 24h |
+| Synology NAS | stat | `sum(rate(ifHCInOctets{ifIndex=~"3\|4"}[5m]) + rate(ifHCOutOctets{ifIndex=~"3\|4"}[5m])) * 8` | NAS eth0+eth1 combined |
+| NAS Utilization | gauge | Same / 2e9 * 100 | % of 2Gbps bonded |
+
+**Color Thresholds:**
+| Metric | Green | Yellow | Red |
+|--------|-------|--------|-----|
+| Cluster Utilization | < 50% | 50-80% | > 80% |
+| NAS Utilization | < 50% | 50-80% | > 80% |
+
+### PromQL Examples
+
+```promql
+# Total cluster bandwidth (bits per second)
+sum(rate(node_network_receive_bytes_total{device="vmbr0"}[5m]) +
+    rate(node_network_transmit_bytes_total{device="vmbr0"}[5m])) * 8
+
+# Per-node bandwidth
+(rate(node_network_receive_bytes_total{instance="192.168.20.20:9100",device="vmbr0"}[5m]) +
+ rate(node_network_transmit_bytes_total{instance="192.168.20.20:9100",device="vmbr0"}[5m])) * 8
+
+# NAS combined bandwidth (eth0 + eth1)
+sum(rate(ifHCInOctets{ifIndex=~"3|4"}[5m]) +
+    rate(ifHCOutOctets{ifIndex=~"3|4"}[5m])) * 8
+
+# 24-hour peak
+max_over_time(
+  sum(rate(node_network_receive_bytes_total{device="vmbr0"}[5m]) +
+      rate(node_network_transmit_bytes_total{device="vmbr0"}[5m])) * 8
+[24h])
+```
+
+### Dashboard URLs
+
+| Access Method | URL |
+|---------------|-----|
+| Grafana Direct | https://grafana.hrmsmrflrii.xyz/d/network-utilization |
+| Kiosk Mode | http://192.168.40.13:3030/d/network-utilization?kiosk&theme=transparent |
+| Glance Embedded | https://glance.hrmsmrflrii.xyz → Network tab |
+
+### Glance Integration
+
+The Network Utilization dashboard is embedded in the Glance **Network** tab via iframe:
+- Height: 1100px
+- URL: `https://grafana.hrmsmrflrii.xyz/d/network-utilization/network-utilization?orgId=1&kiosk&theme=transparent&refresh=30s`
+
+### Use Case: 2.5GbE Upgrade Decision
+
+This dashboard was created to help determine if upgrading to a 2.5Gbps switch would be beneficial:
+
+| Metric | Threshold | Recommendation |
+|--------|-----------|----------------|
+| Cluster Utilization | < 50% sustained | 1GbE sufficient |
+| Cluster Utilization | > 70% sustained | Consider 2.5GbE |
+| NAS Utilization | > 80% during backups | 2.5GbE beneficial |
+| Peak (24h) | > 800 Mbps | 2.5GbE recommended |
+
+**High-bandwidth activities to monitor:**
+- PBS backups (pbs-daily, pbs-main)
+- VM live migration
+- NAS → Media server streaming
+- Large file transfers
+
+### Verification
+
+```bash
+# Check node_exporter network metrics
+curl -s "http://192.168.40.13:9090/api/v1/query?query=node_network_receive_bytes_total{device='vmbr0'}" | jq '.data.result'
+
+# Check SNMP exporter NAS metrics
+curl -s "http://192.168.40.13:9090/api/v1/query?query=ifHCInOctets" | jq '.data.result'
+
+# Check dashboard exists
+curl -s "http://192.168.40.13:3030/api/dashboards/uid/network-utilization" | jq '.dashboard.title'
+```
+
+### Deployment
+
+```bash
+# Deploy from Ansible controller
+ansible-playbook monitoring/deploy-network-utilization-dashboard.yml
+
+# Or manually restart after JSON update
+ssh hermes-admin@192.168.40.13 "cd /opt/monitoring && docker compose restart grafana"
+```
+
 ## Related Documentation
 
 - [Services](./SERVICES.md) - Service deployment details

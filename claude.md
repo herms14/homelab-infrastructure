@@ -15,7 +15,7 @@ Terraform infrastructure-as-code for deploying VMs and LXC containers on a Proxm
 ║ PROXMOX CLUSTER: MorpheusCluster (3-node + Qdevice)                          ║
 ║   • node01: 192.168.20.20 (Tailscale: 100.89.33.5)  - Primary VM Host        ║
 ║   • node02: 192.168.20.21 (Tailscale: 100.96.195.27) - Service Host          ║
-║   • node03: 192.168.20.22 (No Tailscale)            - Additional Node        ║
+║   • node03: 192.168.20.22 (Tailscale: 100.88.228.34) - Additional Node       ║
 ╠══════════════════════════════════════════════════════════════════════════════╣
 ║ SYNOLOGY NAS: 192.168.20.31                                                  ║
 ║   • DSM: https://192.168.20.31:5001                                          ║
@@ -198,8 +198,8 @@ See [docs/INVENTORY.md](./docs/INVENTORY.md) for full details.
 ## Quick Start
 
 ```bash
-# Deploy Infrastructure
-terraform init && terraform plan && terraform apply
+# Deploy Infrastructure (from terraform/proxmox/)
+cd terraform/proxmox && terraform init && terraform plan && terraform apply
 
 # Access Ansible Controller
 ssh hermes-admin@192.168.20.30
@@ -219,7 +219,7 @@ ssh docker-vm-core-utilities01    # Docker utilities host
 | Location | Path | What to Update |
 |----------|------|----------------|
 | **docs/** | `docs/*.md` | Technical reference files |
-| **GitHub Wiki** | `Proxmox-TerraformDeployments.wiki/*.md` | Corresponding wiki pages |
+| **GitHub Wiki** | `wiki/*.md` | Corresponding wiki pages |
 | **Obsidian Vault** | See path below | Corresponding Obsidian notes |
 | **Technical Manual** | `38 - Homelab Technical Manual.md` in Obsidian | Comprehensive reference manual |
 | **.claude/context.md** | `.claude/context.md` | Infrastructure context |
@@ -251,17 +251,17 @@ C:\Users\herms14\OneDrive\Obsidian Vault\Hermes's Life Knowledge Base\07 HomeLab
 - **Container Status History** (`container-status`)
   - Iframe height: 1250px
   - Dashboard JSON: `dashboards/container-status.json`
-  - Ansible: `ansible-playbooks/monitoring/deploy-container-status-dashboard.yml`
+  - Ansible: `ansible/playbooks/monitoring/deploy-container-status-dashboard.yml`
 
 - **Synology NAS Storage** (`synology-nas-modern`)
   - Iframe height: 1350px
   - Dashboard JSON: `dashboards/synology-nas.json`
-  - Ansible: `ansible-playbooks/monitoring/deploy-synology-nas-dashboard.yml`
+  - Ansible: `ansible/playbooks/monitoring/deploy-synology-nas-dashboard.yml`
 
 - **Omada Network Overview** (`omada-network`)
   - Iframe height: 2200px
   - Dashboard JSON: `dashboards/omada-network.json`
-  - Ansible: `ansible-playbooks/monitoring/deploy-omada-full-dashboard.yml`
+  - Ansible: `ansible/playbooks/monitoring/deploy-omada-full-dashboard.yml`
 
 See `.claude/context.md` for current structure details.
 
@@ -518,8 +518,8 @@ brew install ansible
 cd ~/path/to/tf-proxmox
 
 # Run playbook with inventory
-ansible-playbook -i ansible-playbooks/inventory.ini \
-    ansible-playbooks/services/deploy-xyz.yml
+ansible-playbook -i ansible/playbooks/inventory.ini \
+    ansible/playbooks/services/deploy-xyz.yml
 ```
 
 #### Method 3: Direct SSH Commands

@@ -7,6 +7,129 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation - Technical Manual V4.1 Comprehensive Expansion (January 13, 2026)
+- **Expanded Obsidian Technical Manual** from ~2,090 to ~3,372 lines with comprehensive service documentation
+- **Added Arr Media Stack section** (~350 lines):
+  - Complete docker-compose.yml with 12 services (Jellyfin, Radarr, Sonarr, Prowlarr, Bazarr, Jellyseerr, Overseerr, Lidarr, Tdarr, Autobrr, Deluge, SABnzbd)
+  - Service workflow diagram showing how applications work together
+  - NFS mount setup and service integration configuration
+  - Step-by-step redeployment instructions
+- **Added Authentik SSO section** (~250 lines):
+  - Complete docker-compose.yml with 4 services (PostgreSQL, Redis, Server, Worker)
+  - Architecture diagram and environment configuration
+  - How to add applications to Authentik for SSO
+- **Added Glance Dashboard section** (~450 lines):
+  - Page structure documentation (8 pages)
+  - Custom API documentation with full Python code (Life Progress, Media Stats, NAS Backup Status)
+  - glance.yml configuration examples
+- **Added Proxmox Backup Server section** (~150 lines):
+  - Storage configuration (daily NVMe SSD, weekly HDD)
+  - Backup job creation (Web UI and CLI)
+  - PBS-to-NAS sync script for redundancy
+  - Restore procedures
+- **Updated Table of Contents** with nested service links
+- **File**: `Obsidian Vault/.../Hermes Homelab Technical Manual.md` (Version 4.1)
+
+### Added - Sentinel Bot Power Management Commands (January 13, 2026)
+- **Added cluster power management** to Sentinel Bot with three new slash commands:
+  - `/shutdownall` - Gracefully shutdown ALL VMs, LXCs, and Proxmox nodes
+  - `/shutdown-nodns` - Shutdown all except Pi-hole (LXC 202) and node01 to keep DNS available
+  - `/startall` - Wake all nodes via Wake-on-LAN and start all VMs/LXCs
+- **Wake-on-LAN support** for all three Proxmox nodes:
+  - node01: `38:05:25:32:82:76`
+  - node02: `84:47:09:4d:7a:ca`
+  - node03: `d8:43:ae:a8:4c:a7`
+- **Safe shutdown/startup order**:
+  - Shutdown: VMs → LXCs → Nodes (node03 → node02 → node01)
+  - Startup: WoL → Wait for nodes → LXCs (Pi-hole first for DNS) → VMs
+- **Reaction-based confirmation** - Commands require ⚠️ reaction to confirm (60-second timeout)
+- **Progress tracking** via Discord embed updates showing phase, progress bar, and results
+- **Files created/modified**:
+  - `ansible/playbooks/sentinel-bot/cogs/power.py` - New power management cog (~600 lines)
+  - `ansible/playbooks/sentinel-bot/config.py` - Added WOL_MAC_ADDRESSES, NODE_SHUTDOWN_ORDER, etc.
+  - `ansible/playbooks/sentinel-bot/core/ssh_manager.py` - Added WoL, node online check, shutdown methods
+  - `ansible/playbooks/sentinel-bot/core/bot.py` - Added 'cogs.power' to cog list
+  - `ansible/playbooks/sentinel-bot/requirements.txt` - Added `wakeonlan>=2.1.0`
+- **Documentation updated**: docs/DISCORD_BOTS.md with full power management command reference
+
+### Fixed - Windows Server 2025 Packer Autounattend Issues (January 13, 2026)
+- **Identified and fixed multiple autounattend.xml issues** preventing automated Windows installation
+  - **Missing wcm namespace**: Added `xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"` to root element
+  - **8.3 filename truncation**: ISO creation without Joliet extensions truncated `autounattend.xml` to `AUTOUNAT.XML`
+  - **SATA CD-ROM not detected**: Windows PE doesn't enumerate SATA CD-ROMs; switched to IDE (ide3)
+  - **Missing product key**: Added ProductKey element to skip licensing screen
+- **Changed BIOS mode**: Switched from UEFI (OVMF) to BIOS (SeaBIOS) to fix DVD boot timeout
+- **Fixed partitioning**: Changed from GPT/EFI to MBR for BIOS compatibility
+- **Updated documentation**: Added comprehensive Windows autounattend troubleshooting to `docs/PACKER.md`
+- **ISO creation command**: Must use `-J -joliet-long` flags for long filename support:
+  ```bash
+  xorriso -as mkisofs -J -joliet-long -V "OEMDRV" -o autounattend.iso ./dir/
+  ```
+
+### Fixed - Homelab Chronicle Database (January 13, 2026)
+- **Restored Chronicle database** after container rebuild lost data
+  - Ran `prisma db push` inside container to initialize schema
+  - Created seed script with 15 historical homelab events (Dec 2025 - Jan 2026)
+  - Events include: Chronicle deployment, PBS monitoring, Azure Hybrid Lab, Sentinel Bot, dashboards
+- **Database location**: `/data/chronicle.db` in container volume `homelab-chronicle_chronicle-data`
+- **API endpoint**: `/api/events` now returns all timeline events
+- **Access**: https://chronicle.hrmsmrflrii.xyz
+
+### Added - Network Utilization Monitoring Dashboard (January 13, 2026)
+- **Created Network Utilization Grafana dashboard** (`network-utilization` UID) for bandwidth monitoring
+  - Total cluster bandwidth stats (RX+TX combined for all Proxmox nodes)
+  - Cluster utilization gauge (% of 1Gbps)
+  - 24-hour peak and average bandwidth stats
+  - Per-node bandwidth stats (node01, node02, node03)
+  - Synology NAS bandwidth monitoring (eth0 + eth1 combined)
+  - NAS utilization gauge (% of 2Gbps bonded)
+  - Timeline graphs with 1Gbps reference line
+  - Combined view showing cluster + NAS bandwidth
+- **Updated SNMP exporter** with IF-MIB OIDs for NAS network interface metrics
+  - Added: `ifHCInOctets`, `ifHCOutOctets` (64-bit counters)
+  - Added: `ifHighSpeed` for interface speed
+  - NAS interface mapping: eth0 (ifIndex=3), eth1 (ifIndex=4)
+- **Added Network Utilization iframe** to Glance Network tab
+  - Height: 1100px
+  - URL: `https://grafana.hrmsmrflrii.xyz/d/network-utilization/network-utilization?orgId=1&kiosk&theme=transparent&refresh=30s`
+- **Created deployment Ansible playbook**: `ansible/playbooks/monitoring/deploy-network-utilization-dashboard.yml`
+- **Dashboard JSON**: `dashboards/network-utilization.json`
+- **Purpose**: Monitor network utilization to determine if 2.5GbE switch upgrade is beneficial
+- **Documentation updated**: OBSERVABILITY.md, GLANCE.md, context.md
+
+### Added - Glance Backup Page NAS Monitoring (January 12, 2026)
+- **Deployed NAS Backup Status API** on docker-vm-core-utilities01 (192.168.40.13:9102)
+  - Monitors PBS-to-NAS rsync backup status
+  - Returns: status (success/running/failed), last_sync, main_size (20G), daily_size (38G)
+  - Reads sizes from log file for speed (vs slow `du -sh` over NFS)
+  - Docker container with gunicorn (120s timeout, 2 workers)
+- **Added NAS Backup Sync widget** to Glance Backup page
+  - Shows sync status with color indicator (green/blue/red)
+  - Displays last sync time, datastore sizes, NAS target, schedule
+  - Created `deploy-nas-backup-status-api.yml` Ansible playbook
+- **SSH key setup** for API to PBS communication
+  - Added homelab SSH key to PBS LXC authorized_keys
+  - Enables passwordless SSH for status queries
+
+### Fixed - Sentinel Bot Download Notifications (January 12, 2026)
+- **Optimized download notifications** - No more spam for movie/TV downloads
+  - Changed notification milestones from `[50, 80, 100]` to `[100]` only
+  - Now only notifies when downloads complete (100%)
+  - Simplified `_notify_progress()` logic in scheduler.py
+- **Improved `/downloads` command** with visual progress bars
+  - Fixed progress calculation (was using non-existent `progress` field)
+  - Now correctly calculates from `size` and `sizeleft` API fields
+  - Added ASCII progress bars: `[████████░░] 80.5%`
+  - Shows up to 8 items per category (Movies/TV Shows)
+  - Added proper error handling with user feedback
+- **Added API timeout handling** - Prevents Discord "application did not respond" errors
+  - Added 10-second timeout to all `api_get()` and `api_post()` calls in bot.py
+  - Catches `asyncio.TimeoutError` with proper logging
+- **Cleared 24+ failed Sonarr downloads** - Corrupted Usenet downloads cleaned up
+  - Removed failed Game of Thrones, Stranger Things, Manhunt, House of the Dragon episodes
+  - Blocklisted bad releases so Sonarr searches for alternatives
+  - Root cause: Corrupted/incomplete NZB files from Usenet indexers
+
 ### Fixed - Grafana Dashboard Sorting & PBS Fixes (January 12, 2026)
 - **Fixed dashboard sorting** for Proxmox Cluster Health dashboard panels
   - "Top VMs by CPU Usage", "Top VMs by Memory Usage", and "NAS Storage Pool Usage" now sort in descending order

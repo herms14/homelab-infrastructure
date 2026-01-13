@@ -429,6 +429,103 @@ The Drive Health Status widget is displayed on the Glance Backup page:
     # Green for healthy, Red for failed
 ```
 
+## NAS Backup Status API (Added January 12, 2026)
+
+A custom API that monitors the PBS-to-NAS backup sync status and lists all backups stored on the Synology NAS.
+
+### API Overview
+
+| Property | Value |
+|----------|-------|
+| Host | docker-vm-core-utilities01 (192.168.40.13) |
+| Port | 9102 |
+| Container | `nas-backup-status-api` |
+| Config | `/opt/nas-backup-status-api/` |
+
+### Endpoints
+
+| Endpoint | Description | Response |
+|----------|-------------|----------|
+| `/status` | Sync status and datastore sizes | `{"status": "success", "last_sync": "...", "main_size": "20G", "daily_size": "38G"}` |
+| `/backups` | List of all backups on NAS | `{"backups": [...], "total_count": 14, "vm_count": 7, "ct_count": 7}` |
+| `/health` | Health check | `{"status": "healthy"}` |
+
+### Status Response Fields
+
+| Field | Description |
+|-------|-------------|
+| `status` | `success`, `running`, `failed`, or `unknown` |
+| `last_sync` | Timestamp of last successful sync |
+| `main_size` | Size of main datastore on NAS (e.g., "20G") |
+| `daily_size` | Size of daily datastore on NAS (e.g., "38G") |
+| `nas_target` | NAS mount path |
+| `schedule` | Sync schedule (Daily at 2:00 AM) |
+
+### Backups Response Fields
+
+| Field | Description |
+|-------|-------------|
+| `backups` | Array of backup objects |
+| `total_count` | Total number of backed up VMs/CTs |
+| `vm_count` | Number of VMs with backups |
+| `ct_count` | Number of CTs with backups |
+
+Each backup object contains:
+- `vmid`: VM/CT ID
+- `type`: "VM" or "CT"
+- `datastore`: "main" or "daily"
+- `last_backup`: Timestamp of most recent backup
+
+### How It Works
+
+1. API runs on docker-vm-core-utilities01 in a Docker container
+2. Uses SSH to query PBS server (192.168.20.50) for:
+   - Lock file status (determines if sync is running)
+   - Log file for last sync time and status
+   - NAS mount directories for backup listing
+3. Reads datastore sizes from log file (faster than `du -sh` over NFS)
+
+### Deployment
+
+```bash
+ansible-playbook glance/deploy-nas-backup-status-api.yml
+```
+
+Or manual deployment:
+
+```bash
+ssh hermes-admin@192.168.40.13
+cd /opt/nas-backup-status-api
+docker compose up -d --build
+```
+
+### Glance Integration
+
+Two widgets on the Backup page use this API:
+
+1. **NAS Backup Sync** - Shows sync status with color indicator
+2. **Backups on NAS** - Lists all protected VMs/CTs with backup dates
+
+### SSH Requirements
+
+The API container needs SSH access to PBS:
+- SSH key mounted at `/root/.ssh/homelab_ed25519`
+- PBS must have the public key in `/root/.ssh/authorized_keys`
+
+### Troubleshooting
+
+```bash
+# Test API
+curl http://192.168.40.13:9102/status
+curl http://192.168.40.13:9102/backups
+
+# Check container logs
+docker logs nas-backup-status-api
+
+# Verify SSH connectivity
+ssh -i ~/.ssh/homelab_ed25519 root@192.168.20.50 "echo 'SSH OK'"
+```
+
 ## References
 
 - [PBS Exporter GitHub](https://github.com/natrontech/pbs-exporter)

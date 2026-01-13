@@ -1056,16 +1056,61 @@ This shows ~7% actual usage instead of ~95% (which incorrectly treated cache as 
 ┌───────────────────────────────────────────────────────┬──────────────────┐
 │                    MAIN (full)                         │  SIDEBAR (small) │
 ├───────────────────────────────────────────────────────┼──────────────────┤
-│ Omada Network Dashboard (Grafana iframe, h=2200)      │ Network Device   │
-│ - Overview: Clients, Controller, WiFi modes           │ Status (custom)  │
+│ Network Utilization Dashboard (Grafana iframe, h=1100)│ Network Device   │
+│ - Cluster & NAS bandwidth stats                       │ Status (custom)  │
+│ - Per-node utilization (node01/02/03)                 │                  │
+│ - Bandwidth timelines with 1Gbps reference            │ Latest Speedtest │
+│ - NAS eth0/eth1 traffic monitoring                    │ (Download/Upload │
+│ - Combined cluster + NAS view                         │  Ping/Jitter)    │
+├───────────────────────────────────────────────────────┤                  │
+│ Omada Network Dashboard (Grafana iframe, h=2200)      │                  │
+│ - Overview: Clients, Controller, WiFi modes           │                  │
 │ - Device Health: CPU/Memory gauges                    │                  │
-│ - WiFi Signal Quality: RSSI, SNR                      │ Latest Speedtest │
-│ - Switch Port Status: Table                           │ (Download/Upload │
-│ - PoE Power Usage                                     │  Ping/Jitter)    │
+│ - WiFi Signal Quality: RSSI, SNR                      │                  │
+│ - Switch Port Status: Table                           │                  │
+│ - PoE Power Usage                                     │                  │
 │ - Traffic Analysis: Top 10 clients (barchart)         │                  │
 │ - Client Details: Full table                          │                  │
 └───────────────────────────────────────────────────────┴──────────────────┘
 ```
+
+#### Network Utilization Dashboard (Added January 13, 2026)
+
+**Grafana Dashboard**: `network-utilization` (UID)
+- URL: `https://grafana.hrmsmrflrii.xyz/d/network-utilization/network-utilization?orgId=1&kiosk&theme=transparent&refresh=30s`
+- Iframe Height: 1100px
+- Dashboard JSON: `dashboards/network-utilization.json`
+- Ansible Playbook: `ansible/playbooks/monitoring/deploy-network-utilization-dashboard.yml`
+
+**Purpose**: Monitor network bandwidth utilization to determine if a 2.5GbE switch upgrade would be beneficial.
+
+**Panels:**
+| Row | Panels |
+|-----|--------|
+| **Stats** | Total Cluster BW, Cluster %, Peak 24h, Avg 24h, NAS BW, NAS % |
+| **Per-Node** | node01, node02, node03 bandwidth stats + NAS Peak 24h |
+| **Timeline 1** | Cluster Bandwidth Over Time (per-node RX/TX with 1Gbps reference) |
+| **Timeline 2** | Synology NAS Bandwidth Over Time (eth0/eth1 RX/TX) |
+| **Timeline 3** | Combined Bandwidth (Cluster Total + NAS Total with 1Gbps reference) |
+
+**Data Sources:**
+- `proxmox-nodes` job: node_exporter on port 9100 (`node_network_*_bytes_total`)
+- `synology` job: SNMP exporter with IF-MIB (`ifHCInOctets`, `ifHCOutOctets`)
+
+**NAS Interface Mapping:**
+| Interface | ifIndex | Speed |
+|-----------|---------|-------|
+| eth0 | 3 | 1Gbps |
+| eth1 | 4 | 1Gbps |
+
+**Utilization Thresholds:**
+| Range | Color | Status |
+|-------|-------|--------|
+| < 50% | Green | Normal |
+| 50-80% | Yellow | Elevated |
+| > 80% | Red | High utilization |
+
+#### Omada Network Dashboard
 
 **Grafana Dashboard**: `omada-network` (UID)
 - URL: `https://grafana.hrmsmrflrii.xyz/d/omada-network/omada-network-overview?orgId=1&kiosk&theme=transparent&refresh=30s`
@@ -1195,65 +1240,95 @@ Dynamic Reddit feed aggregator with thumbnails and native Reddit widgets.
 
 ### Backup Tab (Added January 11, 2026)
 
-The Backup tab provides monitoring for Proxmox Backup Server (PBS) with embedded Grafana dashboard and drive health status.
+The Backup tab provides monitoring for Proxmox Backup Server (PBS) with embedded Grafana dashboard, NAS backup sync status, and drive health.
 
 **Layout (2 columns)**:
 ```
 ┌───────────────────────────────────────────────────────────────┬──────────────────┐
 │                     MAIN (full)                                │  SIDEBAR (small) │
 ├───────────────────────────────────────────────────────────────┼──────────────────┤
-│ PBS Backup Status Dashboard (Grafana iframe, h=1400)          │ PBS Server       │
-│ - Status Overview: pbs_up, version, uptime                    │ (monitor)        │
-│ - Datastore Storage: Pie charts for daily/main                │                  │
-│ - Backup Snapshots: Counts per datastore                      │ Drive Health     │
-│ - Storage Usage Over Time                                     │ Status (API)     │
-│ - PBS Host Metrics: CPU, memory, load                         │                  │
+│ PBS Backup Status Dashboard (Grafana iframe, h=900)           │ NAS Backup Sync  │
+│ - Status Overview: pbs_up, version, uptime                    │ (sync status,    │
+│ - Datastore Storage: Pie charts for daily/main                │  sizes, last     │
+│ - Backup Snapshots: Counts per datastore                      │  sync time)      │
+│ - Storage Usage Over Time                                     │                  │
+│ - PBS Host Metrics: CPU, memory, load                         │ Backups on NAS   │
+│                                                               │ (VM/CT list with │
+│                                                               │  backup dates)   │
+│                                                               │                  │
+│                                                               │ Drive Health     │
+│                                                               │ Status (SMART)   │
+│                                                               │                  │
+│                                                               │ PBS Server       │
+│                                                               │ (monitor)        │
+│                                                               │                  │
 │                                                               │ Quick Links      │
-│                                                               │ (PBS UI, Grafana)│
 └───────────────────────────────────────────────────────────────┴──────────────────┘
 ```
 
 **Grafana Dashboard**: `pbs-backup-status` (UID)
-- URL: `https://grafana.hrmsmrflrii.xyz/d/pbs-backup-status/pbs-backup-status?kiosk&theme=transparent&refresh=30s`
-- Iframe Height: 1400px
+- URL: `https://grafana.hrmsmrflrii.xyz/d/pbs-backup-status/pbs-backup-status?kiosk&theme=transparent&refresh=1m`
+- Iframe Height: 900px
 - Dashboard JSON: `dashboards/pbs-backup-status.json`
 - Datasource UID: `PBFA97CFB590B2093` (Prometheus)
 
-**Drive Health Status Widget** (Added January 12, 2026):
+**NAS Backup Sync Widget** (Added January 12, 2026):
+
+Shows the status of PBS-to-NAS backup synchronization.
+
+| Property | Value |
+|----------|-------|
+| API Endpoint | `http://192.168.40.13:9102/status` |
+| Cache | 5 minutes |
+
+Displays:
+- Sync status indicator (green=success, blue=running, red=failed)
+- Last successful sync timestamp
+- Main datastore size on NAS
+- Daily datastore size on NAS
+- NAS target path
+- Sync schedule
+
+**Backups on NAS Widget** (Added January 12, 2026):
+
+Lists all VMs and CTs that have backups stored on the Synology NAS.
+
+| Property | Value |
+|----------|-------|
+| API Endpoint | `http://192.168.40.13:9102/backups` |
+| Cache | 10 minutes |
+
+Displays:
+- Total protected count
+- VM count and CT count
+- Scrollable list of all backed up VMs/CTs with:
+  - Type indicator (VM in blue, CT in amber)
+  - VMID
+  - Last backup timestamp
+
+**Drive Health Status Widget**:
 
 Displays SMART health status for PBS storage drives.
 
-```yaml
-- type: custom-api
-  title: Drive Health Status
-  cache: 5m
-  url: http://192.168.20.22:9101/health
-  template: |
-    <div style="padding: 10px;">
-      {{ range .JSON.Array "drives" }}
-      <div style="...">
-        <div>{{ .String "name" }}</div>
-        <div>{{ .String "datastore" }} datastore</div>
-        {{ if .Bool "healthy" }}
-          <span style="background: #22c55e;">HEALTHY</span>
-        {{ else }}
-          <span style="background: #ef4444;">FAILED</span>
-        {{ end }}
-      </div>
-      {{ end }}
-    </div>
-```
-
-**Drive Health API**:
 | Property | Value |
 |----------|-------|
+| API Endpoint | `http://192.168.20.22:9101/health` |
+| Cache | 5 minutes |
 | Host | node03 (192.168.20.22) |
-| Port | 9101 |
-| Endpoint | `/health` |
-| Monitored Drives | Seagate 4TB HDD (main), Kingston 1TB NVMe (daily) |
 | Service | `smart-health-api.service` |
+| Monitored Drives | Seagate 4TB HDD (main), Kingston 1TB NVMe (daily) |
 
-See [PBS Monitoring](./PBS_MONITORING.md) for complete SMART API documentation.
+**NAS Backup Status API**:
+
+| Property | Value |
+|----------|-------|
+| Host | docker-vm-core-utilities01 (192.168.40.13) |
+| Port | 9102 |
+| Container | `nas-backup-status-api` |
+| Endpoints | `/status`, `/backups`, `/health` |
+| Ansible Playbook | `ansible/playbooks/glance/deploy-nas-backup-status-api.yml` |
+
+See [PBS Monitoring](./PBS_MONITORING.md) for complete API documentation.
 
 ### Sports Tab (PROTECTED)
 
