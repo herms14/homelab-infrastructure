@@ -49,6 +49,9 @@ CREDENTIALS.md
 obsidian-homelab/*Credentials*
 obsidian-homelab/*Technical Manual*
 obsidian-homelab/tmpclaude-*
+obsidian-homelab/TODO - *.md
+obsidian-homelab/Book - *.md
+obsidian-homelab/CONTEXT - *.md
 
 # Sensitive network configuration
 docs/legacy/2026-Omada-Network-Configuration.md
