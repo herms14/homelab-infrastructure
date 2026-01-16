@@ -1,0 +1,97 @@
+# =============================================================================
+# Ansible Inventory - Azure Multi-Region Infrastructure
+# =============================================================================
+# Update IP addresses after Terraform deployment
+# Passwords should be in Ansible Vault (vault.yml)
+# =============================================================================
+
+all:
+  vars:
+    ansible_user: azureadmin
+    ansible_password: "{{ vault_admin_password }}"
+    ansible_connection: winrm
+    ansible_winrm_transport: ntlm
+    ansible_winrm_server_cert_validation: ignore
+    ansible_port: 5985
+
+    # Domain configuration
+    domain_name: "hrmsmrflrii.xyz"
+    domain_netbios: "HRMSMRFLRII"
+    domain_admin: "HRMSMRFLRII\\azureadmin"
+    domain_password: "{{ vault_domain_password }}"
+
+    # Domain controllers
+    dns_servers:
+      - 10.10.4.4   # AZDC01
+      - 10.10.4.5   # AZDC02
+
+  children:
+    # Southeast Asia - App Servers
+    sea_app_servers:
+      hosts:
+        APP-SEA01:
+          ansible_host: 10.11.1.4
+          server_role: "Application Server"
+          target_ou: "OU=Application Servers,OU=Servers,OU=Tier 1,DC=hrmsmrflrii,DC=xyz"
+
+    # Southeast Asia - File Servers
+    sea_file_servers:
+      hosts:
+        FS-SEA01:
+          ansible_host: 10.12.1.4
+          server_role: "File Server"
+          target_ou: "OU=File Servers,OU=Servers,OU=Tier 1,DC=hrmsmrflrii,DC=xyz"
+        FS-SEA02:
+          ansible_host: 10.12.1.5
+          server_role: "File Server"
+          target_ou: "OU=File Servers,OU=Servers,OU=Tier 1,DC=hrmsmrflrii,DC=xyz"
+
+    # East Asia - General Servers
+    eastasia_servers:
+      hosts:
+        SRV-EA01:
+          ansible_host: 10.20.1.4
+          server_role: "General Server"
+          target_ou: "OU=Servers,DC=hrmsmrflrii,DC=xyz"
+        SRV-EA02:
+          ansible_host: 10.20.1.5
+          server_role: "General Server"
+          target_ou: "OU=Servers,DC=hrmsmrflrii,DC=xyz"
+        APP-EA01:
+          ansible_host: 10.20.1.6
+          server_role: "Application Server"
+          target_ou: "OU=Application Servers,OU=Servers,OU=Tier 1,DC=hrmsmrflrii,DC=xyz"
+
+    # East Asia - Read-Only Domain Controllers
+    rodcs:
+      hosts:
+        AZRODC01:
+          ansible_host: 10.20.10.4
+          dc_role: "RODC"
+          ad_site: "EastAsia"
+        AZRODC02:
+          ansible_host: 10.20.10.5
+          dc_role: "RODC"
+          ad_site: "EastAsia"
+
+    # Groupings
+    sea_servers:
+      children:
+        sea_app_servers:
+        sea_file_servers:
+
+    eastasia_all:
+      children:
+        eastasia_servers:
+        rodcs:
+
+    member_servers:
+      children:
+        sea_app_servers:
+        sea_file_servers:
+        eastasia_servers:
+
+    azure_windows:
+      children:
+        sea_servers:
+        eastasia_all:

@@ -1,0 +1,80 @@
+# =============================================================================
+# Domain Join Playbook - Azure Multi-Region Servers
+# =============================================================================
+# Joins Windows servers to hrmsmrflrii.xyz domain
+#
+# Usage:
+#   ansible-playbook -i inventory.yml 01-domain-join.yml --ask-vault-pass
+#
+# Prerequisites:
+#   - VPN connectivity to Azure established
+#   - DNS servers (AZDC01/02) accessible from VMs
+#   - WinRM enabled on target VMs
+# =============================================================================
+
+---
+- name: Configure DNS and Domain Join
+  hosts: member_servers
+  gather_facts: no
+  serial: 5
+
+  vars:
+    domain_name: "hrmsmrflrii.xyz"
+    domain_admin: "HRMSMRFLRII\\azureadmin"
+    dns_servers:
+      - 10.10.4.4
+      - 10.10.4.5
+
+  tasks:
+    - name: Wait for WinRM
+      wait_for_connection:
+        delay: 10
+        timeout: 300
+
+    - name: Set DNS servers
+      win_dns_client:
+        adapter_names: '*'
+        dns_servers: "{{ dns_servers }}"
+
+    - name: Set timezone
+      win_timezone:
+        timezone: Singapore Standard Time
+
+    - name: Test DNS resolution
+      win_shell: |
+        Resolve-DnsName -Name "{{ domain_name }}" -Type A -ErrorAction Stop
+      register: dns_test
+      retries: 3
+      delay: 10
+      until: dns_test.rc == 0
+
+    - name: Check if already domain joined
+      win_shell: |
+        (Get-WmiObject Win32_ComputerSystem).PartOfDomain
+      register: domain_status
+      changed_when: false
+
+    - name: Join domain
+      win_domain_membership:
+        dns_domain_name: "{{ domain_name }}"
+        domain_admin_user: "{{ domain_admin }}"
+        domain_admin_password: "{{ domain_password }}"
+        domain_ou_path: "{{ target_ou | default('OU=Servers,DC=hrmsmrflrii,DC=xyz') }}"
+        state: domain
+      register: domain_join
+      when: domain_status.stdout | trim | lower != 'true'
+
+    - name: Reboot if domain join changed
+      win_reboot:
+        reboot_timeout: 600
+      when: domain_join is changed
+
+    - name: Verify domain membership
+      win_shell: |
+        (Get-WmiObject Win32_ComputerSystem).Domain
+      register: final_domain
+      changed_when: false
+
+    - name: Display result
+      debug:
+        msg: "{{ inventory_hostname }} is now a member of {{ final_domain.stdout | trim }}"

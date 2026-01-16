@@ -1,0 +1,140 @@
+# =============================================================================
+# RODC Promotion Playbook - Azure East Asia
+# =============================================================================
+# Promotes AZRODC01 and AZRODC02 as Read-Only Domain Controllers
+#
+# Usage:
+#   ansible-playbook -i inventory.yml 02-promote-rodc.yml --ask-vault-pass
+#
+# Prerequisites:
+#   - Domain join completed for RODCs
+#   - AD Sites and Services configured with EastAsia site
+#   - DSRM password stored in vault
+# =============================================================================
+
+---
+- name: Create AD Site for East Asia
+  hosts: localhost
+  gather_facts: no
+  vars:
+    domain_admin: "HRMSMRFLRII\\azureadmin"
+    dc_host: 10.10.4.4  # AZDC01
+
+  tasks:
+    - name: Create EastAsia AD Site
+      win_shell: |
+        $site = Get-ADReplicationSite -Filter "Name -eq 'EastAsia'" -ErrorAction SilentlyContinue
+        if (-not $site) {
+          New-ADReplicationSite -Name "EastAsia" -Description "Azure East Asia Region"
+          Write-Output "Created"
+        } else {
+          Write-Output "Exists"
+        }
+      delegate_to: "{{ dc_host }}"
+      register: site_result
+      changed_when: site_result.stdout | trim == "Created"
+
+    - name: Create subnet for East Asia
+      win_shell: |
+        $subnet = Get-ADReplicationSubnet -Filter "Name -eq '10.20.0.0/16'" -ErrorAction SilentlyContinue
+        if (-not $subnet) {
+          New-ADReplicationSubnet -Name "10.20.0.0/16" -Site "EastAsia" -Location "Hong Kong"
+          Write-Output "Created"
+        } else {
+          Write-Output "Exists"
+        }
+      delegate_to: "{{ dc_host }}"
+      register: subnet_result
+      changed_when: subnet_result.stdout | trim == "Created"
+
+---
+- name: Promote RODCs in East Asia
+  hosts: rodcs
+  gather_facts: no
+  serial: 1
+
+  vars:
+    domain_name: "hrmsmrflrii.xyz"
+    domain_admin: "HRMSMRFLRII\\azureadmin"
+    safe_mode_password: "{{ vault_dsrm_password }}"
+    replication_source: "AZDC01.hrmsmrflrii.xyz"
+
+  tasks:
+    - name: Wait for WinRM
+      wait_for_connection:
+        delay: 10
+        timeout: 300
+
+    - name: Check if already a DC
+      win_shell: |
+        (Get-WmiObject Win32_ComputerSystem).DomainRole
+      register: dc_check
+      changed_when: false
+
+    - name: Install AD DS Role
+      win_feature:
+        name: AD-Domain-Services
+        include_management_tools: yes
+        state: present
+      register: adds_install
+      when: dc_check.stdout | trim | int < 4
+
+    - name: Reboot after AD DS install
+      win_reboot:
+      when: adds_install is changed
+
+    - name: Initialize data disk for NTDS
+      win_shell: |
+        $disk = Get-Disk | Where-Object PartitionStyle -eq 'RAW'
+        if ($disk) {
+          Initialize-Disk -Number $disk.Number -PartitionStyle GPT
+          New-Partition -DiskNumber $disk.Number -UseMaximumSize -DriveLetter F
+          Format-Volume -DriveLetter F -FileSystem NTFS -NewFileSystemLabel "NTDS" -Confirm:$false
+          Write-Output "Initialized"
+        } else {
+          Write-Output "AlreadyDone"
+        }
+      register: disk_init
+      changed_when: disk_init.stdout | trim == "Initialized"
+
+    - name: Promote as RODC
+      win_shell: |
+        $secpasswd = ConvertTo-SecureString "{{ domain_password }}" -AsPlainText -Force
+        $cred = New-Object PSCredential("{{ domain_admin }}", $secpasswd)
+        $safepwd = ConvertTo-SecureString "{{ safe_mode_password }}" -AsPlainText -Force
+
+        Install-ADDSDomainController `
+          -DomainName "{{ domain_name }}" `
+          -Credential $cred `
+          -SafeModeAdministratorPassword $safepwd `
+          -ReadOnlyReplica:$true `
+          -SiteName "{{ ad_site }}" `
+          -ReplicationSourceDC "{{ replication_source }}" `
+          -DatabasePath "F:\NTDS" `
+          -LogPath "F:\NTDS" `
+          -SysvolPath "F:\SYSVOL" `
+          -InstallDns:$true `
+          -NoRebootOnCompletion:$false `
+          -Force:$true
+
+        Write-Output "Promoted"
+      args:
+        creates: F:\NTDS\ntds.dit
+      register: rodc_promote
+      when: dc_check.stdout | trim | int < 4
+
+    - name: Wait for RODC promotion and reboot
+      wait_for_connection:
+        delay: 120
+        timeout: 900
+      when: rodc_promote is changed
+
+    - name: Verify DC status
+      win_shell: |
+        Get-ADDomainController -Identity $env:COMPUTERNAME | Select-Object Name, Site, IsReadOnly
+      register: dc_verify
+      changed_when: false
+
+    - name: Display RODC status
+      debug:
+        var: dc_verify.stdout_lines

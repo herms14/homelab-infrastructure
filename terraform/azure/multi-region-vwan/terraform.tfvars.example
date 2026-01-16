@@ -1,0 +1,55 @@
+# =============================================================================
+# Multi-Region Azure Infrastructure - Example Variables
+# =============================================================================
+# Copy this file to terraform.tfvars and fill in the values
+# terraform.tfvars is in .gitignore and will not be committed
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Sensitive Values (REQUIRED)
+# -----------------------------------------------------------------------------
+
+# VPN shared key for site-to-site connection (same as OPNsense)
+vpn_shared_key = "your-vpn-shared-key"
+
+# On-premises VPN gateway public IP (OPNsense WAN IP)
+onprem_public_ip = "your.public.ip.address"
+
+# Windows VM admin password
+vm_admin_password = "YourSecurePassword123!"
+
+# SQL MI admin password
+sqlmi_admin_password = "YourSqlAdminPassword123!"
+
+# -----------------------------------------------------------------------------
+# Optional Overrides
+# -----------------------------------------------------------------------------
+
+# Subscription and Tenant (defaults are already set)
+# subscription_id = "2212d587-1bad-4013-b605-b421b1f83c30"
+# tenant_id       = "b6458a9a-9661-468c-bda3-5f496727d0b0"
+
+# Tags
+# tags = {
+#   Environment = "Production"
+#   Project     = "Homelab-MultiRegion"
+#   ManagedBy   = "Terraform"
+#   Owner       = "hermes-admin"
+# }
+
+# Feature Flags
+# deploy_bastion = false  # Set to true to deploy Azure Bastion (~$140/month)
+# deploy_aks     = true   # Set to false to skip AKS deployment
+# deploy_sqlmi   = true   # Set to false to skip SQL MI deployment (~$350/month)
+
+# Log Analytics retention
+# law_retention_days = 30
+
+# AKS configuration
+# aks_kubernetes_version = "1.28"
+# aks_system_node_count  = 1
+# aks_user_node_count    = 3
+
+# SQL MI configuration
+# sqlmi_vcores      = 4
+# sqlmi_storage_gb  = 32
